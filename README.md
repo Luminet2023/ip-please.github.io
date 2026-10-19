@@ -47,6 +47,16 @@ python tools/build_assets.py
 
 本地预览：在仓库根目录运行 `python -m http.server`，打开 <http://localhost:8000>。
 
+## 云存档同步（可选）
+
+右上角「云同步」登录后可把每日结算的存档备份到云端，换设备也能接着玩；不登录仍可纯本地游玩。
+
+- 前端 `cloud.js`：Keycloak OIDC 授权码 + PKCE(S256)，Access Token 600 秒自动刷新，刷新令牌保存在
+  `localStorage`；每天结算后自动上传并提示，版本冲突时弹窗选择「用云端存档」或「保留本机」。
+- 后端 `backend/`：Rust（axum + sqlx + MySQL），对外地址 `https://api.luminet.cn/anthropic/v1`。
+- 部署、反向代理与 Keycloak 客户端配置见 [`deploy/README.md`](deploy/README.md)；
+  接口与错误规范见 [`AGENT.md`](AGENT.md)。
+
 ## 致谢与许可
 
 - 致敬 Lucas Pope 的《Papers, Please》。本作是同人讽刺小品，角色均为虚构，讽刺的是“按地区封锁”这件事和各种伪装的荒诞，不针对任何民族和群体——宪法第 12 条：只看地区，不看脸。
