@@ -4,7 +4,8 @@ name: ip-please-sync
 # 若数据库是同一台服务器上的另一个容器/独立实例，按需补充 networks 或改用宿主机地址。
 services:
   sync:
-    image: ghcr.io/luminet2023/ip-please-backend:latest
+    # 固定回滚：在 .env 里设 IMAGE_TAG=sha-<短哈希> 或 build-<短哈希> 即可
+    image: ghcr.io/luminet2023/ip-please-backend:${IMAGE_TAG:-latest}
     container_name: ip-please-sync
     restart: unless-stopped
     env_file:

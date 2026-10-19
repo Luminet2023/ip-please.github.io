@@ -1,0 +1,63 @@
+name: deploy-backend
+
+# 可选：在 GitHub 上手动触发，SSH 到服务器执行 docker compose pull/up 并等待健康检查。
+# 需要先在仓库 Secrets 里配置：
+#   SSH_HOST / SSH_USER / SSH_KEY（私钥，ed25519 或 rsa）/ 可选 SSH_PORT
+# 部署目录默认 /opt/ip-please-sync，需提前放好 docker-compose.yml 与 .env。
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_dir:
+        description: 服务器上的部署目录（含 docker-compose.yml 与 .env）
+        required: true
+        default: /opt/ip-please-sync
+      image_tag:
+        description: 要部署的镜像 tag（默认 latest，可填 sha-xxxx / build-xxxx 回滚）
+        required: false
+        default: latest
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ssh deploy
+    runs-on: ubuntu-latest
+    env:
+      APP_DIR: ${{ inputs.app_dir }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: APP_DIR,IMAGE_TAG
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "$APP_DIR"
+            if [ ! -f docker-compose.yml ] || [ ! -f .env ]; then
+              echo "错误：$APP_DIR 缺少 docker-compose.yml 或 .env" >&2
+              exit 1
+            fi
+            docker compose pull
+            docker compose up -d --remove-orphans
+            echo "== 等待健康检查 =="
+            for _ in $(seq 1 60); do
+              if curl -fsS http://127.0.0.1:8080/anthropic/v1/health >/dev/null 2>&1; then
+                curl -sS http://127.0.0.1:8080/anthropic/v1/health
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "健康检查超时，最近日志：" >&2
+            docker compose logs --tail=80 >&2
+            exit 1

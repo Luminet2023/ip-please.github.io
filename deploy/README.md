@@ -110,7 +110,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' -G \
   https://auth.luminet.cn/realms/prod/protocol/openid-connect/auth
 ```
 
-## 5. 升级
+## 5. 升级与回滚
 
 ```bash
 cd /opt/ip-please-sync
@@ -118,8 +118,21 @@ docker compose pull
 docker compose up -d
 ```
 
-镜像 tag：`latest`、`sha-<short>`、`build-<sha>`。需要回滚时把 compose 的 image 固定到某个
-`sha-<short>` 或 `build-<sha>` 再 `up -d`。
+镜像 tag：`latest`、`sha-<short>`、`build-<sha>`。回滚：把 `.env` 里 `IMAGE_TAG` 改成目标
+`sha-<short>` / `build-<short>`（compose 中镜像为 `…:${IMAGE_TAG:-latest}`），再 `docker compose up -d`。
+
+### 可选：GitHub Actions 一键部署
+
+仓库自带 `.github/workflows/deploy.yml`（手动触发）。在仓库 Settings → Secrets 配置：
+
+| Secret | 说明 |
+| --- | --- |
+| `SSH_HOST` | 服务器地址 |
+| `SSH_USER` | SSH 用户 |
+| `SSH_KEY` | SSH 私钥全文（ed25519 / rsa） |
+| `SSH_PORT` | 可选，默认 22 |
+
+然后 Actions → `deploy-backend` → Run workflow，填写部署目录（默认 `/opt/ip-please-sync`）与镜像 tag。
 
 ## 6. 运维要点
 
