@@ -3,6 +3,23 @@
 服务镜像由 GitHub Actions 构建并推送到 GHCR：
 `ghcr.io/luminet2023/ip-please-backend:latest`（`linux/amd64,linux/arm64`）。
 
+## 0. 一键脚本（推荐）
+
+服务器上执行；首次运行会生成 `/opt/ip-please-sync/.env` 并退出，编辑填入
+`SYNC_DATABASE_URL` 后重新执行即可拉起容器：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Luminet2023/ip-please.github.io/main/deploy/install.sh | bash
+```
+
+配好 nginx 反代后，在任意能访问外网的机器跑验收（会检查健康接口、鉴权双信封、CORS 与
+Keycloak 客户端配置，失败退出码非 0）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Luminet2023/ip-please.github.io/main/deploy/verify.sh -o verify.sh
+bash verify.sh
+```
+
 ## 1. 服务器准备
 
 ```bash
