@@ -1,0 +1,27 @@
+[package]
+name = "ip-please-sync"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "IP, PLEASE cloud save sync backend"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+jsonwebtoken = "9"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "mysql", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time", "net"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

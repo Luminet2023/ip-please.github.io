@@ -21,6 +21,49 @@
     border: 1px solid #4a4440; border-radius: 3px; padding: 3px 8px; cursor: pointer;
   }
   .ui button:hover { color: #e4dfd4; }
+  .toast {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 5;
+    background: rgba(22, 19, 19, 0.95); border: 1px solid #4a4440; color: #e4dfd4;
+    font: 12px/1.6 system-ui, sans-serif; padding: 8px 14px; border-radius: 4px;
+    max-width: min(86vw, 460px); text-align: center; opacity: 0;
+    transition: opacity 0.18s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .overlay {
+    position: fixed; inset: 0; z-index: 6; display: flex; align-items: center;
+    justify-content: center; background: rgba(10, 8, 8, 0.72); padding: 16px;
+  }
+  .overlay[hidden] { display: none; }
+  .dialog {
+    width: min(430px, 94vw); background: #1e1a19; border: 1px solid #5a514b;
+    border-radius: 6px; color: #e4dfd4; font: 13px/1.65 system-ui, sans-serif;
+    padding: 16px 18px;
+  }
+  .dialog h2 {
+    margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #e89c74;
+  }
+  .dialog p { margin: 0 0 10px; color: #b9b0a6; }
+  .dialog .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 12px; }
+  .dialog button {
+    font: inherit; color: #e4dfd4; background: #2b2523; border: 1px solid #5a514b;
+    border-radius: 4px; padding: 6px 12px; cursor: pointer;
+  }
+  .dialog button.primary { background: #7a3b2a; border-color: #a4533b; }
+  .panel {
+    position: fixed; top: 34px; right: 8px; z-index: 6; width: min(310px, 90vw);
+    background: #1e1a19; border: 1px solid #5a514b; border-radius: 6px;
+    color: #e4dfd4; font: 12px/1.7 system-ui, sans-serif; padding: 12px 14px;
+  }
+  .panel[hidden] { display: none; }
+  .panel h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #e89c74; }
+  .panel p { margin: 0 0 8px; color: #b9b0a6; }
+  .panel .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .panel button {
+    font: inherit; color: #e4dfd4; background: #2b2523; border: 1px solid #5a514b;
+    border-radius: 4px; padding: 4px 10px; cursor: pointer;
+  }
+  .panel button.primary { background: #7a3b2a; border-color: #a4533b; }
+  @media (max-height: 500px) { .panel { top: 22px; } }
   @media (max-height: 500px) { .ui { top: 2px; right: 2px; opacity: 0.55; } .ui button { font-size: 10px; padding: 1px 5px; } }
   #rotate {
     display: none; position: fixed; inset: 0; z-index: 3; background: rgba(22, 19, 19, 0.92);
@@ -35,9 +78,13 @@
 <body>
 <canvas id="game" width="640" height="360" aria-label="IP, PLEASE 游戏画面"></canvas>
 <div class="ui">
+  <button id="cloud" type="button">云同步</button>
   <button id="mute" type="button">声音：开</button>
   <button id="full" type="button">全屏</button>
 </div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="cloud-panel" class="panel" hidden></div>
+<div id="cloud-overlay" class="overlay" hidden></div>
 <div id="rotate" class="show">
   <div>把手机横过来玩</div>
   <small>竖屏也能玩，但字会很小</small>
@@ -53,6 +100,7 @@
 <script src="events.js"></script>
 <script src="screens.js"></script>
 <script src="main.js"></script>
+<script src="cloud.js"></script>
 <script>
   document.getElementById('mute').addEventListener('click', () => toggleMute());
   const fullBtn = document.getElementById('full');

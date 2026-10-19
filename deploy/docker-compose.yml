@@ -1,0 +1,27 @@
+name: ip-please-sync
+
+# 复用服务器上已有的 MySQL，不在本 compose 内起数据库。
+# 若数据库是同一台服务器上的另一个容器/独立实例，按需补充 networks 或改用宿主机地址。
+services:
+  sync:
+    image: ghcr.io/luminet2023/ip-please-backend:latest
+    container_name: ip-please-sync
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      # 只绑定回环地址，由宿主机反向代理暴露 /anthropic/
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/anthropic/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true

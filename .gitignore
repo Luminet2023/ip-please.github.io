@@ -1,3 +1,12 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# Rust
+backend/target/
+
+# 部署密钥
+deploy/.env
+
+# Wrangler / Pages 本地状态
+.wrangler/

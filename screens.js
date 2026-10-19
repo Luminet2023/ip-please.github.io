@@ -299,13 +299,14 @@ function summaryClick(x, y) {
   }
   if (!inBox(x, y, CONTINUE_BTN)) return;
   SFX.play('click');
-  if (SUM.final) { S.savings = 0; clearSave(); go('end'); return; }
+  if (SUM.final) { S.savings = 0; if (window.CloudSync) CloudSync.onGameEnd(S); clearSave(); go('end'); return; }
   const bal = sumBalance();
   S.family = familyAfter();
   S.savings = bal;
   if (bal < 0) { clearSave(); go('over'); return; }
   S.day++;
   saveGame();
+  if (window.CloudSync) CloudSync.onDayEnd(S);
   go('daycard');
 }
 
