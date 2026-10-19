@@ -163,3 +163,49 @@ docker compose up -d
   按 `(user_id, version)` 唯一。需要清理历史快照时按 `created_at_ms` 删旧记录即可。
 - 限流：单用户上传最小间隔 `SYNC_RATE_LIMIT_SECONDS`（默认 3 秒），内存实现，多副本部署时需换成
   Redis 等共享存储。
+
+## 7. 排障
+
+### 7.1 MySQL 连接失败（日志出现 `pool timed out` / connection refused）
+
+先确认连接串格式。**必须是 sqlx 的 URL，不接受 Go 的 DSN**：
+
+```env
+# 正确
+SYNC_DATABASE_URL=mysql://user:password@host:3306/database
+
+# 错误（Go 风格，服务启动会直接报 SYNC_DATABASE_URL 格式错误）
+MYSQL_DSN=user:password@tcp(127.0.0.1:3306)/database?charset=utf8mb4
+```
+
+再确认容器能否到达 MySQL。容器里的 `127.0.0.1` 是容器自己，不是宿主机。
+
+- **MySQL 是宿主机上的进程（127.0.0.1:3306）**
+  - 方案 A（推荐）：compose 里加
+    ```yaml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ```
+    连接串主机写 `host.docker.internal`；同时确认 MySQL 的 `bind-address` 不是仅 `127.0.0.1`
+    （宿主机 `ss -lntp | grep 3306` 应能看到 `0.0.0.0:3306` 或 docker0 的地址），否则容器仍连不上。
+  - 方案 B：容器用 host 网络（`network_mode: host`，此时 `ports` 映射失效），连接串写
+    `127.0.0.1`，并把 `.env` 里 `BIND_ADDR` 改成 `127.0.0.1:8080`，避免端口直接暴露公网。
+- **MySQL 在另一个容器里**：compose 里通过 `networks` 加入同一个网络，连接串写容器/服务名，
+  例如 `mysql://user:pass@mysql:3306/db`；可用 `docker network inspect <网络>` 确认。
+- **MySQL 是远程实例**：直接用其地址，注意防火墙与该用户的 `host` 授权（`'user'@'%'`）。
+
+从容器内验证连通性（镜像自带 curl）：
+
+```bash
+docker exec -it ip-please-sync sh -c 'getent hosts host.docker.internal || true'
+docker exec -it ip-please-sync sh -c 'curl -sv telnet://host.docker.internal:3306 2>&1 | tail -3'
+```
+
+权限：服务启动时会幂等创建 `ip_please_*` 表，账号需要该库的 `CREATE/INDEX/ALTER` 权限。
+推荐用 [init-db.sql](init-db.sql) 建独立库与独立账号，不要复用其它项目的密码。
+
+### 7.2 `/anthropic/…` 返回站点 HTML 而不是 JSON
+
+说明反向代理把该前缀当静态资源/SPA 兜底了，而不是 `proxy_pass`。按第 3 节配置，并检查是否误加了
+`root`/`alias`/`try_files`/`return 204`/`rewrite`。服务器上跑 `bash deploy/diagnose.sh` 可定位。
+
