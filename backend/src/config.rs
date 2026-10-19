@@ -29,7 +29,9 @@ impl Config {
         let issuer = oidc_issuer.trim_end_matches('/').to_string();
 
         let allowed_origins = env::var("ALLOWED_ORIGINS")
-            .unwrap_or_else(|_| "https://www.fuckanthropic.dev,https://fuckanthropic.dev".to_string())
+            .unwrap_or_else(|_| {
+                "https://www.fuckanthropic.dev,https://fuckanthropic.dev".to_string()
+            })
             .split(',')
             .map(str::trim)
             .filter(|origin| !origin.is_empty())
@@ -42,7 +44,9 @@ impl Config {
             oidc_issuer: issuer,
             oidc_client_id: env::var("OIDC_CLIENT_ID")
                 .unwrap_or_else(|_| "app_vXmK3nB7cmKcW6q7".to_string()),
-            oidc_jwks_url: env::var("OIDC_JWKS_URL").ok().filter(|v| !v.trim().is_empty()),
+            oidc_jwks_url: env::var("OIDC_JWKS_URL")
+                .ok()
+                .filter(|v| !v.trim().is_empty()),
             oidc_required_scope: env::var("OIDC_REQUIRED_SCOPE")
                 .unwrap_or_else(|_| "openid".to_string()),
             allowed_origins,

@@ -59,13 +59,12 @@ pub async fn migrate(pool: &MySqlPool) -> anyhow::Result<()> {
 ///
 /// 首次登录时用安全随机源生成并落库；之后始终复用，删除后不复用。
 pub async fn resolve_user_id(pool: &MySqlPool, subject: &str) -> Result<String, AppError> {
-    if let Some(user_id) = sqlx::query_scalar::<_, String>(
-        "SELECT user_id FROM ip_please_users WHERE subject = ?",
-    )
-    .bind(subject)
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::db)?
+    if let Some(user_id) =
+        sqlx::query_scalar::<_, String>("SELECT user_id FROM ip_please_users WHERE subject = ?")
+            .bind(subject)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::db)?
     {
         return Ok(user_id);
     }

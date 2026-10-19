@@ -79,9 +79,15 @@ fn row_to_save(row: &MySqlRow) -> Result<SaveRow, AppError> {
         AppError::Internal(anyhow::Error::new(err).context("stored payload is not valid JSON"))
     })?;
     Ok(SaveRow {
-        save_id: row.try_get("save_id").map_err(|err| AppError::Internal(err.into()))?,
-        version: row.try_get("version").map_err(|err| AppError::Internal(err.into()))?,
-        day: row.try_get("day").map_err(|err| AppError::Internal(err.into()))?,
+        save_id: row
+            .try_get("save_id")
+            .map_err(|err| AppError::Internal(err.into()))?,
+        version: row
+            .try_get("version")
+            .map_err(|err| AppError::Internal(err.into()))?,
+        day: row
+            .try_get("day")
+            .map_err(|err| AppError::Internal(err.into()))?,
         payload,
         updated_at_ms: row
             .try_get("updated_at_ms")
@@ -143,8 +149,8 @@ async fn put_save(
     if body.len() > state.config.max_payload_bytes.saturating_mul(4) {
         return Err(AppError::Detail(DetailCode::RequestTooLarge));
     }
-    let upload: SaveUpload = serde_json::from_slice(&body)
-        .map_err(|_| AppError::Detail(DetailCode::ValidationError))?;
+    let upload: SaveUpload =
+        serde_json::from_slice(&body).map_err(|_| AppError::Detail(DetailCode::ValidationError))?;
 
     validate_upload(&upload, state.config.max_payload_bytes)?;
 
@@ -155,13 +161,12 @@ async fn put_save(
     let now_ms = Utc::now().timestamp_millis();
 
     let mut tx = state.pool.begin().await.map_err(AppError::db)?;
-    let current: Option<i64> = sqlx::query_scalar(
-        "SELECT version FROM ip_please_save_slots WHERE user_id = ? FOR UPDATE",
-    )
-    .bind(&user_id)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(AppError::db)?;
+    let current: Option<i64> =
+        sqlx::query_scalar("SELECT version FROM ip_please_save_slots WHERE user_id = ? FOR UPDATE")
+            .bind(&user_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(AppError::db)?;
 
     let current_version = current.unwrap_or(0);
     if upload.base_version != current_version {
@@ -311,9 +316,15 @@ async fn list_snapshots(
 
     let mut snapshots = Vec::with_capacity(rows.len());
     for row in &rows {
-        let save_id: String = row.try_get("save_id").map_err(|err| AppError::Internal(err.into()))?;
-        let version: i64 = row.try_get("version").map_err(|err| AppError::Internal(err.into()))?;
-        let day: i64 = row.try_get("day").map_err(|err| AppError::Internal(err.into()))?;
+        let save_id: String = row
+            .try_get("save_id")
+            .map_err(|err| AppError::Internal(err.into()))?;
+        let version: i64 = row
+            .try_get("version")
+            .map_err(|err| AppError::Internal(err.into()))?;
+        let day: i64 = row
+            .try_get("day")
+            .map_err(|err| AppError::Internal(err.into()))?;
         let created_at_ms: i64 = row
             .try_get("created_at_ms")
             .map_err(|err| AppError::Internal(err.into()))?;

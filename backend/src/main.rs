@@ -39,9 +39,8 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::connect_with_retry(&config.database_url).await?;
     db::migrate(&pool).await?;
 
-    let jwks = Arc::new(
-        auth::JwksCache::new(&config.oidc_issuer, config.oidc_jwks_url.clone()).await?,
-    );
+    let jwks =
+        Arc::new(auth::JwksCache::new(&config.oidc_issuer, config.oidc_jwks_url.clone()).await?);
     if let Err(err) = jwks.warm_up().await {
         tracing::warn!(error = ?err, "JWKS preload failed; will retry on first request");
     }
@@ -71,11 +70,7 @@ async fn main() -> anyhow::Result<()> {
             axum::http::Method::POST,
             axum::http::Method::OPTIONS,
         ])
-        .allow_headers([
-            header::AUTHORIZATION,
-            header::CONTENT_TYPE,
-            header::ACCEPT,
-        ])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
         .expose_headers([header::RETRY_AFTER])
         .max_age(Duration::from_secs(600));
 

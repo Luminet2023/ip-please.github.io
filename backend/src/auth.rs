@@ -101,7 +101,10 @@ impl AuthUser {
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let raw = parts
             .headers
             .get(header::AUTHORIZATION)
@@ -119,8 +122,8 @@ impl FromRequestParts<AppState> for AuthUser {
             return Err(AppError::Detail(crate::error::DetailCode::Unauthorized));
         };
 
-        let header = decode_header(token)
-            .map_err(|_| AppError::Auth(AuthErrorCode::InvalidToken))?;
+        let header =
+            decode_header(token).map_err(|_| AppError::Auth(AuthErrorCode::InvalidToken))?;
         if header.alg != Algorithm::RS256 {
             return Err(AppError::Auth(AuthErrorCode::InvalidToken));
         }

@@ -53,8 +53,12 @@ impl DetailCode {
             DetailCode::NotFound => "The requested resource was not found.",
             DetailCode::ValidationError => "The request is invalid.",
             DetailCode::MethodNotAllowed => "Method not allowed.",
-            DetailCode::SyncConflict => "The cloud save has a newer version than the client base version.",
-            DetailCode::SyncSnapshotExpired => "The requested save snapshot is no longer available.",
+            DetailCode::SyncConflict => {
+                "The cloud save has a newer version than the client base version."
+            }
+            DetailCode::SyncSnapshotExpired => {
+                "The requested save snapshot is no longer available."
+            }
             DetailCode::SyncRateLimited => "Too many sync requests. Please retry later.",
             DetailCode::SyncUnavailable => "Cloud sync storage is temporarily unavailable.",
             DetailCode::BackendUnavailable => "The backend service is unavailable.",
@@ -98,7 +102,9 @@ impl AuthErrorCode {
             AuthErrorCode::InvalidToken => "Invalid or expired authentication token",
             AuthErrorCode::TokenRevoked => "The session has been revoked or is no longer active",
             AuthErrorCode::InsufficientScope => "The access token is missing a required scope",
-            AuthErrorCode::SessionValidationFailed => "Session validation is temporarily unavailable",
+            AuthErrorCode::SessionValidationFailed => {
+                "Session validation is temporarily unavailable"
+            }
         }
     }
 }
@@ -110,9 +116,10 @@ fn with_cache_control(mut response: Response, value: &'static str) -> Response {
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static(value));
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
     response
 }
 
@@ -138,11 +145,7 @@ pub fn detail_error_response_with_retry(code: DetailCode, retry_after_secs: u64)
     response
 }
 
-pub fn auth_error_response(
-    status: StatusCode,
-    code: AuthErrorCode,
-    message: &str,
-) -> Response {
+pub fn auth_error_response(status: StatusCode, code: AuthErrorCode, message: &str) -> Response {
     private_json(
         status,
         json!({
@@ -203,9 +206,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         match self {
             AppError::Detail(code) => detail_error_response(code),
-            AppError::DetailRetryAfter(code, secs) => {
-                detail_error_response_with_retry(code, secs)
-            }
+            AppError::DetailRetryAfter(code, secs) => detail_error_response_with_retry(code, secs),
             AppError::Auth(code) => authorization_failure_response(code),
             AppError::Internal(err) => {
                 tracing::error!(error = ?err, "internal error");
@@ -222,16 +223,28 @@ mod tests {
     #[test]
     fn detail_codes_have_stable_status_and_message() {
         assert_eq!(DetailCode::SyncConflict.status(), StatusCode::CONFLICT);
-        assert_eq!(DetailCode::SyncRateLimited.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            DetailCode::SyncRateLimited.status(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
         assert_eq!(DetailCode::Unauthorized.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(DetailCode::Unauthorized.message(), "Unauthorized");
-        assert_eq!(DetailCode::SyncPayloadTooLarge.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(
+            DetailCode::SyncPayloadTooLarge.status(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
     }
 
     #[test]
     fn auth_codes_map_to_expected_status() {
-        assert_eq!(AuthErrorCode::InvalidToken.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(AuthErrorCode::InsufficientScope.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            AuthErrorCode::InvalidToken.status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            AuthErrorCode::InsufficientScope.status(),
+            StatusCode::FORBIDDEN
+        );
         assert_eq!(
             AuthErrorCode::SessionValidationFailed.status(),
             StatusCode::SERVICE_UNAVAILABLE

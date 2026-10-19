@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   test:
-    name: cargo test
+    name: cargo fmt / clippy / test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -28,9 +28,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.93'
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
 
   build:

@@ -188,10 +188,24 @@ backend/                   Rust 云同步服务
   src/{main,config,error,ids,auth,db,routes}.rs
   migrations/001_init.sql
   Dockerfile
-deploy/                    docker-compose 与部署说明
-.github/workflows/backend.yml
+tests/frontend/            cloud.js 的 jsdom 集成测试（不参与线上部署）
+deploy/                    docker-compose、install.sh、verify.sh 与部署说明
+.github/workflows/         backend.yml（fmt/clippy/test + GHCR）、frontend.yml
 AGENT.md                   本文件
 ```
+
+## 测试与 CI
+
+| 范围 | 命令 | 覆盖内容 |
+| --- | --- | --- |
+| 后端单元测试 | `cd backend && cargo test --locked` | 错误码状态映射、标识符格式校验 |
+| 后端本地端到端 | 起 MySQL 容器 + 本地 mock OIDC 后跑冒烟脚本 | JWT 校验、双信封、409/429/413、CORS、用户隔离 |
+| 前端集成 | `cd tests/frontend && npm ci && npm test` | jsdom 加载真实 `cloud.js`：PKCE、回调换 token、日终上传、冲突弹窗、401 刷新、吊销登出 |
+| 线上验收 | `bash deploy/verify.sh` | health、401 双信封、CORS 预检、Keycloak 回调与 Web Origins |
+
+CI 要求（main 分支必须保持绿）：
+- `backend.yml`：`cargo fmt --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked`，随后多架构构建推送 GHCR。
+- `frontend.yml`：`npm ci`、`node --check cloud.js`、jsdom 测试。
 
 ## 环境变量（backend）
 

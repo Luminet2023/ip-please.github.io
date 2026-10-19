@@ -25,7 +25,10 @@ pub fn generate(prefix: &str) -> String {
 
 /// 校验标识符：前缀必须匹配，后缀长度 16..=32 且只含 ASCII 字母数字。
 pub fn is_valid(value: &str, prefix: &str) -> bool {
-    let Some(suffix) = value.strip_prefix(prefix).and_then(|rest| rest.strip_prefix('_')) else {
+    let Some(suffix) = value
+        .strip_prefix(prefix)
+        .and_then(|rest| rest.strip_prefix('_'))
+    else {
         return false;
     };
     (16..=32).contains(&suffix.len()) && suffix.bytes().all(|b| b.is_ascii_alphanumeric())
@@ -58,10 +61,16 @@ mod tests {
     #[test]
     fn rejects_raw_numbers_and_bare_uuids() {
         assert!(!is_valid("12345", PREFIX_SAVE));
-        assert!(!is_valid("550e8400-e29b-41d4-a716-446655440000", PREFIX_SAVE));
+        assert!(!is_valid(
+            "550e8400-e29b-41d4-a716-446655440000",
+            PREFIX_SAVE
+        ));
         assert!(!is_valid(&format!("save_{}", "a".repeat(15)), PREFIX_SAVE));
         assert!(!is_valid(&format!("save_{}", "a".repeat(33)), PREFIX_SAVE));
-        assert!(!is_valid(&format!("save_{}", "a".repeat(20) + "-"), PREFIX_SAVE));
+        assert!(!is_valid(
+            &format!("save_{}", "a".repeat(20) + "-"),
+            PREFIX_SAVE
+        ));
         assert!(!is_valid(&format!("user_{}", "a".repeat(20)), PREFIX_SAVE));
     }
 }

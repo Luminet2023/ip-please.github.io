@@ -5,6 +5,9 @@ __pycache__/
 # Rust
 backend/target/
 
+# 前端测试依赖
+tests/frontend/node_modules/
+
 # 部署密钥
 deploy/.env
 
