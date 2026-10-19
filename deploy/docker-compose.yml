@@ -12,6 +12,13 @@ services:
     ports:
       # 只绑定回环地址，由宿主机反向代理暴露 /anthropic/
       - "127.0.0.1:8080:8080"
+    # MySQL 在宿主机上（非容器）时，取消下面注释，并在 .env 里用 host.docker.internal
+    # 代替 127.0.0.1（Linux 需要 host-gateway 映射）：
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    # MySQL 在另一个 compose 网络里时，用 networks 加入同一网络，连接串里写数据库服务名：
+    # networks:
+    #   - db-net
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/anthropic/v1/health"]
       interval: 30s
