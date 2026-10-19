@@ -17,7 +17,6 @@ window.CloudSync = (function () {
     metaKey: 'ip-please-sync-meta-v1',
     pkceKey: 'ip-please-pkce-v1',
     saveKey: 'ip-please-save-v1',
-    introKey: 'ip-please-cloud-intro-v1',
     refreshAheadMs: 60 * 1000,
   };
 
@@ -217,8 +216,6 @@ window.CloudSync = (function () {
       toast('当前环境不支持安全登录（需要 HTTPS）');
       return;
     }
-    // 用户主动选择登录后就不再弹首次引导
-    markIntroSeen();
     const verifier = randomToken(48);
     const state = randomToken(32);
     const challenge = await pkceChallenge(verifier);
@@ -284,7 +281,6 @@ window.CloudSync = (function () {
         code_verifier: stored.verifier,
       });
       applyToken(token);
-      markIntroSeen();
       render();
       toast('登录成功');
       await afterLogin();
@@ -640,55 +636,6 @@ window.CloudSync = (function () {
 
   // ———————————————————— 界面 ————————————————————
 
-  function introSeen() {
-    try {
-      return localStorage.getItem(CFG.introKey) === '1';
-    } catch (error) {
-      return false;
-    }
-  }
-
-  function markIntroSeen() {
-    try {
-      localStorage.setItem(CFG.introKey, '1');
-    } catch (error) {
-      /* 隐私模式下存不了：最多再弹一次 */
-    }
-  }
-
-  // 第一次打开游戏时介绍云同步；看过（或已登录）就不再弹。
-  function maybeShowIntro() {
-    if (auth || introSeen()) return;
-    showDialog({
-      title: '云存档同步',
-      paragraphs: [
-        '每天结束结算时，可以把存档自动备份到云端；换设备或清了浏览器数据后也能接着玩。',
-        '不登录也能照常游玩，云同步完全可选；随时可以点右上角「云同步」登录或恢复。',
-        '本页基于 ip-please/ip-please.github.io 二次开发，仅新增云同步功能，感谢原作者。',
-      ],
-      buttons: [
-        {
-          label: '登录并开启云同步',
-          primary: true,
-          onClick: function () {
-            markIntroSeen();
-            closeDialog();
-            login();
-          },
-        },
-        {
-          label: '先本地玩',
-          onClick: function () {
-            markIntroSeen();
-            closeDialog();
-            toast('随时可在右上角「云同步」里登录', 3600);
-          },
-        },
-        { label: '稍后提醒我', onClick: closeDialog },
-      ],
-    });
-  }
-
   function maybePromptLogin() {
     if (loginHintShown) return;
     loginHintShown = true;
@@ -803,10 +750,8 @@ window.CloudSync = (function () {
       });
     }
     render();
-    // 处理 OAuth 回调；不是回调（首次打开）才考虑弹云同步引导。
-    handleRedirectBack().then(function (handled) {
-      if (!handled) maybeShowIntro();
-    });
+    // 处理 OAuth 回调（登录后返回本页时清理 URL 并换取 Token）
+    handleRedirectBack();
   }
 
   if (document.readyState === 'loading') {

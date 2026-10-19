@@ -66,7 +66,6 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms === undefin
 async function testLoginPanelAndCredit() {
   console.log('→ 登录面板与致谢');
   const dom = newDom('https://www.fuckanthropic.dev/');
-  dom.window.localStorage.setItem('ip-please-cloud-intro-v1', '1'); // 该用例只测面板/致谢，跳过首次引导
   const win = load(dom);
   await wait(60); // 等 jsdom 触发 DOMContentLoaded，cloud.js 的 init 才会执行
   const panel = win.document.getElementById('cloud-panel');
@@ -117,7 +116,6 @@ async function testCallbackAndDayEnd() {
   check('登录态生效', win.CloudSync.isLoggedIn() === true);
   check('回调参数清理', win.location.search === '');
   check('PKCE 已清理', win.sessionStorage.getItem('ip-please-pkce-v1') === null);
-  check('OAuth 回调不弹首次引导', win.document.getElementById('cloud-overlay').hidden === true);
   const tokenCall = calls.find((call) => String(call.url).includes('/token'));
   check('带 code_verifier', new URLSearchParams(tokenCall.options.body).get('code_verifier') === 'v'.repeat(43));
 
@@ -216,54 +214,8 @@ async function testRefreshAndRevoke() {
   check('revoked 后未登录', win2.CloudSync.isLoggedIn() === false);
 }
 
-async function testIntroDialog() {
-  console.log('→ 首次打开云同步引导');
-  const dom = newDom('https://www.fuckanthropic.dev/');
-  const win = dom.window;
-  load(dom);
-  await wait(90);
-  const overlay = win.document.getElementById('cloud-overlay');
-  check('首次打开弹出引导', overlay.hidden === false, overlay.hidden);
-  check('引导标题为云存档同步', overlay.innerHTML.indexOf('云存档同步') >= 0, overlay.textContent.slice(0, 60));
-  check('引导含致谢', overlay.textContent.indexOf('感谢原作者') >= 0);
-  const loginButton = Array.from(overlay.querySelectorAll('button')).find((button) => button.textContent === '登录并开启云同步');
-  check('引导含登录按钮', !!loginButton);
-  loginButton.click();
-  await wait(60);
-  check('选择登录后记录已看过', win.localStorage.getItem('ip-please-cloud-intro-v1') === '1');
-  const pkce = JSON.parse(win.sessionStorage.getItem('ip-please-pkce-v1') || 'null');
-  check('选择登录后发起 PKCE', !!pkce && typeof pkce.verifier === 'string' && pkce.verifier.length >= 43, pkce);
-
-  const dom2 = newDom('https://www.fuckanthropic.dev/');
-  dom2.window.localStorage.setItem('ip-please-cloud-intro-v1', '1');
-  load(dom2);
-  await wait(90);
-  check('看过之后不再弹', dom2.window.document.getElementById('cloud-overlay').hidden === true);
-
-  const dom3 = newDom('https://www.fuckanthropic.dev/');
-  load(dom3);
-  await wait(90);
-  const overlay3 = dom3.window.document.getElementById('cloud-overlay');
-  const laterButton = Array.from(overlay3.querySelectorAll('button')).find((button) => button.textContent === '稍后提醒我');
-  check('引导含稍后提醒', !!laterButton);
-  laterButton.click();
-  await wait(30);
-  check('稍后提醒会关闭弹窗', overlay3.hidden === true);
-  check('稍后提醒不记录已看过', dom3.window.localStorage.getItem('ip-please-cloud-intro-v1') === null);
-
-  const dom4 = newDom('https://www.fuckanthropic.dev/');
-  load(dom4);
-  await wait(90);
-  const overlay4 = dom4.window.document.getElementById('cloud-overlay');
-  const localButton = Array.from(overlay4.querySelectorAll('button')).find((button) => button.textContent === '先本地玩');
-  localButton.click();
-  await wait(30);
-  check('先本地玩会关闭弹窗并记录', overlay4.hidden === true && dom4.window.localStorage.getItem('ip-please-cloud-intro-v1') === '1');
-}
-
 (async function main() {
   await testLoginPanelAndCredit();
-  await testIntroDialog();
   await testCallbackAndDayEnd();
   await testConflict();
   await testRefreshAndRevoke();

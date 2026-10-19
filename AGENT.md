@@ -177,9 +177,6 @@
 - 刷新请求：`POST {issuer}/protocol/openid-connect/token`，`grant_type=refresh_token`。
 - 回调地址：`https://www.fuckanthropic.dev/`（同页回调），必须与 Keycloak 中登记的
   Valid redirect URI 完全一致。
-- 首次打开（未登录且未看过引导）弹一次「云存档同步」引导：
-  `localStorage` 键 `ip-please-cloud-intro-v1` 记录是否看过；选择「登录并开启云同步」或
-  「先本地玩」会记录，「稍后提醒我」不记录（下次打开再弹）。OAuth 回调页面不弹引导。
 - 前端只与 IdP 与 `api.luminet.cn` 通信，不经过第三方。
 
 ## 目录结构
@@ -203,7 +200,7 @@ AGENT.md                   本文件
 | --- | --- | --- |
 | 后端单元测试 | `cd backend && cargo test --locked` | 错误码状态映射、标识符格式校验 |
 | 后端本地端到端 | 起 MySQL 容器 + 本地 mock OIDC 后跑冒烟脚本 | JWT 校验、双信封、409/429/413、CORS、用户隔离 |
-| 前端集成 | `cd tests/frontend && npm ci && npm test` | jsdom 加载真实 `cloud.js`：首次引导、PKCE、回调换 token、日终上传、冲突弹窗、401 刷新、吊销登出 |
+| 前端集成 | `cd tests/frontend && npm ci && npm test` | jsdom 加载真实 `cloud.js`：PKCE、回调换 token、日终上传、冲突弹窗、401 刷新、吊销登出 |
 | 线上验收 | `bash deploy/verify.sh` | health、401 双信封、CORS 预检、Keycloak 回调与 Web Origins |
 
 CI 要求（main 分支必须保持绿）：
