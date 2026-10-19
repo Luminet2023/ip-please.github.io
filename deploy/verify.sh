@@ -34,6 +34,12 @@ check "GET /health 返回 200" 200 "$status"
 check "健康检查带 no-store" "no-store" \
   "$(curl -sS -D - -o /dev/null "$API_BASE/health" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="cache-control"{print $2}')"
 echo "       body: $(head -c 200 "$tmpdir/health.json" 2>/dev/null)"
+if grep -qi '<!doctype html>' "$tmpdir/health.json" 2>/dev/null; then
+  echo "  提示：/anthropic/ 返回的是站点 HTML 而不是后端 JSON，说明反向代理没有把"
+  echo "        /anthropic/ 转发到后端容器（检查 nginx location /anthropic/，以及容器是否在"
+  echo "        127.0.0.1:8080 监听：curl http://127.0.0.1:8080/anthropic/v1/health）。"
+fi
+
 
 echo "== 2. 鉴权错误信封 =="
 status="$(curl -sS -o "$tmpdir/unauth.json" -w '%{http_code}' "$API_BASE/sync/save" 2>/dev/null || echo 000)"
