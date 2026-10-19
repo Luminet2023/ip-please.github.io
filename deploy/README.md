@@ -192,6 +192,14 @@ MYSQL_DSN=user:password@tcp(127.0.0.1:3306)/database?charset=utf8mb4
     `127.0.0.1`，并把 `.env` 里 `BIND_ADDR` 改成 `127.0.0.1:8080`，避免端口直接暴露公网。
 - **MySQL 在另一个容器里**：compose 里通过 `networks` 加入同一个网络，连接串写容器/服务名，
   例如 `mysql://user:pass@mysql:3306/db`；可用 `docker network inspect <网络>` 确认。
+  - **1Panel 等面板托管 MySQL**：面板拉起的 MySQL 通常在 `1panel-network` 这个外部网络里，
+    而本服务的 compose 在独立网络，默认解析不到 MySQL 容器名（典型报错 `pool timed out`）。
+    把 [docker-compose.1panel.yml](docker-compose.1panel.yml) 复制为部署目录下的
+    `docker-compose.override.yml` 后 `docker compose up -d`，连接串主机即可写 MySQL 容器名：
+    ```env
+    SYNC_DATABASE_URL=mysql://user:password@1Panel-mysql-xxxxx:3306/database
+    ```
+    确认 MySQL 容器实际网络：`docker inspect 1Panel-mysql-xxxxx --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'`
 - **MySQL 是远程实例**：直接用其地址，注意防火墙与该用户的 `host` 授权（`'user'@'%'`）。
 
 从容器内验证连通性（镜像自带 curl）：

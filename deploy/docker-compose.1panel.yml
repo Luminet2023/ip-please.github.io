@@ -1,0 +1,22 @@
+# 1Panel（或其它面板）环境覆盖文件：让 sync 容器加入 MySQL 所在的 docker 网络，
+# 从而可以用容器名作为数据库主机（如 1Panel-mysql-N6cg:3306）。
+#
+# 用法（二选一）：
+#   A. 放到部署目录并命名为 override，compose 会自动合并：
+#        cd /opt/ip-please-sync
+#        cp docker-compose.1panel.yml docker-compose.override.yml
+#        docker compose up -d
+#   B. 显式叠加：
+#        docker compose -f docker-compose.yml -f docker-compose.1panel.yml up -d
+#
+# 若你的 1Panel MySQL 不在 1panel-network，可用下面命令确认真实网络名并改掉这里：
+#   docker inspect <mysql容器名> --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+
+services:
+  sync:
+    networks:
+      - "1panel-network"
+
+networks:
+  "1panel-network":
+    external: true
