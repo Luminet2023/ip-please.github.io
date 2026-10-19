@@ -4,6 +4,10 @@ Papers, Please 画风的像素小游戏。你抽中了十月劳动彩票，被�
 
 **在线玩：<https://ip-please.github.io>**
 
+> **衍生版本说明**：本仓库是 [ip-please/ip-please.github.io](https://github.com/ip-please/ip-please.github.io)
+> 的衍生版本。游戏本体、剧本、美术与音乐素材全部来自原作，本版本只新增了云存档同步功能
+> （前端 `cloud.js` + `backend/`）。原作版权归原作者所有，特此致谢。
+
 - 6 天剧情 + 两个结局，全程约 30 分钟，每天自动存档
 - 手机横屏用手指、电脑用鼠标拖证件
 - 纯静态网页，不加载任何外部资源；下载仓库后直接双击 `index.html` 也能玩

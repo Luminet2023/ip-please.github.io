@@ -20,6 +20,12 @@ window.CloudSync = (function () {
     refreshAheadMs: 60 * 1000,
   };
 
+  // 原作仓库与致谢文案：登录面板里必须保留，说明本版只加了云同步。
+  const CREDIT_HTML =
+    '<p class="credit">本页基于 <a href="https://github.com/ip-please/ip-please.github.io" ' +
+    'target="_blank" rel="noopener noreferrer">ip-please/ip-please.github.io</a> 二次开发，' +
+    '仅新增云存档同步功能；游戏本体、剧本与美术素材版权归原作者，特此致谢。</p>';
+
   // DetailErrorResponse.detail -> 业务错误码，与 backend/src/error.rs 的登记表一一对应。
   const BUSINESS_ERROR_CODES = {
     'The requested resource was not found.': 'not_found',
@@ -659,12 +665,14 @@ window.CloudSync = (function () {
     rows.push('<h2>云同步</h2>');
     if (!auth) {
       rows.push('<p>登录后可把每日存档备份到云端，换设备也能接着玩。</p>');
+      rows.push(CREDIT_HTML);
       rows.push('<div class="row"><button class="primary" data-action="login">登录</button><button data-action="close">关闭</button></div>');
     } else {
       rows.push('<p>账号：' + escapeHtml(auth.name || auth.subject || '已登录') + '</p>');
       rows.push('<p>状态：' + (meta ? '第 ' + meta.day + ' 天 · ' + formatTime(meta.synced_at) + ' 已同步' : '尚未同步过') + '</p>');
       rows.push('<div class="row"><button class="primary" data-action="sync">立即同步</button><button data-action="restore">从云端恢复</button></div>');
       rows.push('<div class="row"><button data-action="logout">退出登录</button><button data-action="close">关闭</button></div>');
+      rows.push(CREDIT_HTML);
     }
     panel.innerHTML = rows.join('');
   }
@@ -729,9 +737,9 @@ window.CloudSync = (function () {
     auth = loadAuth();
     const button = el('cloud');
     if (button) {
+      // 先打开面板（含原作致谢与登录说明），再由面板里的「登录」跳转 IdP。
       button.addEventListener('click', function () {
-        if (!auth) login();
-        else togglePanel();
+        togglePanel();
       });
     }
     const panel = el('cloud-panel');

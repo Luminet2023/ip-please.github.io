@@ -5,6 +5,10 @@
 
 ## 项目概览
 
+本仓库是 [ip-please/ip-please.github.io](https://github.com/ip-please/ip-please.github.io) 的衍生版本：
+游戏本体、剧本与素材来自原作，本版只新增云存档同步（`cloud.js` + `backend/`）。登录面板与 README
+必须保留对原作者的致谢与来源说明，不得移除。
+
 | 部分 | 位置 | 技术 |
 | --- | --- | --- |
 | 游戏前端 | 仓库根目录 `index.html` / `*.js` | 原生 JS + Canvas，无构建步骤 |
