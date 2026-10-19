@@ -58,21 +58,39 @@ curl -sS http://127.0.0.1:8080/anthropic/v1/health
 
 ## 3. 反向代理（nginx 示例）
 
-`api.luminet.cn` 的增加一条 location，**保留 `/anthropic/` 前缀**（不要 rewrite 掉）：
+`api.luminet.cn` 增加一条 location，**保留 `/anthropic/` 前缀**（不要 rewrite 掉）。
+仓库里已备好可直接 include 的片段 [`nginx-anthropic.conf`](nginx-anthropic.conf)：
+
+```bash
+sudo cp deploy/nginx-anthropic.conf /etc/nginx/snippets/ip-please-anthropic.conf
+# 在承载 api.luminet.cn 的 server 块里加：
+#     include /etc/nginx/snippets/ip-please-anthropic.conf;
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+等价配置：
 
 ```nginx
-location /anthropic/ {
-    proxy_pass http://127.0.0.1:8080;
+location ^~ /anthropic/ {
+    proxy_pass http://127.0.0.1:8080;      # 不要带路径
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    client_max_body_size 1m;          # 大于 SYNC_MAX_PAYLOAD_BYTES 即可
-    proxy_request_buffering off;      # 让 413 语义透传
+    client_max_body_size 1m;               # 大于 SYNC_MAX_PAYLOAD_BYTES 即可
+    proxy_request_buffering off;           # 让 413 语义透传
     proxy_read_timeout 30s;
 }
 ```
+
+**常见错误**（会表现为浏览器 CORS 报错或 `/anthropic/…` 返回 HTML）：
+
+1. 用 `root` / `alias` / `try_files` / `return 200` 提供静态页 —— 必须是 `proxy_pass` 到 `127.0.0.1:8080`。
+2. `proxy_pass` 写了路径（如 `.../anthropic/`）—— URI 被改写，后端路由匹配不到，必须不带路径。
+3. 在 location 里用 `if ($request_method = OPTIONS) { return 204; }` 吃掉预检 —— 预检必须转发给后端，否则没有 CORS 头。
+4. nginx 里又 `add_header Access-Control-Allow-Origin` —— 后端已返回，重复值会被浏览器拒绝。
+5. location 被正则/SPA 兜底抢走 —— 用 `^~` 前缀匹配。
 
 CORS 由服务自身处理（`ALLOWED_ORIGINS`），代理不要重复添加 `Access-Control-Allow-Origin`。
 
@@ -82,6 +100,9 @@ CORS 由服务自身处理（`ALLOWED_ORIGINS`），代理不要重复添加 `Ac
 curl -sS https://api.luminet.cn/anthropic/v1/health
 curl -sS -o /dev/null -w '%{http_code}\n' https://api.luminet.cn/anthropic/v1/sync/save   # 期望 401
 ```
+
+排障：服务器上跑 `bash deploy/diagnose.sh`（只读），会打印容器状态、本机健康检查、8080 监听、
+nginx 中与 anthropic 相关的配置片段与公网链路结果。
 
 ## 4. Keycloak 客户端配置
 
