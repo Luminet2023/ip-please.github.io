@@ -182,14 +182,14 @@ class Citation {
   }
 }
 
-// 打印机吐出来的长纸条（号码查询）
+// 打印机吐出来的长纸条（号码查询 / 登录记录）。fields 可选：给某几行开检查模式的点击区。
 class PrintStrip {
-  constructor(header, rows) {
+  constructor(header, rows, fields = {}, rowSize = 8, w = 128) {
     this.header = header.map((s) => T(s)); this.rows = rows;
-    this.w = 128;
-    this.h = 10 + 13 * header.length + 6 + 10 * rows.length + 6;
+    this.fields = fields; this.rowSize = rowSize;
+    this.w = w;
+    this.h = 10 + 13 * header.length + 6 + (rowSize + 2) * rows.length + 6;
     this.icon = ['card', [232, 230, 222]];
-    this.fields = {};
   }
 
   draw(x, y) {
@@ -202,7 +202,7 @@ class PrintStrip {
     for (const s of this.header) { txt(x + 8, yy, s, 10, K.INK); yy += 13; }
     rect(x + 6, yy, x + w - 7, yy, K.GREY);
     yy += 5;
-    for (const s of this.rows) { txt(x + 8, yy, s, 8, K.TEXT); yy += 10; }
+    for (const s of this.rows) { txt(x + 8, yy, s, this.rowSize, K.TEXT); yy += this.rowSize + 2; }
   }
 }
 
@@ -245,6 +245,8 @@ const RULES = [
   { day: 3, page: 1, key: 'pay', head: '§4 付款、账单、手机须真实', subs: ['禁止：虚拟卡、555 接码手机号', '账单所在州须与 IP 归属一致', '禁止拼车：一本护照只能一个人用'] },
   { day: 4, page: 1, key: 'xray', head: '§5 后台进程须干净', subs: ['禁止“小猫咪”、中文输入法（『X光』）'] },
   { day: 5, page: 1, key: 'corp', head: '§6 中资控股过半：一律禁止', subs: ['无论公司注册在哪（套娃要拆到底）'] },
+  { day: 6, page: 1, key: 'model', head: '§7 模型申报须与实际一致', subs: ['模型 ID、发行主体须如实申报', '冒用他人模型身份：拒绝'] },
+  { day: 7, page: 1, key: 'net', head: '§8 网络与登录须与归属地一致', subs: ['机房 IP / 云服务器：拒绝', '登录记录自动核验：登录地在大陆即拒绝'] },
 ];
 
 class Rulebook {

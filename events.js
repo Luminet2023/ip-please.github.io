@@ -59,7 +59,8 @@ function rushEnd() {
   B.total += ev.list.length;
   say('C', T('快剪结束：判对 {0}，判错 {1}，漏掉 {2}。', ev.hits, ev.wrong, ev.missed));
   if (ev.wrong) cite([T('黑话快剪：判错 {0} 人', ev.wrong), '说中文黑话的拒绝，说人话的放行'], 0.8);
-  if (B.idx >= B.queue.length) endDaySoon();
+  if (S.endless) topUpEndless();
+  else if (B.idx >= B.queue.length) endDaySoon();
 }
 
 function drawRush() {
@@ -126,7 +127,8 @@ function updateClones() {
       say('C', ev.passed ? T('……拦下 {0} 个，漏了 {1} 个。', ev.hits, ev.passed) : '……限流完毕。');
       B.bonus += ev.hits;
       if (ev.passed) cite([T('蒸馏大军冲关：{0} 人', ev.passed), '警报响起时，点击冲关的人'], 0.8);
-      if (B.idx >= B.queue.length) endDaySoon();
+      if (S.endless) topUpEndless();
+      else if (B.idx >= B.queue.length) endDaySoon();
     });
   }
 }

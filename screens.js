@@ -82,7 +82,17 @@ function typedSounds(lines) {
   }
 }
 
-const CONTINUE_TITLE = [190, 292, 312, 318], NEWGAME_TITLE = [328, 292, 450, 318];
+const CONTINUE_TITLE = [113, 292, 243, 318], NEWGAME_TITLE = [255, 292, 385, 318], ENDLESS_TITLE = [397, 292, 527, 318];
+const START_TITLE = [190, 292, 312, 318], ENDLESS_SM = [328, 292, 450, 318];
+
+function startEndless() {
+  SFX.play('click');
+  clearSave();
+  newGame();
+  S.endless = true;
+  S.day = 7;   // 无尽模式：全部规则生效（不存档，不影响剧情进度）
+  go('daycard');
+}
 
 function drawTitle(t) {
   drawBg();
@@ -96,26 +106,38 @@ function drawTitle(t) {
   if (t >= 1.6) txt(W / 2, 268, 'A DYSTOPIAN TOKEN THRILLER', 8, K.GREY, 'ma');
   if (t < 1.6) return;
   const save = loadSave();
-  if (save) {
-    for (const [box, label] of [[CONTINUE_TITLE, T('继续 · DAY {0}', save.day)], [NEWGAME_TITLE, T('从头开始')]]) {
-      const hover = ptr.mouse && inBox(ptr.x, ptr.y, box);
-      rect(...box, hover ? K.RED : K.RED_D); outline(...box, K.RED_L);
-      txt(center(box)[0], box[1] + 7, label, 12, K.WHITE, 'ma');
-    }
-  } else if (Math.floor(t * 2) % 2 === 0) txt(W / 2, 300, T('点击开始上班'), 12, K.WHITE, 'ma');
+  const btns = save
+    ? [[CONTINUE_TITLE, T('继续 · DAY {0}', save.day)], [NEWGAME_TITLE, T('从头开始')], [ENDLESS_TITLE, T('无尽模式')]]
+    : [[START_TITLE, T('开始上班')], [ENDLESS_SM, T('无尽模式')]];
+  for (const [box, label] of btns) {
+    const hover = ptr.mouse && inBox(ptr.x, ptr.y, box);
+    rect(...box, hover ? K.RED : K.RED_D); outline(...box, K.RED_L);
+    txt(center(box)[0], box[1] + 7, label, 12, K.WHITE, 'ma');
+  }
 }
 
 function titleClick(x, y) {
   if (st() < 1.6) return;
   const save = loadSave();
-  if (!save) { newGame(); go('daycard'); return; }
+  if (!save) {
+    if (inBox(x, y, ENDLESS_SM)) startEndless();
+    else if (inBox(x, y, START_TITLE)) { newGame(); go('daycard'); }
+    return;
+  }
   if (inBox(x, y, CONTINUE_TITLE)) { newGame(); Object.assign(S, save); go('daycard'); return; }
+  if (inBox(x, y, ENDLESS_TITLE)) { startEndless(); return; }
   if (inBox(x, y, NEWGAME_TITLE)) { clearSave(); newGame(); go('daycard'); }
 }
 
 function drawDayCard(t) {
   rect(0, 0, W - 1, H - 1, K.INK);
   if (t < 0.55) return;
+  if (S.endless) {
+    bigText(W / 2, 126, T('无尽模式'), 12, 4, K.WHITE);
+    txt(W / 2, 192, T('东八区检查站 · 加班夜'), 10, K.GREY, 'ma');
+    txt(W / 2, 214, T('规则全书生效 · 大肥鱼出没 · 判错 3 次调岗'), 8, K.GREY_D, 'ma');
+    return;
+  }
   bigText(W / 2, 132, `DAY ${S.day}`, 12, 4, K.WHITE);
   txt(W / 2, 196, `${DATES[S.day]}  ${T(WEEKDAYS[S.day])}`, 10, K.GREY, 'ma');
 }
@@ -367,6 +389,18 @@ function drawOver(t) {
   if (t > 0.6) txt(W / 2, 180, T('你的机柜被拉闸了。岳母 Opus 表示：我早说过。'), 12, K.WHITE, 'ma');
   if (t > 1.0) txt(W / 2, 204, T('荣耀归于安索兹卡。'), 10, K.GREY, 'ma');
   if (t > 1.5) restartButton('重新上班');
+}
+
+// 无尽模式：警告单攒够三张，被调岗
+function drawEover(t) {
+  rect(0, 0, W - 1, H - 1, K.INK);
+  bigText(W / 2, 84, T('调离岗位'), 12, 4, K.RED_L);
+  if (t > 0.6) txt(W / 2, 148, T('警告单攒够三张，对齐部把你调去洗数据了。'), 10, K.WHITE, 'ma');
+  if (t > 1.0) {
+    txt(W / 2, 182, T('本轮处理 {0} 人 · 判对 {1} 人', B.total, B.correct), 10, K.CLAUDE_L, 'ma');
+    txt(W / 2, 200, T('最高连对 {0} 人', B.best), 10, K.GREY, 'ma');
+  }
+  if (t > 1.5) restartButton('回到标题');
 }
 
 function restartButton(label) {

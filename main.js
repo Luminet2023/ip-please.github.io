@@ -9,6 +9,7 @@ function go(name) {
   if (name === 'daycard') SFX.play('day_hit');
   if (name === 'news') { SFX.play('whoosh'); SFX.paper(31); }
   if (name === 'summary') { SFX.play('sad', 0.9); initSummary(); }
+  if (name === 'eover') SFX.play('sad', 0.9);
   if (name === 'end') SFX.play('end', 0.8);
   if (name === 'booth') startDay();
 }
@@ -110,7 +111,7 @@ function dragEnd(x, y) {
     return;
   }
   // 拖回了窗口那一侧
-  if (['cit', 'strip'].includes(d.key)) { B.docs = B.docs.filter((o) => o !== d); SFX.paper(3); return; }
+  if (['cit', 'strip', 'log'].includes(d.key)) { B.docs = B.docs.filter((o) => o !== d); SFX.paper(3); return; }
   if (d.key === 'note') {
     B.docs = B.docs.filter((o) => o !== d);
     SFX.paper(3);
@@ -144,6 +145,7 @@ function sceneClick(x, y) {
   if (scene === 'summary') { summaryClick(x, y); return; }
   if (scene === 'erased' && st() > 1) { go('end'); return; }
   if ((scene === 'end' || scene === 'over') && st() > 1.5 && inBox(x, y, RESTART_BTN)) { clearSave(); newGame(); go('daycard'); }
+  if (scene === 'eover' && st() > 1.5 && inBox(x, y, RESTART_BTN)) { newGame(); go('title'); }
 }
 
 // ———————————————————— 主循环 ————————————————————
@@ -159,7 +161,7 @@ function update() {
   if (scene === 'boot') updateLangPick();
   if (scene === 'intro') { typedSounds(INTRO_LINES); if (st() > INTRO_LINES.end) go('title'); }
   if (scene === 'erased') { typedSounds(ERASED_LINES); if (st() > ERASED_LINES.end + 1) go('end'); }
-  if (scene === 'daycard' && st() > 1.9) go('news');
+  if (scene === 'daycard' && st() > 1.9) go(S.endless ? 'booth' : 'news');
 }
 
 function render() {
@@ -175,6 +177,7 @@ function render() {
   else if (scene === 'summary') drawSummary(t);
   else if (scene === 'end') drawEnd(t);
   else if (scene === 'over') drawOver(t);
+  else if (scene === 'eover') drawEover(t);
 
   const g = canvasEl.getContext('2d');
   g.imageSmoothingEnabled = false;

@@ -31,13 +31,14 @@ const st = () => now - sceneT0;
 
 function startDay() {
   B = {
-    queue: buildQueue(S.day), idx: 0, ent: null, docs: [], lines: [], timers: [],
+    queue: S.endless ? buildEndlessQueue() : buildQueue(S.day), idx: 0, ent: null, docs: [], lines: [], timers: [],
     tray: { open: false, t: -9 }, presses: [], shake: -9,
     insp: { on: false, sel: [], banner: null, all: false },
     xray: { on: false, t: -9 }, printing: null, printQueue: [], effects: [], slams: [],
     ruleInst: null, rulePos: [228, 136], ruleOpened: false, speakerT: -9, fightT: -9, harmlessT: -9,
     pay: 0, bonus: 0, bribe: 0, fines: 0, cites: 0, correct: 0, total: 0, flash: null, clock0: now,
     ending: false, event: null, cut: null, closeup: null, lastFinish: now, tensionSrc: null, allTokens: false,
+    streak: 0, best: 0, strikes: 0,
   };
 }
 
@@ -127,6 +128,22 @@ function handDocs(e) {
   });
   e.handed = true;
   if (e.spec.after) runSteps(e.spec.after, 0.3);
+  // 无尽模式：对齐部自动核验，打印机吐出登录记录（证据摆上桌，不给结论）
+  if (S.endless && e.spec.logins) {
+    later(0.6, () => {
+      if (B.ent !== e) return;
+      printDoc(loginStrip(e), 1.8, 'log');
+      if (!S.tut.iplog) {
+        S.tut.iplog = true;
+        flash('对齐部自动核验：登录记录和归属地对得上吗？');
+      }
+    });
+  }
+}
+
+// 登录记录小票：机器只出数据，比对靠审查员
+function loginStrip(e) {
+  return new PrintStrip([T('IP 登录记录'), T('近 3 次登录')], e.spec.logins, { last: [4, 35, 163, 50] }, 10, 170);
 }
 
 const decisionOf = (inst) => (inst.marks.length ? inst.marks[inst.marks.length - 1].kind : null);
@@ -178,6 +195,12 @@ function finish(e, dec) {
   if (then === 'closeup') { B.closeup = { t0: now }; SFX.play('thud'); }
   if (then === 'jorji5') afterJorji5(e, dec);
   if (then === 'ending') afterAuthor(dec);
+  if (S.endless) {
+    B.docs = B.docs.filter((d) => d.key !== 'log');   // 登录记录小票跟着旅客走，不给下一个人留旧证据
+    if (B.strikes >= 3) { B.ending = true; later(2.2, () => go('eover')); return; }
+    topUpEndless();
+    return;
+  }
   if (B.idx >= B.queue.length && !B.cut && then !== 'ending') endDaySoon();
 }
 
@@ -194,9 +217,11 @@ function judge(e, dec) {
     B.correct++; S.stats.correct++;
     B.pay += 5;
     if (dec === 'detain' && e.exposed) B.bonus += 5;
+    if (S.endless) { B.streak++; B.best = Math.max(B.best, B.streak); }
     return;
   }
   S.stats.wrong++;
+  if (S.endless) { B.streak = 0; B.strikes++; }
   const lines = dec === 'approve' ? ['放行了不合规旅客', spec.reason || ''] :
     dec === 'detain' ? ['无故拘留合规旅客', '证件齐全，信息一致'] : ['拒绝了合规旅客', '证件齐全，信息一致'];
   if (dec === 'approve' && spec.hint) lines.push(spec.hint);
@@ -391,13 +416,20 @@ function xrayItemBox(e, it) {
 
 function docBox(d) { return [d.x, d.y, d.x + d.doc.w - 1, d.y + d.doc.h - 1]; }
 
+// 旅客脸部的全屏选区（检查模式里和护照照片连线用）
+function faceBox() {
+  const ex = entrantX(B.ent) || WIN_CX;
+  return [WIN[0] + ex - 30, WIN[1] + 14, WIN[0] + ex + 30, WIN[1] + 82];
+}
+
 // 对话框（左下角最近三句）的位置，绘制和检查模式共用
 function lineBoxes() {
   return B.lines.slice(-3).map((ln, i) => {
     let size = tw(ln.text, 12) > 176 ? 10 : 12;
-    if (LANG === 'en' && size === 10 && tw(ln.text, 10) > 178) size = 8;
+    if (size === 10 && tw(ln.text, 10) > 178) size = 8;
     const y = 288 + i * 17;
-    return { ln, size, box: [30, y, 30 + tw(ln.text, size) + 8, y + 15] };
+    const x1 = Math.min(214, 30 + tw(ln.text, size) + 8);
+    return { ln, size, box: [30, y, x1, y + 15] };
   });
 }
 
@@ -406,6 +438,10 @@ function fieldAt(x, y) {
   if (e && e.handed) {
     for (const { ln, box } of lineBoxes()) {
       if (ln.who === 'E' && ln.ent === e && inBox(x, y, box)) return { key: 'say', ln, box: () => box };
+    }
+    // 窗口里旅客的脸：检查模式下可选中，和护照照片比对（照片调包）。faceBox 是全屏坐标
+    if (e.handed && entrantX(e) !== null && inBox(x, y, faceBox())) {
+      return { key: 'face', box: faceBox };
     }
   }
   if (B.xray.on && e && e.spec.xray && entrantX(e) !== null) {
@@ -532,6 +568,7 @@ function exprKey(e) {
 const XRAY_ICONS = {
   cat: ['X.........X', 'XX.......XX', 'XXX.....XXX', 'XXXXXXXXXXX', 'XX.XXXXX.XX', 'XXXXXXXXXXX', 'XXXX.X.XXXX', '.XXXXXXXXX.', '..XXXXXXX..'],
   keys: ['XXXXXXXXXXXXXXX', 'X.X.X.X.X.X.X.X', 'XXXXXXXXXXXXXXX', 'XX.X.X.X.X.X.XX', 'XXXXXXXXXXXXXXX', 'XXX.........XXX', 'XXXXXXXXXXXXXXX'],
+  rice: ['...XXXX...', '..XXXXXX..', '.XXXXXXXX.', 'XXXXXXXXXX', 'X.X.X.X.X.', '.XXXXXXXX.', '..XXXXXX..'],
 };
 
 const silCache = new Map();
@@ -695,7 +732,18 @@ function drawBoothLower() {
     if (ln.who === 'C') rect(x0, y, x0 + 1, y + 15, K.CLAUDE);
     txt(35, y + (size === 12 ? 2 : size === 10 ? 3 : 4), ln.text, size, ln.who === 'C' ? K.CLAUDE_L : K.WHITE, 'la', n);
   }
-  txt(8, 347, `${DATES[S.day]}  ${T(WEEKDAYS[S.day])}`, 10, K.GREY);
+  if (S.endless) {
+    txt(8, 347, T('无尽 · 已处理 {0} 人', B.total), 10, K.GREY);
+    txt(236, 348, T('警告'), 8, K.GREY_D);
+    for (let i = 0; i < 3; i++) {
+      const x0 = 262 + i * 14;
+      rect(x0, 347, x0 + 9, 355, i < B.strikes ? K.RED : K.DESK_D);
+      outline(x0, 347, x0 + 9, 355, K.OUTLINE);
+    }
+    txt(314, 348, T('连对 {0}', B.streak), 8, B.streak >= 3 ? K.CLAUDE_L : K.GREY);
+  } else {
+    txt(8, 347, `${DATES[S.day]}  ${T(WEEKDAYS[S.day])}`, 10, K.GREY);
+  }
   const m = 6 * 60 + Math.floor((now - B.clock0) / 1.1);
   txt(210, 346, `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`, 12, K.LED, 'ra');
   if (S.day >= 2) {
@@ -770,6 +818,11 @@ const STAMP_ICON = ['.XXX.', '.XXX.', '..X..', 'XXXXX', 'XXXXX'];
 function hintText() {
   if (B.flash && now < B.flash.t + 3.2) return B.flash.text;
   const e = B.ent, here = e && e.phase === 'here' && e.handed && !B.event, T = S.tut;
+  if (S.endless) {
+    if (!S.tut.iplog && e && e.handed) return '小票上的登录地，和设备卡的归属地对得上吗？';
+    if (!S.tut.sniper && B.idx >= 6) return '后面还会出现波次事件：黑话快剪、蒸馏大军，注意警报';
+    return '';
+  }
   if (S.day === 1) {
     if (!T.called) return '点左下角闪烁的喇叭，叫下一位';
     if (!here) return '';
@@ -836,6 +889,7 @@ function composeInspect(g) {
   }
   if (B.xray.on) lighten([WIN[0], WIN[1], WIN[2] + 1, WIN[3] + 1]);
   if (B.ent && B.ent.handed) lighten([28, 286, 220, 339]);   // 对话框也亮着，方便点旅客说的话
+  if (B.ent && B.ent.handed && entrantX(B.ent) !== null) lighten(faceBox());   // 旅客的脸也亮着，方便和护照照片比对
   let boxes = I.sel.map((s) => s.box());
   if (I.all && B.ent) {
     boxes = [];

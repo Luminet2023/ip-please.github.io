@@ -23,10 +23,10 @@ SITE = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
 
 from pp import cast  # noqa: E402
-from pp.base import FONTS, GOLD, GREEN, RED, SEAL, draw, spark, txt  # noqa: E402
+from pp.base import FONTS, GOLD, GREEN, OUTLINE, RED, SEAL, draw, spark, txt  # noqa: E402
 from pp.booth import static_layer, window_bg  # noqa: E402
 from pp.docs import CrayonPassport, stamp_mark  # noqa: E402
-from pp.people import Person, photo  # noqa: E402
+from pp.people import Person, photo, shade  # noqa: E402
 from pp.screens import _icon  # noqa: E402
 
 # ———————————————————— 字体 ————————————————————
@@ -271,7 +271,31 @@ def main():
                 pk.add(f"{key}:{e}:slip", p.sprite(e, slip=True))
         pk.add(f"photo:{key}", photo(p.sprite()), crop=False)
         coat, top = p.walker
-        people[key] = {"expr": p.expr, "walker": [list(coat), list(top)], "scripted": key in SCRIPTED, "fw": 180}
+        people[key] = {"expr": p.expr, "walker": [list(coat), list(top)], "scripted": key in SCRIPTED, "fw": 180}    # 蓝色大肥鱼（DeepSeek 娘）：8 表情立绘 + 证件照，素材在 assets/DAFEIYU/（不要手改，由外部生成）
+    FISH_DIR = TOOLS / "assets" / "DAFEIYU"
+    if FISH_DIR.exists():
+        for e in EXPRS:
+            f = FISH_DIR / "booth" / f"DAFEIYU_{e}_180x128.png"
+            if f.exists():
+                pk.add(f"FISH:{e}", Image.open(f).convert("RGBA"))
+        f = FISH_DIR / "passport" / "DAFEIYU_photo_40x50.png"
+        if f.exists():
+            pk.add("photo:FISH", Image.open(f).convert("RGB"), crop=False)
+        people["FISH"] = {"expr": "neutral", "walker": [[40, 52, 92], [70, 118, 198]], "scripted": True, "fw": 180}
+
+    # 极简蓝鲸 Logo「证件照」（没有眼睛，极简主义）
+    whale = Image.new("RGBA", (180, 128), (206, 200, 190, 255))
+    dw = draw(whale)
+    wb = (52, 118, 188)
+    dw.ellipse([36, 40, 148, 96], fill=OUTLINE)
+    dw.ellipse([38, 42, 146, 94], fill=wb)
+    dw.polygon([(44, 64), (14, 44), (24, 66), (14, 90)], fill=OUTLINE)
+    dw.polygon([(46, 64), (20, 50), (28, 66), (20, 84)], fill=shade(wb, 0.75))
+    dw.polygon([(84, 44), (100, 24), (112, 46)], fill=OUTLINE)
+    dw.polygon([(87, 44), (99, 29), (108, 45)], fill=shade(wb, 0.8))
+    dw.arc([58, 70, 92, 90], 20, 160, fill=(24, 52, 86), width=3)
+    pk.add("photo:FISH_WHALE", photo(whale), crop=False)
+
     # 拼车团：六个人挤一个窗口
     grp = cast.CARPOOL
     for e in GROUP_EXPRS:
