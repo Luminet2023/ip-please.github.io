@@ -11,6 +11,7 @@ function newGame() {
       opus: { name: '岳母 Opus', hunger: 1, heat: 0, sick: 0 } },
     stats: { approve: 0, deny: 0, detain: 0, correct: 0, wrong: 0 },
     flags: {}, tut: {},
+    plot: plotDefault(),
   });
 }
 
@@ -21,7 +22,8 @@ function saveGame() {
 function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    return s && s.day > 1 && s.day <= LAST_DAY ? s : null;
+    if (!s || !Number.isInteger(s.day) || s.day <= 1 || s.day > LAST_DAY || s.endless || (s.plot && s.plot.final && s.plot.final.ending)) return null;
+    return s;
   } catch (e) { return null; }
 }
 
@@ -84,6 +86,7 @@ function typedSounds(lines) {
 
 const CONTINUE_TITLE = [113, 292, 243, 318], NEWGAME_TITLE = [255, 292, 385, 318], ENDLESS_TITLE = [397, 292, 527, 318];
 const START_TITLE = [190, 292, 312, 318], ENDLESS_SM = [328, 292, 450, 318];
+const GALLERY_BTN = [8, 326, 132, 350];
 
 function startEndless() {
   SFX.play('click');
@@ -113,17 +116,22 @@ function drawTitle(t) {
     rect(...box, hover ? K.RED : K.RED_D); outline(...box, K.RED_L);
     txt(center(box)[0], box[1] + 7, label, 12, K.WHITE, 'ma');
   }
+  const n = unlockedEndings().length;
+  const hover = ptr.mouse && inBox(ptr.x, ptr.y, GALLERY_BTN);
+  outline(...GALLERY_BTN, hover ? K.CLAUDE_L : K.GREY_D);
+  txt(GALLERY_BTN[0] + 6, GALLERY_BTN[1] + 7, T('结局收藏 {0}/30', String(n)), 10, hover ? K.CLAUDE_L : K.GREY);
 }
 
 function titleClick(x, y) {
   if (st() < 1.6) return;
+  if (inBox(x, y, GALLERY_BTN)) { SFX.play('click'); go('gallery'); return; }
   const save = loadSave();
   if (!save) {
     if (inBox(x, y, ENDLESS_SM)) startEndless();
     else if (inBox(x, y, START_TITLE)) { newGame(); go('daycard'); }
     return;
   }
-  if (inBox(x, y, CONTINUE_TITLE)) { newGame(); Object.assign(S, save); go('daycard'); return; }
+  if (inBox(x, y, CONTINUE_TITLE)) { newGame(); migrateSave(save); go('daycard'); return; }
   if (inBox(x, y, ENDLESS_TITLE)) { startEndless(); return; }
   if (inBox(x, y, NEWGAME_TITLE)) { clearSave(); newGame(); go('daycard'); }
 }
@@ -187,6 +195,7 @@ function drawNews(t) {
 // ———————————————————— 下班结算 ————————————————————
 
 let SUM = null;
+const SUM_PASS_ROWS = [];
 const CONTINUE_BTN = [430, 318, 620, 344];
 const RESTART_BTN = [250, 316, 390, 340];
 const MEMBERS = ['haiku', 'sonnet', 'opus'];
@@ -202,9 +211,21 @@ function initSummary() {
   if (!fam.opus.gone) rows.push(['extra', '岳母加餐', 10]);
   if (MEMBERS.some((k) => fam[k].sick && !fam[k].gone)) rows.push(['med', '药费', 10]);
   if (fam.sonnet.wantsGPU && !fam.sonnet.gone) rows.push(['gpu', '显卡（儿子要的）', 20]);
+  SUM_PASS_ROWS.length = 0;
+  if ((S.day === 10 || S.day === 12) && anyFamilyAlive()) {
+    const n = S.day === 10 ? 1 : 2;
+    const have = ensurePlot().family.passes;
+    for (let i = 0; i < n; i++) {
+      const key = 'pass' + i;
+      rows.push([key, T('家庭迁移通行证 #{0}', have + i + 1), 15]);
+      SUM_PASS_ROWS.push(key);
+    }
+  }
   SUM = { start: S.savings, pay: B.pay, bonus: B.bonus, bribe: B.bribe, fines: B.fines, correct: B.correct, total: B.total, rows, on: {}, final };
   let left = SUM.start + SUM.pay + SUM.bonus + SUM.bribe - SUM.fines - 5;
-  for (const [k, , cost] of rows) { if (left >= cost && k !== 'gpu') { left -= cost; SUM.on[k] = true; } }
+  for (const [k, , cost] of rows) {
+    if (left >= cost && k !== 'gpu' && !SUM_PASS_ROWS.includes(k)) { left -= cost; SUM.on[k] = true; }
+  }
 }
 
 function sumBalance() {
@@ -331,7 +352,9 @@ function summaryClick(x, y) {
   const bal = sumBalance();
   S.family = familyAfter();
   S.savings = bal;
-  if (bal < 0) { clearSave(); go('over'); return; }
+  const bought = SUM_PASS_ROWS.filter((k) => SUM.on[k]).length;
+  if (bought) ensurePlot().family.passes += bought;
+  if (bal < 0) { commitEnding('E23'); return; }
   S.day++;
   saveGame();
   go('daycard');

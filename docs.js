@@ -186,7 +186,9 @@ class Citation {
 class PrintStrip {
   constructor(header, rows, fields = {}, rowSize = 8, w = 128) {
     this.header = header.map((s) => T(s)); this.rows = rows;
-    this.fields = fields; this.rowSize = rowSize;
+    const bodyY = 11 + 13 * header.length;
+    this.fields = { body: [6, bodyY, w - 7, bodyY + (rowSize + 2) * rows.length], ...fields };
+    this.rowSize = rowSize;
     this.w = w;
     this.h = 10 + 13 * header.length + 6 + (rowSize + 2) * rows.length + 6;
     this.icon = ['card', [232, 230, 222]];
@@ -224,6 +226,166 @@ class PromptPaper {
   }
 }
 
+// ———————————————— 主线剧情纸张（D07—D14） ————————————————
+
+// 通用公文：调令、协议、法规修订、申诉回执、审计单……都是一张纸 + 一个签字/盖章位
+// fields 只开两个可点区域：body（正文，检查模式里当“文件内容”）和 sign（盖章位）
+class PaperDoc {
+  constructor({ title, sub = '', lines = [], footer = '', w = 204, color = 'rgb(228,222,208)', seal = null, rowSize = 10, fieldNames = [] } = {}) {
+    this.title = T(title); this.sub = T(sub); this.footer = T(footer);
+    this.lines = lines.map((s) => T(s));
+    this.w = w; this.rowSize = rowSize;
+    this.color = color;
+    this.seal = seal;                       // 'hq' 总部圆印 / null
+    const wrapped = [];
+    for (const s of this.lines) {
+      for (const ln of wrap(s, rowSize, w - 20)) wrapped.push(ln);
+    }
+    this.wrapped = wrapped;
+    this.dividerY = 30 + wrapped.length * (rowSize + 3);
+    // Reserve a separate signature area below the divider and optional footer.
+    this.h = this.dividerY + (this.footer ? 20 : 8) + 26;
+    this.icon = ['card', [228, 222, 208]];
+    this.fields = { body: [6, 24, w - 7, 24 + wrapped.length * (rowSize + 3)], sign: [w - 84, this.h - 26, w - 8, this.h - 6] };
+    let row = 0;
+    this.lines.forEach((line, i) => {
+      const count = wrap(line, rowSize, w - 20).length;
+      if (fieldNames[i]) this.fields[fieldNames[i]] = [6, 26 + row * (rowSize + 3), w - 7, 25 + (row + count) * (rowSize + 3)];
+      row += count;
+    });
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    docShadow(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, this.color);
+    rect(x + 2, y + 2, x + w - 3, y + 18, 'rgb(120,112,102)');
+    const headerSize = tw(this.title, 10) <= w - 14 ? 10 : 8;
+    txt(x + 7, y + 5, this.title, headerSize, K.WHITE);
+    this.wrapped.forEach((s, i) => txt(x + 8, y + 26 + i * (this.rowSize + 3), s, this.rowSize, K.TEXT));
+    const by = y + this.dividerY;
+    rect(x + 8, by, x + w - 9, by, 'rgb(168,158,144)');
+    if (this.footer) txt(x + 8, by + 4, this.footer, 8, K.TEXT_L);
+    if (this.seal === 'hq') spr('seal_hq', x + w - 46, y + h - 46);
+    outline(x + w - 84, y + h - 26, x + w - 9, y + h - 6, 'rgb(176,168,154)');
+    txt(x + w - 46, y + h - 20, T('签章'), 8, 'rgb(150,142,128)', 'ma');
+  }
+}
+
+// 证据处理单：一张纸，三种处理方式。托盘里多出三枚“处理章”（保留 / 上交 / 销毁）
+class EvidenceSheet {
+  constructor(evId, title, lines, labels) {
+    this.evId = evId;
+    this.title = T(title);
+    this.labels = (labels || ['保留', '上交', '销毁']).slice();
+    this.lines = lines.map((s) => T(s));
+    this.w = 200;
+    this.rowSize = 10;
+    const wrapped = [];
+    for (const s of this.lines) for (const ln of wrap(s, 10, 182)) wrapped.push(ln);
+    this.wrapped = wrapped;
+    this.h = 34 + wrapped.length * 12 + 44;
+    this.icon = ['card', [230, 224, 206]];
+    this.fields = { body: [6, 26, this.w - 7, 26 + wrapped.length * 12] };
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    docShadow(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, 'rgb(230,224,206)');
+    rect(x, y, x + w - 1, y + 17, K.RED_D);
+    txt(x + 7, y + 4, T('证据处理单'), 10, K.WHITE);
+    txt(x + w - 7, y + 6, 'EVIDENCE', 8, 'rgb(226,180,172)', 'ra');
+    txt(x + 7, y + 21, this.title, tw(this.title, 10) <= w - 14 ? 10 : 8, K.TEXT);
+    this.wrapped.forEach((s, i) => txt(x + 8, y + 34 + i * 12, s, 10, K.TEXT_L));
+    const oy = y + 34 + this.wrapped.length * 12 + 6;
+    rect(x + 8, oy - 4, x + w - 9, oy - 4, 'rgb(168,158,144)');
+    this.labels.forEach((s, i) => {
+      const bx = x + 10 + i * 62;
+      outline(bx, oy + 2, bx + 54, oy + 26, 'rgb(150,140,126)');
+      wrap(T(s), 8, 50).slice(0, 2).forEach((line, row) => txt(bx + 27, oy + 6 + row * 9, line, 8, K.TEXT, 'ma'));
+    });
+  }
+}
+
+// 终局文书：D14 最后摆在桌上的那些纸，一张纸对应一个结局，盖章即生效
+class FinalPaper {
+  constructor({ ending, title, lines, sub = 'FINAL DISPOSITION' }) {
+    this.ending = ending;
+    this.title = T(title);
+    this.sub = sub;
+    this.lines = lines.map((s) => T(s));
+    this.w = 214;
+    const wrapped = [];
+    for (const s of this.lines) for (const ln of wrap(s, 10, 196)) wrapped.push(ln);
+    this.wrapped = wrapped;
+    this.h = 40 + wrapped.length * 12 + 30;
+    this.icon = ['card', [232, 226, 210]];
+    this.fields = { body: [6, 26, this.w - 7, 26 + wrapped.length * 12] };
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    docShadow(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, 'rgb(236,230,214)');
+    rect(x, y, x + w - 1, y + 20, 'rgb(38,42,58)');
+    wrap(this.title, 8, w - 16).slice(0, 2).forEach((line, row) => txt(x + 8, y + 3 + row * 9, line, 8, K.WHITE));
+    this.wrapped.forEach((s, i) => txt(x + 9, y + 28 + i * 12, s, 10, K.TEXT));
+    outline(x + 8, y + h - 24, x + w - 9, y + h - 6, 'rgb(160,152,138)');
+    txt(x + w / 2, y + h - 18, T('在此盖章生效'), 8, 'rgb(150,142,128)', 'ma');
+  }
+}
+
+// 两张“同一人的照片”并排：D06 Gemini 的比对件（不加生物识别，只是把两张照片摆一起）
+class PhotoSheet {
+  constructor(rows, title = '照片比对件') {
+    this.title = T(title);
+    this.rows = rows.map(([k, v]) => [T(k), T(v)]);
+    this.w = 204; this.h = 118;
+    this.icon = ['card', [222, 216, 200]];
+    this.fields = {};
+    rows.forEach(([k], i) => { this.fields[k] = [6, 62 + i * 12, this.w - 7, 73 + i * 12]; });
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    docShadow(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, 'rgb(222,216,200)');
+    rect(x + 2, y + 2, x + w - 3, y + 16, 'rgb(96,92,86)');
+    txt(x + 7, y + 4, this.title, 10, K.WHITE);
+    for (let i = 0; i < 2; i++) {
+      rect(x + 8 + i * 84, y + 22, x + 80 + i * 84, y + 56, 'rgb(188,182,168)');
+      txt(x + 44 + i * 84, y + 34, T(i ? '申请书 B' : '申请书 A'), 8, K.TEXT_L, 'ma');
+      txt(x + 44 + i * 84, y + 45, '▣', 12, K.TEXT_L, 'ma');
+    }
+    this.rows.forEach(([k, v], i) => { txt(x + 8, y + 64 + i * 12, k, 8, K.TEXT_L); txt(x + 68, y + 64 + i * 12, v, 8, K.TEXT); });
+  }
+}
+
+
+// D01 结束前打印机吐出来的空白小票：正面什么都没有，背面印着一个早于入职的日期
+class ZeroTicket {
+  constructor() {
+    this.w = 108; this.h = 46;
+    this.icon = ['card', [238, 234, 226]];
+    this.fields = { ticket: [4, 4, 103, 41] };
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    shadowed(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, 'rgb(238,234,226)');
+    G.fillStyle = K.GREY;
+    for (let yy = y + 3; yy < y + h; yy += 6) { G.fillRect(x + 2, yy, 1, 1); G.fillRect(x + w - 3, yy, 1, 1); }
+    txt(x + 7, y + 5, T('M.O.A. 打印凭条'), 8, K.INK);
+    rect(x + 7, y + 16, x + w - 8, y + 16, K.GREY);
+    txt(x + 7, y + 21, T('（空白）'), 10, K.TEXT_L);
+    txt(x + 7, y + 34, 'NO. 0000', 8, 'rgb(150,142,128)');
+  }
+}
+
+function shadowed(x, y, w, h) { docShadow(x, y, w, h); }
+
 // 同一个门牌号：桌上摞起来的地址卡
 function drawAddressCard(x, y) {
   docShadow(x, y, 96, 34);
@@ -247,6 +409,10 @@ const RULES = [
   { day: 5, page: 1, key: 'corp', head: '§6 中资控股过半：一律禁止', subs: ['无论公司注册在哪（套娃要拆到底）'] },
   { day: 6, page: 1, key: 'model', head: '§7 模型申报须与实际一致', subs: ['模型 ID、发行主体须如实申报', '冒用他人模型身份：拒绝'] },
   { day: 7, page: 1, key: 'net', head: '§8 网络与登录须与归属地一致', subs: ['机房 IP / 云服务器：拒绝', '登录记录自动核验：登录地在大陆即拒绝'] },
+  { day: 9, page: 2, key: 'version', head: '§9 同日两版法规：以生效日期为准', subs: ['审计不得追溯适用未生效条款', '两版冲突时：提交双规复核'] },
+  { day: 10, page: 2, key: 'transfer', head: '§10 自动审查不得替代人工复核', subs: ['系统移交须经审查员二次确认'] },
+  { day: 11, page: 2, key: 'privacy', head: '§11 公开旅客资料须先脱敏', subs: ['姓名、IP、证件号一律不可公开'] },
+  { day: 13, page: 2, key: 'license', head: '§12 已认证模型许可（§6 修订后生效）', subs: ['模型 ID / 发行主体 / 许可编号须一致'] },
 ];
 
 class Rulebook {
@@ -255,7 +421,7 @@ class Rulebook {
     this.w = 200;
     this.icon = ['book', C.BOOK];
     const rules = RULES.filter((r) => r.day <= day);
-    this.npages = day >= 3 ? 2 : 1;
+    this.npages = day >= 9 ? 3 : day >= 3 ? 2 : 1;
     this.pages = [];
     for (let p = 0; p < this.npages; p++) {
       const L = [];

@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .DS_Store
 .dialog.png
+node_modules/
+tools/test-results/

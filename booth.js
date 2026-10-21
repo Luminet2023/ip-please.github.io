@@ -98,13 +98,17 @@ const isEvent = (it) => it && it.type;
 
 function callNext() {
   SFX.play('click');
-  if (B.ent || B.event || B.cut || B.closeup || B.ending || B.idx >= B.queue.length) return;
+  if (B.ent || B.event || B.cut || B.closeup || B.ending) return;
+  if (B.evidence || (B.evidenceQueue || []).length) { flash('请先处理桌上的文书'); return; }
+  if (B.finalPhase) { flash('请翻阅终局文书，将选中的文书移到准予章下'); return; }
+  if (B.idx >= B.queue.length) return;
   if (isEvent(nextItem())) { startEvent(B.queue[B.idx++]); return; }
   B.speakerT = now;
   SFX.play('intercom', 1, 0.03);
   say('C', '下一位！');
   S.tut.called = true;
-  const spec = B.queue[B.idx++];
+  const item = B.queue[B.idx++];
+  const spec = typeof item === 'function' ? item() : item;   // 条件案件在真正叫号时才生成
   const e = newEntrant(spec, false);
   B.ent = e;
   for (let i = 0; i < 4; i++) later(0.41 + i * 0.19, () => SFX.step(i));
@@ -122,14 +126,15 @@ function handDocs(e) {
   SFX.paper(S.day);
   if (e.spec.docs.some((d) => d.key === 'pp')) later(0.1, () => SFX.play('thud', 0.5));
   e.docs = e.spec.docs.map(({ key, doc }, i) => {
-    const inst = { doc, key, owner: 'ent', big: false, x: 48 + i * 24, y: 265, slot: [48 + i * 24, 265], marks: [] };
+    const slot = [48 + (i % 3) * 24, 265 - Math.floor(i / 3) * 18];
+    const inst = { doc, key, owner: 'ent', big: false, x: slot[0], y: slot[1], slot, marks: [] };
     B.docs.push(inst);
     return inst;
   });
   e.handed = true;
   if (e.spec.after) runSteps(e.spec.after, 0.3);
   // 无尽模式：对齐部自动核验，打印机吐出登录记录（证据摆上桌，不给结论）
-  if (S.endless && e.spec.logins) {
+  if ((S.endless || S.day >= 7) && e.spec.logins) {
     later(0.6, () => {
       if (B.ent !== e) return;
       printDoc(loginStrip(e), 1.8, 'log');
@@ -191,6 +196,7 @@ function finish(e, dec) {
   B.ent = null;
   B.lastFinish = now;
   if (!e.noJudge) judge(e, dec);
+  if (B.ending) return;
   const then = e.spec.then;
   if (then === 'closeup') { B.closeup = { t0: now }; SFX.play('thud'); }
   if (then === 'jorji5') afterJorji5(e, dec);
@@ -208,7 +214,7 @@ function judge(e, dec) {
   const spec = e.spec;
   B.total++;
   S.stats[dec] = (S.stats[dec] || 0) + 1;
-  if (spec.author) return;
+  if (spec.author) { if (!S.endless) onCaseResolved(e, dec); return; }
   if (spec.bribe && dec === 'approve' && S.flags.sawNote) {
     B.bribe += 20; S.flags.bribed = true; B.harmlessT = now;
     later(0.8, () => flash('地下中转联盟：$20 余额已到账。合作愉快。'));
@@ -218,14 +224,15 @@ function judge(e, dec) {
     B.pay += 5;
     if (dec === 'detain' && e.exposed) B.bonus += 5;
     if (S.endless) { B.streak++; B.best = Math.max(B.best, B.streak); }
-    return;
-  }
+  } else {
   S.stats.wrong++;
   if (S.endless) { B.streak = 0; B.strikes++; }
   const lines = dec === 'approve' ? ['放行了不合规旅客', spec.reason || ''] :
     dec === 'detain' ? ['无故拘留合规旅客', '证件齐全，信息一致'] : ['拒绝了合规旅客', '证件齐全，信息一致'];
   if (dec === 'approve' && spec.hint) lines.push(spec.hint);
   cite(lines);
+  }
+  if (!S.endless) onCaseResolved(e, dec);
 }
 
 // 开一张警告单：每天第一张只警告，之后每张罚 5 token
@@ -243,13 +250,19 @@ function printDoc(doc, dur, key) {
   later(dur, () => {
     B.printing = null;
     B.docs.push({ doc, key, owner: 'desk', big: true, x: PRINT_X, y: 131, marks: [] });
+    if (key === 'zticket') {
+      B.zeroPending = false;
+      B.keepable = { inst: B.docs[B.docs.length - 1], evId: 'zeroTicket' };
+      flash('打印机自己吐出一张空白小票（拖到桌上左下角的档案槽里可以留下）');
+    }
     if (key === 'cit') SFX.play('citation');
     if (B.printQueue.length) printDoc(...B.printQueue.shift());
   });
 }
 
 function endDaySoon() {
-  if (B.ending) return;
+  if (B.ending || B.finalPhase) return;
+  if (dayEndGate()) return;
   B.ending = true;
   const wait = B.printing ? 2 : 0;
   later(2.4 + wait, () => SFX.play('bell'));
@@ -329,6 +342,8 @@ function stamp(kind) {
   const target = [...B.docs].reverse().find((d) => d.big && inBox(cx, cy, [d.x, d.y, d.x + d.doc.w - 1, d.y + d.doc.h - 1]));
   if (target) {
     later(0.05, () => target.marks.push({ kind, rx: mx - target.x, ry: my - target.y }));
+    if (target.doc instanceof FinalPaper && kind === 'approve') { later(0.3, () => commitEnding(target.doc.ending)); }
+    if (target.doc instanceof EvidenceSheet) { flash('在右侧印章栏选择『保留 / 上交 / 销毁』来处理这张证据单'); }
     S.tut.stamped = true;
     const e = B.ent;
     if (e && target.owner === 'ent' && target.key === e.spec.primary && !e.decided) {
@@ -359,7 +374,7 @@ function toggleRules() {
 }
 
 function ruleTabHit(d, x, y) {
-  if (d.key !== 'rule' || d.doc.npages < 2) return false;
+  if (!(d.doc instanceof Rulebook) || d.doc.npages < 2) return false;
   const t = d.doc.tab;
   return inBox(x, y, [d.x + t[0], d.y + t[1], d.x + t[2], d.y + t[3]]);
 }
@@ -511,6 +526,7 @@ function showIssue(issue) {
     }
   }
   e.found.add(issue);
+  if (!S.endless && e.spec.onInvestigated) e.spec.onInvestigated(issue, e);
 }
 
 function inspectClick(x, y) {
@@ -772,6 +788,7 @@ function drawBoothLower() {
 function drawDesk() {
   G.save();
   G.beginPath(); G.rect(DESK[0], DESK[1], DESK[2] - DESK[0] + 1, DESK[3] - DESK[1] + 1); G.clip();
+  drawArchiveSlot(false);          // 底层：槽口
   for (const d of B.docs) {
     if (!d.big) continue;
     d.doc.draw(d.x, d.y);
@@ -791,6 +808,8 @@ function drawDesk() {
   }
   G.restore();
   rect(PRINT_X - 4, 128, PRINT_X + 172, 130, K.INK);
+  drawArchiveSlot(true);           // 上层：只在拖着小票时高亮提示
+  if (B.finalPhase) drawFinalNavigation();
 }
 
 function drawTray() {
@@ -805,6 +824,7 @@ function drawTray() {
     txt(hx + 3, 233, '章', 8, K.WHITE);
   }
   if (u <= 0) return;
+  if (B.evidence) { drawEvidTray(tx); return; }
   const press = {};
   for (const p of B.presses) if (now >= p.t && now < p.t + 0.22) press[p.kind] = 5;
   rect(tx + 3, TRAY_Y0 + 3, tx + TRAY_W + 3, TRAY_Y1 + 3, K.DESK_D);
@@ -825,6 +845,66 @@ function drawTray() {
 }
 
 const STAMP_ICON = ['.XXX.', '.XXX.', '..X..', 'XXXXX', 'XXXXX'];
+
+// ———————————————— 证据处理章（保留 / 上交 / 销毁） ————————————————
+// 只在「证据处理单」摆在桌上时出现；文案可被案件改写（比如迁移协议的三个选项）
+const ARCHIVE_SLOT = [DESK[0] + 6, 320, DESK[0] + 60, 354];
+
+function evidLabels() {
+  return (B.evidence && B.evidence.labels) || ['保留', '上交', '销毁'];
+}
+
+function evidButtons(tx) {
+  const states = ['retained', 'submitted', 'destroyed'];
+  return states.map((st, i) => [[tx + 10 + i * 53, TRAY_Y0 + 8, tx + 58 + i * 53, TRAY_Y0 + 48], st]);
+}
+
+function drawEvidTray(tx) {
+  rect(tx + 3, TRAY_Y0 + 3, tx + TRAY_W + 3, TRAY_Y1 + 3, K.DESK_D);
+  rect(tx, TRAY_Y0, tx + TRAY_W, TRAY_Y1, K.METAL);
+  rect(tx, TRAY_Y0, tx + TRAY_W, TRAY_Y0 + 2, K.METAL_L);
+  const labels = evidLabels();
+  const cols = [K.GREEN, K.METAL_D, K.RED];
+  const colsD = [K.GREEN_D, K.METAL_D, K.RED_D];
+  evidButtons(tx).forEach(([box, st], i) => {
+    const [x0, y0, x1, y1] = box;
+    const hover = ptr.mouse && inBox(ptr.x, ptr.y, box);
+    rect(x0 + 2, y0 + 2, x1 + 2, y1 + 2, K.METAL_D);
+    rect(x0, y0, x1, y1, hover ? cols[i] : colsD[i]);
+    rect(x0 + 1, y0 + 1, x1 - 1, y1 - 1, colsD[i]);
+    wrap(T(labels[i]), 8, x1 - x0 - 4).slice(0, 3).forEach((line, row) => txt((x0 + x1) >> 1, y0 + 5 + row * 10, line, 8, K.WHITE, 'ma'));
+    void st;
+  });
+}
+
+// 桌面左下角的「个人档案槽」：只在小票这种可以收起来的纸上出现
+// under=true 画槽体和文字（纸的下面），under=false 只在拖拽时补一圈高亮（纸的上面）
+function drawArchiveSlot(under) {
+  if (!B.keepable || !B.keepable.inst) return;
+  const [x0, y0, x1, y1] = ARCHIVE_SLOT;
+  const hot = !under && drag && drag.d && drag.d.key === 'zticket' && slotHit(drag.d);
+  if (under) {
+    rect(x0, y0, x1, y1, hot ? 'rgb(72,54,36)' : 'rgb(46,40,36)');
+    outline(x0, y0, x1, y1, K.CLAUDE);
+    for (let x = x0 + 3; x < x1 - 2; x += 4) rect(x, y0 + 3, x, y0 + 3, K.GREY_D);
+    txt((x0 + x1) >> 1, y0 + 10, T('档案'), 10, K.CLAUDE_L, 'ma');
+    txt((x0 + x1) >> 1, y0 + 24, T('拖进来'), 8, K.GREY, 'ma');
+    return;
+  }
+  if (!hot) return;
+  outline(x0 - 1, y0 - 1, x1 + 1, y1 + 1, K.CLAUDE_L, 2);
+  txt((x0 + x1) >> 1, y0 - 12, T('松手收进档案'), 8, K.CLAUDE_L, 'ma');
+}
+
+// 纸和槽口只要「有重叠」就算丢进去了 —— 比让玩家对准 54x34 的小格子友好得多
+function slotHit(d) {
+  if (!d) return false;
+  const b = [d.x, d.y, d.x + d.doc.w, d.y + d.doc.h];
+  const [x0, y0, x1, y1] = ARCHIVE_SLOT;
+  const ox = Math.min(b[2], x1) - Math.max(b[0], x0);
+  const oy = Math.min(b[3], y1) - Math.max(b[1], y0);
+  return ox > 4 && oy > 4;              // 至少压住一小块，避免擦边误判
+}
 
 function hintText() {
   if (B.flash && now < B.flash.t + 3.2) return B.flash.text;
@@ -863,7 +943,8 @@ function drawHint() {
   if (!s || B.insp.on) return;
   const size = tw(s, 10) > 396 ? 8 : 10;
   const w = tw(s, size) + 12;
-  const x = Math.max(DESK[0] + 4, W - 6 - w), y = 134;
+  // 贴在最外面上方：桌面留给证件，别压在纸的标题栏上
+  const x = Math.max(6, W - 6 - w), y = 110;
   rect(x, y, x + w, y + 15, 'rgba(22,19,19,0.92)');
   outline(x, y, x + w, y + 15, K.CLAUDE);
   txt(x + 6, y + (size === 10 ? 3 : 4), s, size, K.CLAUDE_L);

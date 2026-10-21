@@ -189,6 +189,17 @@ def seal_sprite(lang="zh"):
     return im
 
 
+def hq_seal_sprite():
+    """总部圆印：纸质公文上盖的那种。"""
+    im = Image.new("RGBA", (36, 36), (0, 0, 0, 0))
+    d = draw(im)
+    d.ellipse([0, 0, 35, 35], outline=SEAL, width=2)
+    d.ellipse([5, 5, 30, 30], outline=SEAL, width=1)
+    txt(d, (18, 9), "M.O.A.", 8, SEAL, anchor="ma")
+    txt(d, (18, 19), "总部", 8, SEAL, anchor="ma")
+    return im
+
+
 def emblem_sprite():
     im = Image.new("RGBA", (23, 21), (0, 0, 0, 0))
     d = draw(im)
@@ -253,7 +264,12 @@ def bg_patches(zh, en):
 
 def png_b64(im):
     buf = io.BytesIO()
-    im.save(buf, "PNG", optimize=True)
+    if im.mode == "RGBA" and im.width * im.height > 400_000:
+        # 图集很大：调色板化（含透明索引）后再压，体积能小一半以上，像素画本来就没几个颜色
+        im = im.quantize(colors=256, method=Image.FASTOCTREE)
+        im.save(buf, "PNG", optimize=True)
+    else:
+        im.save(buf, "PNG", optimize=True)
     return base64.b64encode(buf.getvalue()).decode(), len(buf.getvalue())
 
 
@@ -282,6 +298,30 @@ def main():
         if f.exists():
             pk.add("photo:FISH", Image.open(f).convert("RGB"), crop=False)
         people["FISH"] = {"expr": "neutral", "walker": [[40, 52, 92], [70, 118, 198]], "scripted": True, "fw": 180}
+
+    # 九位 AI 娘（外部生成 → tools/import_aicast.py 处理成 180x128 / 40x50）
+    # 素材来源：「Ai 资源」；只有立绘裁切和量化在本地做，没有重绘
+    AI_CAST = {
+        "CLAUDE_AI": ([232, 222, 204], [226, 112, 52]),
+        "GPT_AI": ([206, 204, 214], [232, 230, 238]),
+        "QWEN_AI": ([56, 64, 110], [92, 120, 220]),
+        "GROK_AI": ([60, 32, 40], [222, 186, 110]),
+        "GLM_AI": ([64, 64, 72], [40, 36, 44]),
+        "KIMI_AI": ([70, 78, 120], [212, 216, 232]),
+        "GEMINI_AI": ([70, 52, 96], [140, 150, 235]),
+    }
+    for key, (coat, hair) in AI_CAST.items():
+        d = TOOLS / "assets" / "AICAST" / key
+        if not d.exists():
+            continue
+        for e in EXPRS:
+            f = d / "booth" / f"{key}_{e}_180x128.png"
+            if f.exists():
+                pk.add(f"{key}:{e}", Image.open(f).convert("RGBA"))
+        f = d / "passport" / f"{key}_photo_40x50.png"
+        if f.exists():
+            pk.add(f"photo:{key}", Image.open(f).convert("RGB"), crop=False)
+        people[key] = {"expr": "neutral", "walker": [coat, hair], "scripted": True, "fw": 180}
 
     # 极简蓝鲸 Logo「证件照」（没有眼睛，极简主义）
     whale = Image.new("RGBA", (180, 128), (206, 200, 190, 255))

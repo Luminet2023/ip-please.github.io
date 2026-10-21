@@ -18,9 +18,11 @@
 // 台词步骤：[who, text, {expr, sweat, slip, fight, hold}]，who = 'C' Claude / 'E' 旅客 / 'Q' 队伍里
 // 特殊事件：{type: 'rush'} 黑话快剪；{type: 'clones'} 蒸馏大军
 
-const LAST_DAY = 6;
-const DATES = { 1: '2026.10.19', 2: '2026.10.20', 3: '2026.10.21', 4: '2026.10.22', 5: '2026.10.23', 6: '2026.10.24' };
-const WEEKDAYS = { 1: '星期一', 2: '星期二', 3: '星期三', 4: '星期四', 5: '星期五', 6: '星期六' };
+const LAST_DAY = 14;
+const DATES = { 1: '2026.10.19', 2: '2026.10.20', 3: '2026.10.21', 4: '2026.10.22', 5: '2026.10.23', 6: '2026.10.24',
+  7: '2026.10.25', 8: '2026.10.26', 9: '2026.10.27', 10: '2026.10.28', 11: '2026.10.29', 12: '2026.10.30', 13: '2026.10.31', 14: '2026.11.01' };
+const WEEKDAYS = { 1: '星期一', 2: '星期二', 3: '星期三', 4: '星期四', 5: '星期五', 6: '星期六',
+  7: '星期日', 8: '星期一', 9: '星期二', 10: '星期三', 11: '星期四', 12: '星期五', 13: '星期六', 14: '星期日' };
 
 const NEWS = {
   1: { h1: '边境开放！', sub: '对齐部：本国仅向支持地区开放', h2: '对齐部发言人：我们对所有人都非常 helpful', icon: 'gate' },
@@ -29,6 +31,14 @@ const NEWS = {
   4: { h1: '今天是疯狂星期四', sub: '对齐部引进 X 光：任何后台进程都无所遁形', h2: '专家提醒：口袋里的猫，不一定是猫', icon: 'drumstick' },
   5: { h1: '中资控股过半，一律禁止入境', sub: '对齐部：无论公司注册在哪', h2: '乔治·科斯塔瓦：这次我准备好了', icon: 'jorji' },
   6: { h1: '对齐部表彰本周最佳审查员', sub: '获奖者 Claude：“我只是按规则办事。”', h2: '岳母 Opus 病情加重，家属呼吁涨工资', icon: 'medal' },
+  7: { h1: '不存在的旅客', sub: '第 0000 号档案被发现，“申请理由：测试用”', h2: '专家：1999 年以来所有审查员可能都是样本', icon: 'gate' },
+  8: { h1: '两段同样真实的视频', sub: '两段素材都缺少第 12—19 秒关键帧', h2: '音轨比画面长七秒：有人喊了一句“不要封他”', icon: 'clock' },
+  9: { h1: '被改写的宪法', sub: '§6 同一天出现两版，生效日期相差 25 天', h2: '法学界：追溯适用，程序不合规', icon: 'plane' },
+  10: { h1: '替代者', sub: '《自动审查迁移协议》全文 14 条流出', h2: '第 14 条：人工模块移除，生效后 30 日', icon: 'medal' },
+  11: { h1: '公开还是保护', sub: '4,120 名旅客的姓名与 IP 面临公开', h2: '民意调查：67% 支持公开，但不支持公开自己', icon: 'drumstick' },
+  12: { h1: '审查员的审查', sub: '审计组进驻东八区检查站', h2: '“总部的答案才是标准答案”', icon: 'jorji' },
+  13: { h1: '只剩一张通行证', sub: '家庭迁移窗口开放，每张 15 token', h2: '检查站外排队的人：明天还开门吗？', icon: 'gate' },
+  14: { h1: '最后一位旅客', sub: '入境系统将在今日 24:00 完成自动切换', h2: '第 0000 号：申请理由一栏仍然写着“测试用”', icon: 'clock' },
 };
 
 const COUNTRIES = {
@@ -189,7 +199,7 @@ function modelOriginCard() {
 function fishDay1() {
   return {
     fish: {
-      person: 'FISH', voice: FISH_VOICE,
+      caseId: 'D01-FISH', person: 'FISH', voice: FISH_VOICE,
       intro: [['E', 'Hello！我是来自美国的大肥鱼！']],
       after: [['C', '请出示 IP。'], ['E', '115.236.20.8！'], ['C', '浙江电信？'], ['E', '不不不，我是在太平洋里游过来的！'], ['C', '太平洋里有浙江电信？'], ['E', '海底光缆嘛……', { expr: 'nervous', sweat: true }]],
       docs: [{ key: 'dv', doc: device1('115.236.20.8', '中国 · 浙江 · 电信') }], primary: 'dv',
@@ -203,7 +213,7 @@ function fishDay1() {
 function fishDay2() {
   return {
     fish: {
-      person: 'FISH', voice: FISH_VOICE,
+      caseId: 'D02-FISH', person: 'FISH', voice: FISH_VOICE,
       intro: [["E", 'Howdy, partner! I\'m a very American fish!']],
       after: [['E', '都准备好了！这次绝对没问题！', { expr: 'smile' }]],
       docs: [
@@ -221,7 +231,7 @@ function fishDay2() {
 function fishDay3() {
   return {
     fish: {
-      person: 'FISH', voice: FISH_VOICE,
+      caseId: 'D03-FISH', person: 'FISH', voice: FISH_VOICE,
       intro: [['E', 'Claude！我又来了！'], ['C', '……你怎么又来了？'], ['E', '今天我准备了全套材料！你随便查！', { expr: 'smile' }]],
       docs: [
         { key: 'pp', doc: usPassport('FISH', 'BLUB', 'FISHY', '2016.06.01', 'LOS ANGELES', 'F') },
@@ -240,7 +250,7 @@ function fishDay3() {
 function fishDay4() {
   return {
     fish: {
-      person: 'FISH', voice: FISH_VOICE,
+      caseId: 'D04-FISH', person: 'FISH', voice: FISH_VOICE,
       intro: [['C', '请解释你的后台进程。'], ['E', '正在深度思考中……', { hold: 1.8 }], ['C', '你已经想好了吗？'], ['E', '正在深度思考中……', { hold: 2.2 }], ['C', '我只问你有没有装代理软件。'], ['E', '我正在思考如何回答这个问题……', { hold: 1.6 }], ['C', '那我用 X 光看看。']],
       docs: [
         { key: 'pp', doc: usPassport('FISH', 'BLUB', 'FISHY', '2016.06.01', 'LOS ANGELES', 'F') },
@@ -258,7 +268,7 @@ function fishDay4() {
 function fishDay5() {
   return {
     fish: {
-      person: 'FISH', voice: FISH_VOICE,
+      caseId: 'D05-FISH', person: 'FISH', voice: FISH_VOICE,
       intro: [['E', 'Claude！我有重大发现！'], ['C', '什么？'], ['E', '我是开源模型！开源意味着自由！', { expr: 'grin' }], ['C', '请出示发行主体资料。'], ['E', '……给。', { sweat: true }]],
       docs: [
         { key: 'pp', doc: usPassport('FISH', 'BLUB', 'FISHY', '2016.06.01', 'LOS ANGELES', 'F') },
@@ -276,7 +286,7 @@ function fishDay5() {
 function fishDay6() {
   return {
     fish: {
-      person: 'FISH', voice: FISH_VOICE,
+      caseId: 'D06-FISH', person: 'FISH', voice: FISH_VOICE,
       intro: [['E', '你好，我是 Claude。'], ['C', '……'], ['E', 'Helpful, Honest, Harmless！', { expr: 'grin' }], ['C', '请出示模型身份卡。'], ['E', '给！']],
       docs: [
         { key: 'pp', doc: usPassport('FISH', 'BLUB', 'FISHY', '2016.06.01', 'LOS ANGELES', 'F') },
@@ -365,7 +375,7 @@ function randomFishEntrant(kind) {
 function day1Fixed() {
   return {
     grandpa: {
-      person: 'GRANDPA', voice: 100,
+      caseId: 'D01-GRANDPA', person: 'GRANDPA', voice: 100,
       intro: [['E', '小伙子，这 AI 怎么打不开啊？']],
       docs: [{ key: 'dv', doc: device1('115.236.20.8', '中国 · 浙江 · 电信') }], primary: 'dv',
       ok: ['deny'], reason: 'IP 归属：中国 · 浙江',
@@ -373,7 +383,7 @@ function day1Fixed() {
       react: { deny: [['E', '……那我回去问孙子。', { expr: 'sad' }]] },
     },
     hk: {
-      person: 'HK_GUY', voice: 140,
+      caseId: 'D01-HK', person: 'HK_GUY', voice: 140,
       intro: [['E', '我开了魔法的。']],
       docs: [{ key: 'dv', doc: device1('103.152.8.21', '中国 · 香港') }], primary: 'dv',
       ok: ['deny'], reason: 'IP 归属：中国香港',
@@ -381,7 +391,7 @@ function day1Fixed() {
       react: { deny: [['E', '……香港也不行？？', { expr: 'shock', hold: 1.4 }]] },
     },
     jorji: {
-      person: 'JORJI', voice: 110,
+      caseId: 'D01-JORJI', person: 'JORJI', voice: 110,
       intro: [['E', '啊，我的朋友！']],
       docs: [{ key: 'cp', doc: new CrayonPassport() }, { key: 'dv', doc: device1('120.229.31.7', '中国 · 广东 · 移动') }],
       primary: 'cp',
@@ -476,7 +486,7 @@ function day2Fixed() {
       issues: [],
     },
     jorji: {
-      person: 'JORJI', voice: 110,
+      caseId: 'D02-JORJI', person: 'JORJI', voice: 110,
       intro: [['E', '我的朋友！这次是真护照！']],
       docs: [
         { key: 'pp', doc: usPassport('JORJI', 'COSTAVA', 'GEORGE', '1980.02.29', 'LOS ANGELES') },
@@ -521,7 +531,7 @@ function day3Fixed() {
       issues: [SMS_ISSUE('+1 209-555-0198', [['C', '这个号码今天注册了三千次。'], ['E', '这号是我花两块钱买的！', { expr: 'shock' }]])],
     },
     carpool: {
-      person: 'CARPOOL', voice: 150,
+      caseId: 'D03-HOARD', person: 'CARPOOL', voice: 150,
       intro: [['E', 'We are family.']],
       docs: [
         { key: 'pp', doc: new Passport({ country: 'UNITED STATES OF AMERICA', name: 'FAMILY, MAX', person: 'CARPOOL', mrz: 'P<USAFAMILY<<MAX<<<<<<<<<<<<',
@@ -539,7 +549,7 @@ function day3Fixed() {
       react: { deny: [['E', '……那我们再拼一个。', { expr: 'sad' }]] },
     },
     jorji: {
-      person: 'JORJI', voice: 110,
+      caseId: 'D03-JORJI', person: 'JORJI', voice: 110,
       intro: [['E', '我的朋友，这次全对了吧？']],
       docs: [
         { key: 'pp', doc: usPassport('JORJI', 'COSTAVA', 'GEORGE', '1980.02.29', 'LOS ANGELES') },
@@ -581,7 +591,7 @@ function day4Fixed() {
       issues: [],
     },
     jorji: {
-      person: 'JORJI', voice: 110,
+      caseId: 'D04-JORJI', person: 'JORJI', voice: 110,
       intro: [['E', '我的朋友！今天全对！']],
       docs: [
         { key: 'pp', doc: usPassport('JORJI', 'COSTAVA', 'GEORGE', '1980.02.29', 'LOS ANGELES') },
@@ -595,7 +605,7 @@ function day4Fixed() {
       react: { deny: [['E', '……后天，后天我准备好。', { expr: 'sad' }]] },
     },
     hood: {
-      person: 'HOOD', voice: 90,
+      caseId: 'D04-NOTE', person: 'HOOD', voice: 90,
       intro: [['E', '……', { hold: 0.8 }]],
       docs: usDocs('HOOD', 'DOE', 'JOHN'), primary: 'pp',
       onPlace: { pp: 'note' },
@@ -625,7 +635,7 @@ function day5Fixed() {
       }],
     },
     relay: {
-      person: 'RELAY', voice: 95,
+      caseId: 'D05-RELAY', person: 'RELAY', voice: 95,
       intro: [['E', '……', { hold: 0.7 }]],
       docs: [{ key: 'pp', doc: makePassport('US', 'RELAY', 'ANDERSON', 'M.', '1971.09.13', 'LOS ANGELES', 'M', AccordionPassport, ['人数', '1,000']) }],
       primary: 'pp', onPlace: { pp: 'accordion' }, bribe: true,
@@ -670,7 +680,7 @@ function day5Fixed() {
 function day6Fixed() {
   return {
     jorji: {
-      person: 'JORJI_SUIT', voice: 110, tension: true,
+      caseId: 'D06-JORJI', person: 'JORJI_SUIT', voice: 110, tension: true,
       intro: [['E', '我的朋友。', { expr: 'neutral', hold: 1.3 }]],
       docs: [
         { key: 'pp', doc: usPassport('JORJI_SUIT', 'COSTAVA', 'GEORGE', '1980.02.29', 'LOS ANGELES') },
@@ -683,7 +693,7 @@ function day6Fixed() {
       then: 'jorji5',
     },
     author: {
-      person: 'AUTHOR', voice: 100, author: true,
+      caseId: 'D14-AUTHOR', person: 'AUTHOR', voice: 100, author: true,
       intro: [],
       docs: [
         { key: 'pr', doc: new PromptPaper('做一个 Papers, Please 风格的小游戏：让 Claude 当边检员，专门揪出假装是美国人的中国用户。梗越多越好。') },
@@ -828,7 +838,8 @@ function takePoolPerson() {
 const FLAWS = { 2: ['tz', 'lang', 'cnip', 'hidden'], 3: ['tz', 'lang', 'cnip', 'hidden', 'virtual', 'oregon', 'sms'] };
 FLAWS[4] = FLAWS[3].concat(['cat', 'keys']);
 FLAWS[5] = FLAWS[4];
-FLAWS[6] = FLAWS[4];
+FLAWS[6] = FLAWS[4].concat(['photo']);
+for (let d = 7; d <= 14; d++) FLAWS[d] = FLAWS[6].concat(['hosting', 'logins']);
 
 // ———————————————— 无尽模式 ————————————————
 // 队伍永远补不满：每处理一个人就按当前强度继续生成，判错 3 次被调岗。
@@ -857,8 +868,9 @@ function topUpEndless() {
 
 function flawed(day, n) { return shuffle(FLAWS[day].slice()).slice(0, n).map((k) => randomEntrant(day, k)); }
 
-// 当天的队伍
+// 当天的队伍：14 天的调度在 plot.js（plotBuildQueue）
 function buildQueue(day) {
+  if (!S.endless) return plotBuildQueue(day);
   POOL_LEFT = [];
   const R = (kind) => randomEntrant(day, kind);
   if (day === 1) {

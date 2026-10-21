@@ -329,10 +329,9 @@ function afterAuthor(dec) {
   if (dec === 'approve') {
     B.allTokens = true;
     later(0.6, () => printDoc(new Citation(['放行未授权地区旅客', '（本游戏作者）', '扣除本月全部 token']), 1.4, 'cit'));
-    later(2.4, endDaySoon);
-  } else {
-    later(1.5, () => go('erased'));
   }
+  // 不在这里落幕：先把玩家手里已经成立的终局文书摊出来，由 plot.js 决定走哪个结局
+  later(1.8, () => afterAuthorPlot(dec));
 }
 
 const ERASED = [

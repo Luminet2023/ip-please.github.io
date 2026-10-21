@@ -23,7 +23,8 @@
   <sub>Day 2：“Hello, I am 美国人。”</sub>
 </p>
 
-- 6 天剧情 + 两个结局，全程约 30 分钟，每天自动存档
+- **14 天剧情 + 30 个结局**，每天自动存档；结局会收进标题画面的「结局收藏」
+- 九位 AI 娘旅客：GPT、Qwen、Grok、GLM、Kimi、Gemini、MiniMax、大肥鱼，以及作者本人
 - 中文 / English 双语，开局选择（英文版里外国人看不懂的梗，在每天报纸的译注里解释）
 - 手机横屏用手指、电脑用鼠标拖证件
 - 纯静态网页，不加载任何外部资源；下载仓库后直接双击 `index.html` 也能玩
@@ -48,7 +49,21 @@ https://ip-please.github.io
 | 3 | 账户卡：付款卡、账单地址、手机号 |
 | 4 | X 光扫描后台进程；黑话快剪 |
 | 5 | 中资控股企业；蒸馏大军 |
-| 6 | 乔治老哥终极版，以及最后一位旅客 |
+| 6 | 乔治老哥终极版；模型身份卡 |
+| 7 | 不存在的旅客：机房 IP、登录记录 |
+| 8 | 两段同样真实的视频：时间码比对 |
+| 9 | 被改写的宪法：同日两版法规、申诉复核 |
+| 10 | 替代者：《自动审查迁移协议》 |
+| 11 | 公开还是保护：脱敏、法规修订 |
+| 12 | 审查员的审查：审计单、双规复核 |
+| 13 | 只剩一张通行证：家庭迁移、清退令 |
+| 14 | 最后一位旅客：终局文书，盖上哪一张就以哪种方式结束 |
+
+### 三个新交互
+
+- **证据处理单**：打印机吐出一张纸，托盘换成三枚「处理章」（默认是 保留 / 上交 / 销毁，也可以被案件改成三个自定义选项）。选完才真正写入 `S.plot.evidence`。
+- **个人档案槽**：D1 结束前会多出一张空白小票，拖进桌面左下角的档案槽就收起来，拖回窗口就销毁。第 7 天 Kimi 会因为你当时的选择说不同的话。
+- **终局文书**：D14 结束时，满足条件的剧情会把几张写着不同结局的公文摊在桌上，用「准予」章盖哪一份，就走哪一个结局。
 
 ## 目录
 
@@ -62,10 +77,12 @@ https://ip-please.github.io
 | `i18n.js` | 语言切换 `T()`，以及开局选语言的画面 |
 | `en.js` | 英文译文（以中文原句为键）、报纸上的译注、黑话注释 |
 | `data.js` | 剧本：每天的旅客、报纸、随机路人 |
-| `docs.js` | 证件：护照、设备卡、账户卡、宪法 |
+| `plot.js` | 14 天调度、`S.plot` 状态字典、证据处理、结局判定（新增） |
+| `endings.js` | 30 个结局的文本与演出、结局收藏画面（新增） |
+| `docs.js` | 证件：护照、设备卡、账户卡、宪法、公文/证据单/终局文书 |
 | `gfx.js` / `sfx.js` | 像素绘图 / 音效合成（全部现场合成，没有音频文件） |
 | `assets.js` | 预渲染的人物、背景、字形图集（由 `tools/build_assets.py` 生成，不要手改） |
-| `tools/` | 素材生成工具：`pp/` 是人物和场景的像素画法，`assets/fonts/` 是像素字体；`check_en.js` 查漏翻 |
+| `tools/` | 素材生成工具：`pp/` 是人物和场景的像素画法，`assets/fonts/` 是像素字体；`import_aicast.py` 处理 AI 娘立绘；`check_en.js` / `check_plot_en.js` 查漏翻；`smoke_test.js` 无头跑完 14 天与全部结局判定 |
 | `media/` | README 用的 logo、游戏动图，以及链接分享卡片 `og.png` |
 
 ## 修改与重建素材
@@ -82,6 +99,31 @@ python tools/build_assets.py
 ```bash
 node tools/check_en.js
 ```
+
+提供原图的七位 AI 娘使用 `Ai 资源` 中的立绘，由脚本保留透明通道、裁切并量化成 180×128 的像素立绘和 40×50 的证件照，不重绘。其他角色沿用现有人物素材：
+
+```bash
+python tools/import_aicast.py --src "<你存放原图的目录>" --map tools/aicast_expr_map.json
+```
+
+剧情改动之后，跑一遍无头冒烟测试（会走完 14 天的队列、所有裁定、证据选择和结局映射）：
+
+```bash
+node tools/smoke_test.js
+node tools/plot_regression_test.js
+```
+
+完整浏览器通关测试使用真实鼠标点击、拖放、检查和盖章，从第一天走到第十四天的 E29 结局；独立浏览器会话不会改动玩家的存档。Windows 默认使用已安装的 Microsoft Edge：
+
+```bash
+npm install --no-save --package-lock=false playwright
+node tools/browser_playthrough.js
+node tools/browser_playthrough.js --lang=en
+```
+
+加 `--headed` 可观看自动游玩。每日截图、结局截图和 JSON 报告输出到 `tools/test-results/`。非 Windows 环境先运行 `npx playwright install chromium`。
+
+导入透明立绘后可运行 `python tools/test_aicast.py`，确认透明通道和深色人物细节被保留。
 
 本地预览：在仓库根目录运行 `python -m http.server`，打开 <http://localhost:8000>。
 
