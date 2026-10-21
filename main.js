@@ -46,7 +46,6 @@ function onUp(ev) {
 
 function boothInput(x, y) {
   if (B.cut) { if (now - B.cut.t0 > CHAT.mail + 1) chatDone(); return; }
-  if (inBox(x, y, RULE_BTN) && !B.event && !B.closeup) { toggleRules(); return; }
   if (B.closeup) { if (now - B.closeup.t0 > 1.2) closeupDone(); return; }
   if (B.event && B.event.type === 'clones') { if (y < 124) shootAt(x, y); return; }
   if (B.event && B.event.type === 'rush') {
@@ -58,6 +57,7 @@ function boothInput(x, y) {
 }
 
 function boothDown(x, y) {
+  if (inBox(x, y, BOOK_BOX) && !B.docs.some(d => d.big && inBox(x, y, docBox(d)))) return toggleRules();
   if (B.insp.on) {
     if (inBox(x, y, INSPECT_BTN)) return setInspect(false);
     if (S.day >= 4 && inBox(x, y, XRAY_BTN)) return setXray(!B.xray.on);
@@ -84,7 +84,6 @@ function boothDown(x, y) {
     if (d.big && !inBox(x, y, DESK)) continue;
     if (inBox(x, y, box)) return dragStart(d, x, y);
   }
-  if (inBox(x, y, BOOK_BOX)) return toggleRules();
 }
 
 function dragStart(d, x, y) {

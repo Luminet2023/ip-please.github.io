@@ -7,7 +7,6 @@ const DETAIN_BTN = [172, 268, 212, 280];
 const QUIZ_BTN = [126, 268, 166, 280];
 const INSPECT_BTN = [602, 322, 634, 354];
 const XRAY_BTN = [566, 322, 598, 354];
-const RULE_BTN = [530, 322, 562, 354];
 const ASK_BTN = [548, 140, 590, 162];
 const BANNER_BOX = [300, 134, 598, 168];
 const TRAY_Y0 = 196, TRAY_Y1 = 252, TRAY_W = 170, TRAY_X = W - TRAY_W;
@@ -942,7 +941,7 @@ function hintText() {
     if (!here) return '';
     const onDesk = B.docs.some((d) => d.owner === 'ent' && d.big);
     if (!T.dragged && !onDesk) return '把柜台上的证件（左下小图标）拖到右边桌上';
-    if (!T.rules) return '点右下角的『宪法』，看今天的入境规则';
+    if (!T.rules) return '点击桌上的宪法书，查看今天的入境规则';
     if (!T.tray) return '点右侧的把手“<”，拉出印章栏';
     if (!T.stamped) return '把证件挪到印章正下方，按“准予”或“拒绝”';
     if (!T.returned && e.decided) return '把盖好章的证件拖回左边窗口，还给旅客';
@@ -951,7 +950,7 @@ function hintText() {
   }
   if (!here) return '';
   if (e.spec.signature && !e.decided) return '请在待决文书上盖准予或拒绝章，再归还文书';
-  if (S.day <= 5 && !B.ruleOpened) return '今天有新规：点右下角『宪法』看看（标着 NEW）';
+  if (S.day <= 5 && !B.ruleOpened) return '今天有新规：点击桌上的宪法书查看（新条款标着 NEW）';
   if (S.day === 2) {
     if (!T.inspect) return '右下『?』检查模式：点两处矛盾的信息（如国籍和时区）';
     if (!T.tell && !e.suspect && B.idx >= 3) return '证件都对得上？用『检查』点 Ta 说的话，找马脚';
@@ -987,7 +986,6 @@ function drawBooth() {
 }
 
 function drawButtons() {
-  button(RULE_BTN, '§', '宪法', !!B.ruleInst);
   if (S.day >= 4) button(XRAY_BTN, 'X', 'X光', B.xray.on);
   button(INSPECT_BTN, '?', '检查', B.insp.on);
 }

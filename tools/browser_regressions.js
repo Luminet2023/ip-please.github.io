@@ -32,7 +32,7 @@ module.exports = async ({ page, state, click, dragDoc, waitFor, inspectMode, lan
     assert.ok(p,'visible field '+key); await click(...p);
   }
   async function book(rule) {
-    await inspectMode(false); await click(546,338);
+    await inspectMode(false); await click(...await page.evaluate(() => center(BOOK_BOX)));
     for(let i=0;i<10;i++){
       if((await state()).booth.docs.find(d=>d.key==='rule')?.fields[rule])return;
       const b=(await state()).booth.docs.find(d=>d.key==='rule');
