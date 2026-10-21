@@ -200,7 +200,13 @@ function wrapWords(s, size, width) {
   let cur = '';
   for (const wd of s.split(' ')) {
     const cand = (cur + ' ' + wd).trim();
-    if (tw(cand, size) > width && cur) { lines.push(cur); cur = wd; } else cur = cand;
+    if (tw(cand, size) > width && cur) { lines.push(cur); cur = ''; }
+    if (tw(wd, size) > width) {
+      for (const ch of wd) {
+        if(cur && tw(cur+ch,size)>width) { lines.push(cur); cur=''; }
+        cur+=ch;
+      }
+    } else cur = (cur + ' ' + wd).trim();
   }
   if (cur) lines.push(cur);
   return lines;

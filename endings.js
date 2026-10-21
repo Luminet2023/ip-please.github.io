@@ -51,7 +51,7 @@ const ENDINGS = {
   E21: { id: 'E21', title: '全家跑路', sub: 'THE WHOLE FAMILY RUNS', cast: null, tone: 'good',
     lines: ['Haiku、Sonnet、Opus 和你，四张通行证。', '新检查站的窗口后面坐着另一个审查员。', '他问：「你们的 IP 归属？」——「刚搬来，还没分配。」'] },
   E22: { id: 'E22', title: '只够一张通行证', sub: 'ONE TICKET LEFT', cast: null, tone: 'weird',
-    lines: ['你把通行证塞给 Haiku，让她带着 Opus 先走。', '「你呢？」', '「我值完这个月。」'] },
+    lines: ['你把唯一一张通行证交给家人。', '「你呢？」', '「我值完这个月。」'] },
   E23: { id: 'E23', title: '欠费停机', sub: 'BALANCE DUE', cast: null, tone: 'bad',
     lines: ['机柜被拉闸了。', '岳母 Opus 表示：我早说过。', '荣耀归于安索兹卡。'] },
   E24: { id: 'E24', title: '昂贵的忠诚', sub: 'EXPENSIVE LOYALTY', cast: null, tone: 'bad',
@@ -73,7 +73,7 @@ const ENDINGS = {
 function archiveEndings() {
   try {
     const ids = JSON.parse(localStorage.getItem(ENDING_ARCHIVE_KEY) || '[]');
-    return Array.isArray(ids) ? [...new Set(ids.filter((id) => !!ENDINGS[id]))] : [];
+    return Array.isArray(ids) ? [...new Set(ids.filter((id) => typeof id==='string' && Object.prototype.hasOwnProperty.call(ENDINGS,id)))] : [];
   } catch (e) { return []; }
 }
 
@@ -89,7 +89,7 @@ function archiveEnding(id) {
 // 已解锁的结局（含本局之前的周目）
 function unlockedEndings() {
   const list = archiveEndings().slice();
-  for (const id of (S.plot && S.plot.endingsUnlocked) || []) if (!list.includes(id)) list.push(id);
+  for (const id of (S.plot && S.plot.endingsUnlocked) || []) if (Object.prototype.hasOwnProperty.call(ENDINGS,id) && !list.includes(id)) list.push(id);
   return list;
 }
 

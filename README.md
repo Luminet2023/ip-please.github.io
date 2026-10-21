@@ -64,6 +64,7 @@ https://ip-please.github.io
 - **证据处理单**：打印机吐出一张纸，托盘换成三枚「处理章」（默认是 保留 / 上交 / 销毁，也可以被案件改成三个自定义选项）。选完才真正写入 `S.plot.evidence`。
 - **个人档案槽**：D1 结束前会多出一张空白小票，拖进桌面左下角的档案槽就收起来，拖回窗口就销毁。第 7 天 Kimi 会因为你当时的选择说不同的话。
 - **终局文书**：D14 结束时，满足条件的剧情会把几张写着不同结局的公文摊在桌上，用「准予」章盖哪一份，就走哪一个结局。
+- **正式裁定文书**：申诉回执、迁移协议、删除申请、审计、移交、授权和家庭迁移等 18 类事件，必须在对应文书上盖「准予」或「拒绝」章。只盖护照不能结束该事件。证据处理单必须明确选择；条件不足的迁移选项会提示原因并保留处理单。
 
 ## 目录
 
@@ -117,14 +118,31 @@ node tools/plot_regression_test.js
 
 ```bash
 npm install --no-save --package-lock=false playwright
-node tools/browser_playthrough.js
-node tools/browser_playthrough.js --lang=en
-node tools/browser_playthrough.js --regressions
+node tools/browser_playthrough.js --speed=12
+node tools/browser_playthrough.js --lang=en --speed=12
+node tools/browser_playthrough.js --regressions --speed=12
 ```
 
 加 `--headed` 可观看自动游玩。每日截图、结局截图和 JSON 报告输出到 `tools/test-results/`。非 Windows 环境先运行 `npx playwright install chromium`。
 
 `--regressions` 用独立场景复现卡片排版、发行主体与宪法比对、对白逐字动画、网络信息、打印来源和人物一致性，可与 `--lang=en` 组合检查英文画面。
+
+**观看全部 30 个结局**：Windows 双击根目录的 `观看所有结局.cmd`。默认不倍速，保留游戏原始时钟、对白与打印动画，结局展示后另停留 8 秒。脚本会依次打开 Edge，使用独立测试存档，从第 1 天开始真实操作到每个结局。每条路线会实际检查、拖放证件、处理证据、裁定文书、购买通行证及签署终局文书。每轮继承本次脚本实际解锁的结局收藏；不写入剧情条件、不调用结局函数。终端按 Ctrl+C 可停止。
+
+```bash
+# 默认打开可观看浏览器，以正常速度依次完成全部结局
+node tools/browser_all_endings.js
+# 只观看一条路线，正常速度；在每位旅客前额外停顿 800 毫秒
+node tools/browser_all_endings.js --ending=E21 --pause=800
+# 后台并行验收全部结局
+node tools/browser_all_endings.js --headless --jobs=4
+```
+
+完整通关需要走完各路线的天数，耗时显著多于读取结局预设。结果写到 `tools/test-results/all-endings.html`、`all-endings.json`，每条路线另有 `E01-playthrough.json` 和 `E01-ending.png` 等文件。报告包含沿途裁定、证据选择、日终状态和浏览器异常。`--ending=E30` 会先实际完成 E27 以满足收藏前置条件。
+
+开发验收还应运行 `node tools/source_audit_test.js`。`plot_regression_test.js` 中的 30 组固定状态用例用于单独验证结局判定，`browser_all_endings.js` 用于验证从头游玩的可达性，二者的起点不同。
+
+剧情主角、审计员、家属和 MiniMax 使用固定身份；普通排队旅客才从随机池生成。家属与 MiniMax 没有提供专用 AI 原图，使用专门定义的程序像素角色。素材导入保留 PNG 透明通道；浏览器回归会检查图集中 56 个 AI 表情，并输出 `zh-all-cast.png` / `en-all-cast.png`。
 
 导入透明立绘后可运行 `python tools/test_aicast.py`，确认透明通道和深色人物细节被保留。
 

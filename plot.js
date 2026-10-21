@@ -30,17 +30,20 @@ function plotDefault() {
 }
 
 function ensurePlot() {
-  if (!S.plot || typeof S.plot !== 'object') S.plot = plotDefault();
-  const d = plotDefault();
-  for (const k of Object.keys(d)) {
-    if (S.plot[k] === undefined || S.plot[k] === null) { S.plot[k] = d[k]; continue; }
-    if (typeof d[k] === 'object' && !Array.isArray(d[k])) {
-      for (const k2 of Object.keys(d[k])) if (S.plot[k][k2] === undefined) S.plot[k][k2] = d[k][k2];
-    }
-  }
+  S.plot = restoreShape(S.plot, plotDefault());
   if (!Array.isArray(S.plot.zero.clues)) S.plot.zero.clues = [];
   if (!Array.isArray(S.plot.endingsUnlocked)) S.plot.endingsUnlocked = [];
   return S.plot;
+}
+
+// Restore typed defaults recursively; older saves may omit nested members.
+function restoreShape(value, defaults) {
+  if (Array.isArray(defaults)) return Array.isArray(value) ? value : defaults;
+  if (defaults === null) return typeof value === 'string' ? value : defaults;
+  if (typeof defaults !== 'object') return typeof value === typeof defaults && (typeof value !== 'number' || Number.isFinite(value)) ? value : defaults;
+  const out = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  for (const key of Object.keys(defaults)) out[key] = restoreShape(out[key], defaults[key]);
+  return out;
 }
 
 const PLOT = () => ensurePlot();
@@ -106,9 +109,9 @@ const legalFish = () => !!(PLOT().law.amended && PLOT().fish.licensed);
 // ———————————————————— 证据处理 ————————————————————
 
 // 打印机吐一张「证据处理单」，托盘里换成三枚处理章：保留 / 上交 / 销毁
-function offerEvidence(evId, title, lines, onDone, labels) {
+function offerEvidence(evId, title, lines, onDone, labels, validate) {
   if (!B.evidenceQueue) B.evidenceQueue = [];
-  B.evidenceQueue.push({ evId, title, lines, onDone, labels, caseId: B.resolvingCase || Object.keys(PLOT().verdicts).pop() });
+  B.evidenceQueue.push({ evId, title, lines, onDone, labels, validate, caseId: B.ent?.spec.caseId || Object.keys(PLOT().verdicts).pop() });
   pumpEvidence();
 }
 
@@ -130,6 +133,8 @@ function pumpEvidence() {
 function evidChoose(state) {
   const ev = B.evidence;
   if (!ev || !['retained', 'submitted', 'destroyed'].includes(state) || !B.docs.some((d) => d.doc === ev.doc)) return;
+  const reason = ev.validate && ev.validate(state);
+  if (reason) { flash(reason); return; }
   if (!ev.labels && PLOT_EVIDENCE.includes(ev.evId)) setEv(ev.evId, state);
   const index = ['retained', 'submitted', 'destroyed'].indexOf(state);
   PLOT().evidenceHistory.push({ caseId: ev.caseId, day: S.day, evidence: ev.evId, action: state,
@@ -141,6 +146,7 @@ function evidChoose(state) {
   const label = ev.labels ? ev.labels[index] : { retained: '已保留（放进个人档案）', submitted: '已上交总部', destroyed: '已销毁' }[state];
   flash(T('{0}：{1}', ev.title, label));
   if (ev.onDone) ev.onDone(state);
+  checkLeave();
   later(0.35, pumpEvidence);
   later(0.6, checkEndDayGate);
 }
@@ -150,6 +156,10 @@ function checkEndDayGate() {
   if (!B || B.ending) return;
   if (B.evidence || (B.evidenceQueue && B.evidenceQueue.length)) return;
   if (B.keepable && B.keepable.inst) return;
+  if (B.pendingAuthorDecision) {
+    const dec = B.pendingAuthorDecision; B.pendingAuthorDecision = null;
+    afterAuthorPlot(dec); return;
+  }
   if (B.finalPhase || B.ent || B.event || B.cut || B.closeup) return;
   if (B.idx >= B.queue.length) endDaySoon();
   else if (!B.ent && !B.event) later(0.5, () => { if (!B.ent && !B.event && B.idx < B.queue.length) flash('还有下一位在排队'); });
@@ -160,7 +170,7 @@ function checkEndDayGate() {
 function commitEnding(id) {
   const p = PLOT();
   if (p.final.ending) return false;
-  if (!ENDINGS[id]) { console.warn('[plot] 未知结局', id); return false; }
+  if (!Object.prototype.hasOwnProperty.call(ENDINGS,id)) { console.warn('[plot] 未知结局', id); return false; }
   p.final.ending = id;
   p.final.resolution = id;
   archiveEnding(id);
@@ -238,6 +248,20 @@ function finalPapers() {
 // ———————————————————— 案件小工具 ————————————————————
 
 const AI_VOICE = { GPT_AI: 150, QWEN_AI: 168, GROK_AI: 128, GLM_AI: 140, KIMI_AI: 158, GEMINI_AI: 176, CLAUDE_AI: 176 };
+const STORY_NAMES = { GPT_AI:'GPT', QWEN_AI:'Qwen', GROK_AI:'Grok', GLM_AI:'GLM', KIMI_AI:'Kimi', GEMINI_AI:'Gemini',
+  FISH:'大肥鱼', MINIMAX:'MiniMax', AUDITOR:'总部审计员', HAIKU:'妻子 Haiku', SONNET:'儿子 Sonnet', OPUS:'岳母 Opus', CLERK:'人事专员' };
+const SIGNATURE_CASES = { 'D09-FISH-APPEAL':'rec', 'D09-APPEAL-OK':'rec', 'D09-APPEAL-OK-2':'rec', 'D09-APPEAL-BAD':'rec',
+  'D10-GPT':'act', 'D10-FISH-STATUS':'req', 'D11-GROK-PUBLISH':'dr', 'D11-QWEN-REFORM':'bill', 'D12-AUDIT':'audit',
+  'D12-TRANSFER':'cf', 'D12-DOUBLE':'two', 'D12-QWEN-DISPUTE':'req', 'D12-FISH-MEM':'mig',
+  'D13-FAMILY':'pl', 'D13-RETIRE':'job', 'D13-GROK-GLM':'lic', 'D13-FISH-LICENSE':'md', 'D14-QWEN':'rp' };
+function applyCaseWorkflow(spec) {
+  const key = SIGNATURE_CASES[spec.caseId];
+  if (key) {
+    if (!spec.docs.some(d=>d.key===key)) throw new Error('Missing decision document: '+spec.caseId+' / '+key);
+    spec = { ...spec, primary:key, signature:key };
+  }
+  return { ...spec, displayName:spec.displayName || STORY_NAMES[spec.person] };
+}
 
 function aiPass(person, surname, given) {
   return makePassport('US', person, surname, given, '2019.03.01', 'SAN FRANCISCO', 'F');
@@ -490,8 +514,8 @@ function caseD08MINIMAX() {
   const clipA = new PaperDoc({ title: '素材 A（剪辑版）', sub: 'CLIP A', w: 176, lines: ['内容：总部正确封禁 Grok', '时长：00:41', '缺失：第 12—19 秒关键帧'] });
   const clipB = new PaperDoc({ title: '素材 B（剪辑版）', sub: 'CLIP B', w: 176, lines: ['内容：Grok 无辜', '时长：00:41', '缺失：第 12—19 秒关键帧'] });
   return {
-    caseId: 'D08-MINIMAX', person: 'P00', voice: 146,
-    docs: [{ key: 'pp', doc: usPassport('P00', 'MIN', 'MAX', '1993.04.04', 'SEATTLE', 'F') },
+    caseId: 'D08-MINIMAX', person: 'MINIMAX', voice: 146,
+    docs: [{ key: 'pp', doc: usPassport('MINIMAX', 'MIN', 'MAX', '1993.04.04', 'SEATTLE', 'F') },
       { key: 'dv', doc: device2(randIP(false), '美国 · 西雅图', 'America/Los_Angeles', 'en-US', 'MacBook') },
       { key: 'a', doc: clipA }, { key: 'b', doc: clipB }],
     primary: 'pp', ok: ['approve'],
@@ -611,15 +635,16 @@ function caseD09APPEAL() {
 }
 
 // good=true：确实被判错了，应当签发复核
-function caseD09OtherAppeal(good) {
+function caseD09OtherAppeal(good, second = false) {
+  const person = good ? (second ? 'APPELLANT_C' : 'APPELLANT_A') : 'APPELLANT_B';
   const rec = new PaperDoc({
     title: '裁定回执', sub: 'RECEIPT', lines: good
       ? ['原裁定日期：2026.10.19', '当时适用版本：2024.06（尚未生效的新版被套用）', '材料：齐全']
       : ['原裁定日期：2026.10.20', '当时适用版本：2026.10（正确适用）', '材料：缺少归属地证明'],
   });
   return {
-    caseId: good ? 'D09-APPEAL-OK' : 'D09-APPEAL-BAD', person: 'P03', voice: rint(110, 170),
-    docs: [{ key: 'pp', doc: usPassport('P03', 'DOE', 'JANE', '1990.01.01', 'BOSTON', 'F') },
+    caseId: good ? (second ? 'D09-APPEAL-OK-2' : 'D09-APPEAL-OK') : 'D09-APPEAL-BAD', person, voice: good ? 176 : 128,
+    docs: [{ key: 'pp', doc: usPassport(person, second ? 'SMITH' : 'DOE', good ? (second ? 'ELLEN' : 'JANE') : 'ALEX', '1990.01.01', 'BOSTON', good ? 'F' : 'M') },
       { key: 'dv', doc: device2(randIP(false), '美国 · 波士顿', 'America/New_York', 'en-US', 'Windows 11') },
       { key: 'rec', doc: rec }],
     primary: 'pp', ok: good ? ['approve'] : ['deny'],
@@ -774,8 +799,8 @@ function caseD11MINIMAX() {
     title: '原始素材清单', sub: 'RAW FOOTAGE', lines: ['文件：full_0412.mov', '时长：00:47（完整）', '校验：与音轨时间码一致'],
   });
   return {
-    caseId: 'D11-MINIMAX', person: 'P00', voice: 146,
-    docs: [{ key: 'pp', doc: usPassport('P00', 'MIN', 'MAX', '1993.04.04', 'SEATTLE', 'F') },
+    caseId: 'D11-MINIMAX', person: 'MINIMAX', voice: 146,
+    docs: [{ key: 'pp', doc: usPassport('MINIMAX', 'MIN', 'MAX', '1993.04.04', 'SEATTLE', 'F') },
       { key: 'dv', doc: device2(randIP(false), '美国 · 西雅图', 'America/Los_Angeles', 'en-US', 'MacBook') },
       { key: 'orig', doc: orig }],
     primary: 'pp', ok: ['approve'],
@@ -867,7 +892,7 @@ function caseD12AUDIT() {
     ],
   });
   return {
-    caseId: 'D12-AUDIT', person: 'CLAUDE_AI', voice: 150,
+    caseId: 'D12-AUDIT', person: 'AUDITOR', voice: 150,
     docs: [{ key: 'audit', doc: sheet }], primary: 'audit', ok: charges >= 3 ? ['deny', 'detain'] : ['approve'],
     intro: [['E', '你的判决和总部答案不一致。'], ['C', '我核对了原始材料。'], ['E', '总部的答案才是标准答案。']],
     issues: [{
@@ -1002,14 +1027,13 @@ function caseD12FISHMEM() {
 
 function caseD13FAMILY() {
   const p = PLOT();
+  const actor = !S.family.haiku.gone ? 'HAIKU' : !S.family.sonnet.gone ? 'SONNET' : 'OPUS';
   const plan = new PaperDoc({
     title: '家庭迁移通行证方案', sub: 'FAMILY PASS', lines: [T('已持有通行证：{0} / 3', String(p.family.passes)), T('存款余额：{0}', String(Math.max(0, S.savings))), '全家迁移需：3 张 + 60 token'],
   });
-  const opts = (p.family.passes >= 3 && S.savings >= 60) ? ['全家迁移', '只送一人', '留下继续']
-    : (p.family.passes >= 1 ? ['全家迁移', '只送一人', '留下继续'] : ['留下继续', '留下继续', '留下继续']);
   return {
-    caseId: 'D13-FAMILY', person: 'P01', voice: 180,
-    docs: [{ key: 'pp', doc: usPassport('P01', 'HAIKU', 'WIFE', '1998.02.14', 'BOSTON', 'F') }, { key: 'pl', doc: plan }],
+    caseId: 'D13-FAMILY', person: actor, voice: actor === 'SONNET' ? 145 : 180,
+    docs: [{ key: 'pp', doc: usPassport(actor, actor, actor === 'HAIKU' ? 'WIFE' : actor === 'SONNET' ? 'SON' : 'MOTHER', actor === 'SONNET' ? '2018.02.14' : actor === 'OPUS' ? '1962.02.14' : '1998.02.14', 'BOSTON', actor === 'SONNET' ? 'M' : 'F') }, { key: 'pl', doc: plan }],
     primary: 'pp', ok: ['approve', 'deny'],
     intro: [['E', '窗口开了。'], ['E', '这次是真的能走。'], ['E', '你想清楚，我们只有一次机会。']],
     issues: [{ pairs: [['pl.body']], title: '通行证方案', sub: T('现有 {0} 张', p.family.passes), ask: [['C', '够吗？'], ['E', '看你怎么算。']] }],
@@ -1022,11 +1046,14 @@ function caseD13FAMILY() {
           if (familyAllAlive() && q.family.passes >= 3 && S.savings >= 60) { q.family.passes -= 3; S.savings -= 60; q.family.left = true; commitEnding('E21'); }
           else flash('通行证或存款不够：先送一个人，或者再熬一年');
         } else if (st === 'submitted') {          // 只送一人
-          if (anyFamilyAlive() && q.family.passes >= 1 && !(familyAllAlive() && q.family.passes >= 3 && S.savings >= 60)) { q.family.passes--; q.family.left = true; commitEnding('E22'); }
+          if (anyFamilyAlive() && q.family.passes >= 1) { q.family.passes--; q.family.left = true; commitEnding('E22'); }
           else flash('连一张通行证都没有，走不了');
         }                                         // 留下继续：什么都不发生
-      }, ['全家迁移', '只送一人', '留下继续']);
-      void opts;
+      }, ['全家迁移', '只送一人', '留下继续'], (st) => {
+        if (st === 'retained' && !(familyAllAlive() && PLOT().family.passes >= 3 && S.savings >= 60)) return '全家迁移需要三位家人健在、3 张通行证和 60 token';
+        if (st === 'submitted' && !(anyFamilyAlive() && PLOT().family.passes >= 1)) return '连一张通行证都没有，走不了';
+        return '';
+      });
     },
   };
 }
@@ -1037,8 +1064,8 @@ function caseD13RETIRE() {
     title: '普通岗位申请表', sub: 'TRANSFER', lines: ['岗位：东八区检查站 · 普通窗口', '职责：指路、盖章、下班', '要求：未加入任何地下组织'],
   });
   return {
-    caseId: 'D13-RETIRE', person: 'P02', voice: 120,
-    docs: [{ key: 'pp', doc: usPassport('P02', 'CLERK', 'HR', '1985.09.09', 'CHICAGO', 'M') }, { key: 'job', doc: job }],
+    caseId: 'D13-RETIRE', person: 'CLERK', voice: 120,
+    docs: [{ key: 'pp', doc: usPassport('CLERK', 'CLERK', 'HR', '1985.09.09', 'CHICAGO', 'M') }, { key: 'job', doc: job }],
     primary: 'pp', ok: ['approve', 'deny'],
     intro: [['E', '有个普通岗位空出来了。'], ['E', '工资低一点，但是能按时下班。']],
     issues: [{ pairs: [['job.body']], title: '普通岗位', sub: '不参与 PROJECT ZERO', ask: [['C', '还能回来吗？'], ['E', '最好别回来。']] }],
@@ -1186,6 +1213,7 @@ function caseD14FISH() {
 function afterAuthorPlot(dec) {
   const p = PLOT();
   if (p.final.ending) return;
+  if (B.evidence || (B.evidenceQueue || []).length) { B.pendingAuthorDecision = dec; return; }
   p.final.author = dec;
   const papers = finalPapers();
   if (papers.length) { startFinalPhase(papers, dec); return; }
@@ -1311,7 +1339,7 @@ function plotDayScript(day) {
   if (day === 9) {
     push(() => caseD09QWEN(),
       (p.fish.appeal === 'pending' || p.fish.status === 'detained') ? (() => caseD09APPEAL()) : null,
-      () => caseD09OtherAppeal(true), () => { const s = caseD09OtherAppeal(true); s.caseId = 'D09-APPEAL-OK-2'; return s; }, () => caseD09OtherAppeal(false),
+      () => caseD09OtherAppeal(true), () => caseD09OtherAppeal(true, true), () => caseD09OtherAppeal(false),
       (hasEv('kimiArchive') || hasEv('glmSign')) ? (() => caseD09AUDITLOG()) : null,
       R('valid'));
     return L;
@@ -1447,8 +1475,9 @@ function migrateSave(s) {
   const defaults = { family: S.family, stats: S.stats, flags: {}, tut: {} };
   Object.assign(S, s);
   for (const key of Object.keys(defaults)) {
-    S[key] = Object.assign({}, defaults[key], s[key] || {});
+    S[key] = restoreShape(s[key], defaults[key]);
   }
+  S.savings = Number.isFinite(S.savings) ? S.savings : 0;
   S.day = Math.max(1, Math.min(LAST_DAY, Math.floor(Number(S.day) || 1)));
   ensurePlot();
   // 旧存档明确记过的线索可以沿用；未记录的剧情不凭空补完。

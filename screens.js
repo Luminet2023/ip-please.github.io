@@ -99,6 +99,7 @@ function startEndless() {
 function drawTitle(t) {
   drawBg();
   darken(0.88);
+  txt(632, 350, 'v' + BUILD_VERSION, 8, K.GREY, 'ra');
   if (t < 0.3) return;
   rect(0, 124, W - 1, 214, 'rgb(92,28,26)');
   rect(0, 124, W - 1, 125, K.RED); rect(0, 213, W - 1, 214, K.RED);

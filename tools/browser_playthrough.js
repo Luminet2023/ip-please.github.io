@@ -7,12 +7,26 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+let playwright;
+for (const moduleName of [process.env.PLAYWRIGHT_MODULE, 'playwright', path.join(process.env.TEMP || '/tmp','ip-please-browser-deps','node_modules','playwright')].filter(Boolean)) {
+  try { playwright=require(moduleName);break; } catch(error) { if(error.code!=='MODULE_NOT_FOUND')throw error; }
+}
+if(!playwright)throw Error('Install browser test dependency: npm install --no-save --package-lock=false playwright');
+const { chromium }=playwright;
 const ROOT = path.resolve(__dirname, '..');
-const OUT = path.join(__dirname, 'test-results');
+const OUT = path.resolve(process.argv.find(a=>a.startsWith('--out='))?.slice(6)||path.join(__dirname, 'test-results'));
 const language = process.argv.includes('--lang=en') ? 'en' : 'zh';
 const focused = process.argv.includes('--regressions');
-const report = { language, days: [], cases: [], evidence: [], errors: [], ending: null };
+const routes = require('./ending_routes');
+const arg = (key, fallback) => process.argv.find(v => v.startsWith('--' + key + '='))?.split('=').slice(1).join('=') || fallback;
+const target = arg('ending', 'E29');
+const speed = Number(arg('speed', '1'));
+const pause = Number(arg('pause', '0'));
+const endingPause = Number(arg('ending-pause', process.argv.includes('--headed') ? '8000' : '0'));
+const seed = Number(arg('seed', '713'));
+const prefix = arg('prefix', language);
+if (!routes.IDS.includes(target) || !Number.isFinite(speed) || !(speed > 0) || !Number.isFinite(pause) || !(pause >= 0)) throw Error('Invalid ending, speed or pause');
+const report = { language, target, seed, speed, pause, start: 'new game, day 1; no checkpoint or state injection', days: [], cases: [], evidence: [], errors: [], ending: null };
 fs.mkdirSync(OUT, { recursive: true });
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let browser, page, server;
@@ -65,7 +79,7 @@ async function dragDoc(d, x, y) {
   await page.mouse.move(from.x, from.y); await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps: 3 }); await page.mouse.up();
 }
-async function waitFor(fn, label, timeout = 10000) {
+async function waitFor(fn, label, timeout = 10000 * Math.max(1, 12 / speed)) {
   const until = Date.now() + timeout;
   while (Date.now() < until) { const s = await state(); if (fn(s)) return s; await delay(30); }
   throw new Error('Timeout: ' + label + '\n' + JSON.stringify(await state()));
@@ -115,7 +129,7 @@ async function evidence(s) {
   // Let the printer's delayed tray-open finish before touching its handle.
   await delay(120);
   await inspectMode(false); await tray(true);
-  const choice = ev.id === 'familyPass' || ev.id === 'sysLicense' ? 2 : 0;
+  const choice = routes.evidence(target, ev.id, s.day);
   const current = await state();
   await click(current.booth.trayX + 34 + choice * 53, 224);
   const after = await state();
@@ -128,17 +142,23 @@ async function entrant(s) {
   const e = s.booth.ent;
   await waitFor((v) => v.booth.ent?.handed && v.booth.ent.phase === 'here' && v.now >= v.booth.ent.busyUntil, 'documents: ' + e.person);
   await waitFor((v) => v.booth.ent.printedDocs.every((key) => v.booth.docs.some((d) => d.key === key)), 'printed documents');
-  if (e.caseId === 'D04-GROK') await page.screenshot({ path: path.join(OUT, language + '-grok-transparent.png') });
-  await investigate((await state()).booth.ent);
-  if (e.caseId === 'D02-QWEN') await page.screenshot({ path: path.join(OUT, language + '-qwen-papers.png') });
+  if (!process.argv.includes('--compact') && e.caseId === 'D04-GROK') await page.screenshot({ path: path.join(OUT, prefix + '-grok-transparent.png') });
+  if (routes.investigate(target, e)) await investigate((await state()).booth.ent);
+  if (!process.argv.includes('--compact') && e.caseId === 'D02-QWEN') await page.screenshot({ path: path.join(OUT, prefix + '-qwen-papers.png') });
   s = await state();
   // An investigation may print a sheet while its applicant is still present.
   while (s.booth.evidence) { await evidence(s); await delay(80); s = await state(); }
   const note = s.booth.docs.find((d) => d.key === 'note');
-  if (note) await dragDoc(note, 100, 280);
+  if (note && !routes.keepNote(target)) await dragDoc(note, 100, 280);
   // Decline the optional early exits so this route reaches day 14.
-  const earlyExit = ['D13-RETIRE', 'D05-RELAY', 'D12-QWEN-DISPUTE'].includes(e.caseId);
-  const decision = earlyExit ? 'deny' : e.ok.includes('approve') ? 'approve' : 'deny';
+  const decision = routes.verdict(target, e);
+  if (pause) await delay(pause);
+  if (decision === 'detain') {
+    await click(194, 274);
+    await waitFor(v => !v.booth.ent || v.scene !== 'booth', 'detention: ' + e.caseId);
+    report.cases.push({ day:s.day, caseId:e.caseId, decision, investigated:s.booth.ent.found > 0 });
+    return;
+  }
   await tray(false);
   // Return secondary papers, then position the stamped primary at the mark.
   for (const d of (await state()).booth.docs.filter((d) => d.owner === 'ent' && d.key !== e.primary && d.big)) {
@@ -158,6 +178,12 @@ async function entrant(s) {
   await delay(100); await tray(false);
   const stamped = (await state()).booth.docs.find((d) => d.owner === 'ent' && d.key === e.primary);
   await dragDoc(stamped, 100, 280);
+  // Return can print a mandatory choice while the applicant is still present.
+  for (let i=0; i<100; i++) {
+    const v=await state(); if (!v.booth.ent || v.scene!=='booth') break;
+    if(v.booth.evidence) await evidence(v);
+    await delay(60);
+  }
   await waitFor((v) => !v.booth.ent || v.scene !== 'booth', 'return documents: ' + e.caseId);
   report.cases.push({ day: s.day, caseId: e.caseId || e.person, decision, investigated: s.booth.ent.found > 0 });
 }
@@ -172,16 +198,22 @@ async function main() {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined), headless: !process.argv.includes('--headed') });
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: language === 'zh' ? 'zh-CN' : 'en-US', timezoneId: 'Asia/Shanghai' });
-  await context.addInitScript(() => {
-    let seed = 713;
+  await context.addInitScript(({seed:initial, speed, archive}) => {
+    let seed = initial;
     Math.random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
     const raf = window.requestAnimationFrame.bind(window);
-    window.requestAnimationFrame = (callback) => raf((ts) => callback(ts * 12));
-  });
+    if(speed!==1) window.requestAnimationFrame = (callback) => raf((ts) => callback(ts * speed));
+    if(archive.length) localStorage.setItem('ip-please-endings-v1', JSON.stringify(archive));
+  }, {seed, speed, archive: arg('archive','') ? JSON.parse(fs.readFileSync(arg('archive',''),'utf8')) : []});
   page = await context.newPage();
   page.on('pageerror', (error) => report.errors.push(error.message));
   await page.goto('http://127.0.0.1:' + server.address().port);
   await page.waitForFunction(() => typeof scene !== 'undefined' && typeof canvasEl !== 'undefined' && canvasEl);
+  if(process.argv.includes('--headed')) await page.evaluate(({target})=>{
+    const banner=document.createElement('div'); banner.textContent='自动通关 '+target+' · 从第 1 天开始 · 独立测试存档';
+    Object.assign(banner.style,{position:'fixed',left:'8px',top:'4px',zIndex:'9999',color:'#fff',background:'#711c18',padding:'5px 10px',font:'14px sans-serif',pointerEvents:'none'});
+    document.body.append(banner);
+  },{target});
   if (focused) {
     await page.waitForFunction(() => !!ATLAS_IMG && !!FONT_IMG && !!WIN_IMG);
     report.checks = await require('./browser_regressions')({ page, state, click, dragDoc, waitFor, inspectMode, language, out: OUT });
@@ -189,13 +221,13 @@ async function main() {
     console.log('PASS: ' + language + ' screenshot regressions (' + report.checks.length + ' checks)');
     return;
   }
-  const until = Date.now() + 240000;
+  const until = Date.now() + Math.max(360000, 2000000 / speed + pause * 150);
   let lastProgress = '', stallAt = Date.now();
   while (Date.now() < until) {
     const s = await state();
     const progress = [s.scene, s.day, s.booth?.idx, s.booth?.ent?.phase, s.booth?.evidence?.id, s.booth?.final?.index].join(':');
     if (progress !== lastProgress) { lastProgress = progress; stallAt = Date.now(); }
-    if (Date.now() - stallAt > 20000) throw new Error('Playthrough stalled: ' + progress);
+    if (Date.now() - stallAt > 20000 * Math.max(1,12/speed)) throw new Error('Playthrough stalled: ' + progress);
     if (s.scene === 'boot') { await click(language === 'en' ? 410 : 230, 170); }
     else if (s.scene === 'intro') await click(320, 300);
     else if (s.scene === 'title') await click(250, 305);
@@ -204,17 +236,22 @@ async function main() {
       if (!report.days.some((d) => d.day === s.day)) {
         await delay(300);
         const current = await state();
+        if(routes.buyPass(target,s.day)) for(const [key,box] of Object.entries(current.summary.boxes || {})) {
+          if(key.startsWith('pass') && !current.summary.on[key]) await click((box[0]+box[2])/2,(box[1]+box[3])/2);
+        }
         report.days.push({ day: s.day, stats: s.stats, savings: current.summary.balance, family: s.family, plot: s.plot });
-        await page.screenshot({ path: path.join(OUT, language + '-day-' + s.day + '.png') });
+        if(!process.argv.includes('--compact')) await page.screenshot({ path: path.join(OUT, prefix + '-day-' + s.day + '.png') });
         console.log('DAY ' + s.day + ' complete; savings=' + current.summary.balance + '; cases=' + report.cases.length);
       }
       if (s.elapsed > 5) await click(500, 320);
     } else if (s.scene === 'ending') {
       report.ending = s.ending; report.final = s;
-      await delay(350); await page.screenshot({ path: path.join(OUT, language + '-ending.png') });
-      if (s.day !== 14 || s.ending !== 'E29') throw new Error('Unexpected ending: DAY ' + s.day + ' ' + s.ending);
+      await delay(Math.max(350, 3200/speed)); await page.screenshot({ path: path.join(OUT, prefix + '-ending.png') });
+      report.archive = await page.evaluate(()=>unlockedEndings());
+      if (s.ending !== target) throw new Error('Unexpected ending: DAY ' + s.day + ' ' + s.ending + ', expected ' + target);
       if (report.errors.length) throw new Error('Browser errors: ' + report.errors.join('; '));
-      console.log('PASS: full 14-day browser playthrough, ' + report.cases.length + ' applicants, ending ' + s.ending);
+      console.log('PASS: from day 1 to day ' + s.day + ', ' + report.cases.length + ' applicants, ending ' + s.ending);
+      if(endingPause > 0) await delay(endingPause);
       return;
     } else if (s.ending) await delay(60);
     else if (s.scene === 'booth') {
@@ -225,8 +262,8 @@ async function main() {
       else if (b.evidence) await evidence(s);
       else if (b.keepable) { const d = b.docs.find((d) => d.key === 'zticket'); if (d) await dragDoc(d, 228, 322); }
       else if (b.final) {
-        const index = b.final.papers.findIndex((p) => p.ending === 'E29');
-        if (index < 0) throw new Error('True ending paper unavailable: ' + JSON.stringify(s.plot));
+        const index = b.final.papers.findIndex((p) => p.ending === target);
+        if (index < 0) throw new Error('Ending paper '+target+' unavailable: ' + JSON.stringify(s.plot));
         if (b.final.index !== index) await click(410, 336);
         else {
           await tray(false); const d = (await state()).booth.docs.find((d) => d.key === 'final');
@@ -243,9 +280,9 @@ async function main() {
 }
 main().catch(async (error) => {
   report.failure = error.stack; console.error(error.stack);
-  if (page) { report.failureState = await state().catch(() => null); await page.screenshot({ path: path.join(OUT, language + '-failure.png') }).catch(() => {}); }
+    if (page) { report.failureState = await state().catch(() => null); await page.screenshot({ path: path.join(OUT, prefix + '-failure.png') }).catch(() => {}); }
   process.exitCode = 1;
 }).finally(async () => {
-  fs.writeFileSync(path.join(OUT, language + (focused ? '-regressions.json' : '-playthrough.json')), JSON.stringify(report, null, 2));
+  fs.writeFileSync(path.join(OUT, prefix + (focused ? '-regressions.json' : '-playthrough.json')), JSON.stringify(report, null, 2));
   await browser?.close(); server?.close();
 });

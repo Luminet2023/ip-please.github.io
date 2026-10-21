@@ -33,7 +33,7 @@ module.exports = async ({ page, state, click, dragDoc, waitFor, inspectMode, lan
   }
   async function book(rule) {
     await inspectMode(false); await click(546,338);
-    for(let i=0;i<3;i++){
+    for(let i=0;i<10;i++){
       if((await state()).booth.docs.find(d=>d.key==='rule')?.fields[rule])return;
       const b=(await state()).booth.docs.find(d=>d.key==='rule');
       await click(b.x+b.w-24,b.y+8);
@@ -104,5 +104,8 @@ module.exports = async ({ page, state, click, dragDoc, waitFor, inspectMode, lan
   await field('log.last'); await field('dv.归属');
   assert.ok(await page.evaluate(()=>B.insp.banner?.bad)); await shot('login-check');
   checks.push('login printout belongs to the current card and detects a location mismatch');
+  const cast=await require('./browser_cast_audit')({page,out,language});
+  assert.equal(cast.checks.length,56);
+  checks.push('all 56 AI expressions preserve alpha and render over the booth background');
   return checks;
 };

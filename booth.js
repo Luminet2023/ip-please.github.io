@@ -86,6 +86,7 @@ function runSteps(steps, delay = 0) {
 }
 
 function newEntrant(spec, instant) {
+  if (!S.endless) spec = applyCaseWorkflow(spec);
   return {
     spec, tEnter: instant ? now - 1 : now + 0.35, phase: instant ? 'here' : 'enter',
     expr: ASSETS.people[spec.person].expr, talkUntil: 0, sweatT: null, slip: false, busyUntil: 0,
@@ -149,7 +150,9 @@ function handDocs(e) {
 
 // 登录记录小票：机器只出数据，比对靠审查员
 function loginStrip(e) {
-  return new PrintStrip([T('IP 登录记录'), T('近 3 次登录')], e.spec.logins, { last: [4, 35, 163, 50] }, 10, 170);
+  const strip=new PrintStrip([T('IP 登录记录'), T('近 3 次登录')], e.spec.logins, {}, 10, 170);
+  strip.fields.last=strip.rowFields[0];
+  return strip;
 }
 
 const decisionOf = (inst) => (inst.marks.length ? inst.marks[inst.marks.length - 1].kind : null);
@@ -160,6 +163,7 @@ function checkLeave() {
   if (!e || e.phase !== 'here') return;
   const prim = primaryOf(e);
   if (!prim || !prim.returned) return;
+  if (B.evidence || (B.evidenceQueue || []).length) return;
   if (B.docs.some((d) => d.owner === 'ent' && d.big && !d.loose)) {
     if (!e.complained) { e.complained = true; say('E', '我的证件还在你那儿。'); }
     return;
@@ -344,6 +348,11 @@ function stamp(kind) {
   const [mx, my] = MARK_XY[kind];
   const cx = mx + 29, cy = my + 17;
   const target = [...B.docs].reverse().find((d) => d.big && inBox(cx, cy, [d.x, d.y, d.x + d.doc.w - 1, d.y + d.doc.h - 1]));
+  if (target?.owner === 'ent' && B.ent?.spec.signature && target.key !== B.ent.spec.signature) {
+    flash('请在待决文书上盖准予或拒绝章，再归还文书');
+    later(0.5, () => setTray(false));
+    return;
+  }
   if (target) {
     later(0.05, () => target.marks.push({ kind, rx: mx - target.x, ry: my - target.y }));
     if (target.doc instanceof FinalPaper && kind === 'approve') { later(0.3, () => commitEnding(target.doc.ending)); }
@@ -666,6 +675,11 @@ function drawWindow() {
       const moving = !e.instant && now < e.tEnter + 0.8;
       const bob = moving && Math.floor(now * 10) % 2 ? 1 : 0;
       spr(exprKey(e), ex - ASSETS.people[e.spec.person].fw / 2, bob);
+      if (e.spec.displayName) {
+        const name = T(e.spec.displayName);
+        rect(3, 3, Math.min(WIN_W - 4, tw(name, 8) + 13), 16, 'rgba(22,19,19,0.86)');
+        txt(8, 5, name, 8, K.WHITE);
+      }
       if (e.sweatT !== null) {
         const s = Math.min(6, Math.floor((now - e.sweatT) / 0.35));
         const sx = ex + 22, sy = 42 + s;
@@ -936,6 +950,7 @@ function hintText() {
     return '';
   }
   if (!here) return '';
+  if (e.spec.signature && !e.decided) return '请在待决文书上盖准予或拒绝章，再归还文书';
   if (S.day <= 5 && !B.ruleOpened) return '今天有新规：点右下角『宪法』看看（标着 NEW）';
   if (S.day === 2) {
     if (!T.inspect) return '右下『?』检查模式：点两处矛盾的信息（如国籍和时区）';

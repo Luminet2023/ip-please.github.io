@@ -204,11 +204,19 @@ class Citation {
 class PrintStrip {
   constructor(header, rows, fields = {}, rowSize = 8, w = 128) {
     this.header = header.map((s) => T(s)); this.rows = rows.map((s) => T(s));
-    const bodyY = 11 + 13 * header.length;
-    this.fields = { body: [6, bodyY, w - 7, bodyY + (rowSize + 2) * rows.length], ...fields };
+    this.headerLines=this.header.flatMap(s=>wrap(s,10,w-16));
+    const bodyY = 11 + 13 * this.headerLines.length;
+    let bodyEnd=bodyY;
+    this.rowLayout=this.rows.map(s=>{
+      const lines=wrap(s,rowSize,w-16), y=bodyEnd;
+      bodyEnd+=lines.length*(rowSize+2);
+      return {lines,y};
+    });
+    this.rowFields=this.rowLayout.map(r=>[6,r.y-2,w-7,r.y+r.lines.length*(rowSize+2)]);
+    this.fields = { body: [6, bodyY-2, w - 7, bodyEnd], ...fields };
     this.rowSize = rowSize;
     this.w = w;
-    this.h = 10 + 13 * header.length + 6 + (rowSize + 2) * rows.length + 6;
+    this.h = bodyEnd+11;
     this.icon = ['card', [232, 230, 222]];
   }
 
@@ -219,10 +227,10 @@ class PrintStrip {
     G.fillStyle = K.GREY;
     for (let yy = y + 3; yy < y + h; yy += 6) { G.fillRect(x + 2, yy, 1, 1); G.fillRect(x + w - 3, yy, 1, 1); }
     let yy = y + 6;
-    for (const s of this.header) { txt(x + 8, yy, s, 10, K.INK); yy += 13; }
+    for (const s of this.headerLines) { txt(x + 8, yy, s, 10, K.INK); yy += 13; }
     rect(x + 6, yy, x + w - 7, yy, K.GREY);
     yy += 5;
-    for (const s of this.rows) { txt(x + 8, yy, s, this.rowSize, K.TEXT); yy += this.rowSize + 2; }
+    for (const row of this.rowLayout) for (const s of row.lines) { txt(x + 8, yy, s, this.rowSize, K.TEXT); yy += this.rowSize + 2; }
   }
 }
 
@@ -253,6 +261,10 @@ class PaperDoc {
     this.title = T(title); this.sub = T(sub); this.footer = T(footer);
     this.lines = lines.map((s) => T(s));
     this.w = w; this.rowSize = rowSize;
+    this.headerSize=tw(this.title,10)<=w-14?10:8;
+    this.headerLines=wrap(this.title,this.headerSize,w-14);
+    this.headerH=Math.max(18,8+this.headerLines.length*(this.headerSize+1));
+    this.bodyY=this.headerH+8;
     this.color = color;
     this.seal = seal;                       // 'hq' 总部圆印 / null
     const wrapped = [];
@@ -260,15 +272,15 @@ class PaperDoc {
       for (const ln of wrap(s, rowSize, w - 20)) wrapped.push(ln);
     }
     this.wrapped = wrapped;
-    this.dividerY = 30 + wrapped.length * (rowSize + 3);
+    this.dividerY = this.bodyY+4 + wrapped.length * (rowSize + 3);
     // Reserve a separate signature area below the divider and optional footer.
     this.h = this.dividerY + (this.footer ? 20 : 8) + 26;
     this.icon = ['card', [228, 222, 208]];
-    this.fields = { body: [6, 24, w - 7, 24 + wrapped.length * (rowSize + 3)], sign: [w - 84, this.h - 26, w - 8, this.h - 6] };
+    this.fields = { body: [6, this.bodyY-2, w - 7, this.bodyY-2 + wrapped.length * (rowSize + 3)], sign: [w - 84, this.h - 26, w - 8, this.h - 6] };
     let row = 0;
     this.lines.forEach((line, i) => {
       const count = wrap(line, rowSize, w - 20).length;
-      if (fieldNames[i]) this.fields[fieldNames[i]] = [6, 26 + row * (rowSize + 3), w - 7, 25 + (row + count) * (rowSize + 3)];
+      if (fieldNames[i]) this.fields[fieldNames[i]] = [6, this.bodyY + row * (rowSize + 3), w - 7, this.bodyY-1 + (row + count) * (rowSize + 3)];
       row += count;
     });
   }
@@ -277,10 +289,9 @@ class PaperDoc {
     const { w, h } = this;
     docShadow(x, y, w, h);
     rect(x, y, x + w - 1, y + h - 1, this.color);
-    rect(x + 2, y + 2, x + w - 3, y + 18, 'rgb(120,112,102)');
-    const headerSize = tw(this.title, 10) <= w - 14 ? 10 : 8;
-    txt(x + 7, y + 5, this.title, headerSize, K.WHITE);
-    this.wrapped.forEach((s, i) => txt(x + 8, y + 26 + i * (this.rowSize + 3), s, this.rowSize, K.TEXT));
+    rect(x + 2, y + 2, x + w - 3, y + this.headerH, 'rgb(120,112,102)');
+    this.headerLines.forEach((s,i)=>txt(x+7,y+5+i*(this.headerSize+1),s,this.headerSize,K.WHITE));
+    this.wrapped.forEach((s, i) => txt(x + 8, y + this.bodyY + i * (this.rowSize + 3), s, this.rowSize, K.TEXT));
     const by = y + this.dividerY;
     rect(x + 8, by, x + w - 9, by, 'rgb(168,158,144)');
     if (this.footer) txt(x + 8, by + 4, this.footer, 8, K.TEXT_L);
@@ -438,28 +449,31 @@ class Rulebook {
     this.day = day;
     this.w = 200;
     this.icon = ['book', C.BOOK];
-    const rules = RULES.filter((r) => r.day <= day);
-    this.npages = day >= 9 ? 3 : day >= 3 ? 2 : 1;
+    const amended = !S.endless && !!S.plot?.law?.amended;
+    const rules = RULES.filter((r) => r.day <= day).map(r => r.key === 'corp' && amended ? { ...r,
+      head:'§6 中资控股审查（已修订）', subs:['一般主体中资控股过半仍禁止', '已认证模型适用 §12 许可例外'] } : r);
     this.pages = [];
-    for (let p = 0; p < this.npages; p++) {
+    for (let p = 0; p <= Math.max(...rules.map(r=>r.page)); p++) {
       const L = [];
       for (const r of rules.filter((q) => q.page === p)) {
-        L.push({ s: T(r.head), size: 10, col: r.day === day ? K.RED_D : K.TEXT, key: r.key, isNew: r.day === day });
-        for (const s of r.subs) L.push({ s: s.includes('|') ? s : T(s), size: 8, col: K.TEXT_L, key: r.key });
+        wrap(T(r.head),10,this.w-40).forEach((s,i)=>L.push({s,size:10,col:r.day===day?K.RED_D:K.TEXT,key:r.key,isNew:r.day===day&&i===0}));
+        for (const s of r.subs) for(const line of s.includes('|')?[s]:wrap(T(s),8,this.w-20)) L.push({s:line,size:8,col:K.TEXT_L,key:r.key});
       }
-      if (p === this.npages - 1) L.push({ s: T('§12 只看地区，不看脸'), size: 8, col: K.TEXT_L, key: null });
       let y = 22;
-      const fields = {};
+      let fields = {}, rows = [];
       for (const row of L) {
+        const step=row.size===10?14:10;
+        if(y+step>178) { this.pages.push({rows,fields,h:y+6}); y=22; fields={}; rows=[]; }
         row.y = y;
-        y += row.size === 10 ? 14 : 10;
+        rows.push(row); y += step;
         if (row.key) {
           const f = fields[row.key];
           fields[row.key] = f ? [f[0], f[1], f[2], y - 2] : [4, row.y - 2, this.w - 5, y - 2];
         }
       }
-      this.pages.push({ rows: L, fields, h: y + 6 });
+      this.pages.push({ rows, fields, h: y + 6 });
     }
+    this.npages=this.pages.length;
     this.h = Math.max(...this.pages.map((p) => p.h));
     this.page = this.npages - 1;
     this.tab = [this.w - 52, 3, this.w - 4, 16];

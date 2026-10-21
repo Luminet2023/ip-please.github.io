@@ -106,6 +106,9 @@ SCRIPTED = {
     "TOM": cast.TOM, "ALEX": cast.ALEX, "CAT_GIRL": cast.CAT_GIRL, "V50": cast.V50, "HOOD": cast.HOOD,
     "SG_MAN": cast.SG_MAN, "RELAY": cast.RELAY, "MIKE": cast.MIKE, "GRANDMA": cast.GRANDMA,
     "JORJI_SUIT": cast.JORJI_SUIT, "AUTHOR": cast.AUTHOR,
+    "AUDITOR": cast.AUDITOR, "HAIKU": cast.HAIKU, "SONNET": cast.SONNET, "OPUS": cast.OPUS,
+    "MINIMAX": cast.MINIMAX, "CLERK": cast.CLERK,
+    "APPELLANT_A": cast.APPELLANT_A, "APPELLANT_B": cast.APPELLANT_B, "APPELLANT_C": cast.APPELLANT_C,
     **{f"SLANG{i}": p for i, p in enumerate(cast.SLANG)},
 }
 GROUP_EXPRS = ["smile", "talk", "neutral", "shock", "sad", "nervous"]
@@ -287,7 +290,10 @@ def main():
                 pk.add(f"{key}:{e}:slip", p.sprite(e, slip=True))
         pk.add(f"photo:{key}", photo(p.sprite()), crop=False)
         coat, top = p.walker
-        people[key] = {"expr": p.expr, "walker": [list(coat), list(top)], "scripted": key in SCRIPTED, "fw": 180}    # 蓝色大肥鱼（DeepSeek 娘）：8 表情立绘 + 证件照，素材在 assets/DAFEIYU/（不要手改，由外部生成）
+        female = key in {"EMILY", "CAT_GIRL", "GRANDMA", "HAIKU", "OPUS", "MINIMAX", "APPELLANT_A", "APPELLANT_C"}
+        if key not in SCRIPTED:
+            female = p.hair in {"long", "bun"} and p.beard is None
+        people[key] = {"expr": p.expr, "walker": [list(coat), list(top)], "scripted": key in SCRIPTED, "fw": 180, "sex": "F" if female else "M"}
     FISH_DIR = TOOLS / "assets" / "DAFEIYU"
     if FISH_DIR.exists():
         for e in EXPRS:
@@ -367,6 +373,7 @@ def main():
         blobs[name], sizes[name] = png_b64(im)
 
     data = {
+        "version": "2026.10.21.4",
         "font": {str(k): v for k, v in font_meta.items()},
         "sprites": pos,
         "people": people,

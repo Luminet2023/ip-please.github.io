@@ -9,6 +9,15 @@
 // - 外国人不懂的梗（疯狂星期四、机场、东八区……）放在每天报纸的 TL NOTE 里解释，见文件末尾 EN_NOTES
 
 const EN = {
+  '§6 中资控股审查（已修订）':'§6 Chinese ownership (amended)',
+  '一般主体中资控股过半仍禁止':'Majority Chinese ownership remains restricted',
+  '已认证模型适用 §12 许可例外':'Certified models qualify for the §12 exception',
+  '你把唯一一张通行证交给家人。': 'You give your family the only migration pass.',
+  '大肥鱼': 'Fishy',
+  '总部审计员': 'HQ auditor',
+  '人事专员': 'HR officer',
+  '请在待决文书上盖准予或拒绝章，再归还文书': 'Stamp APPROVED or DENIED on the decision form, then return it',
+  '全家迁移需要三位家人健在、3 张通行证和 60 token': 'Family migration requires all three relatives alive, 3 passes and 60 tokens',
   // ———————————————— 页面 ————————————————
   'IP, PLEASE · 请出示你的 IP': 'IP, PLEASE · A Papers, Please parody',
   'IP, PLEASE 游戏画面': 'IP, PLEASE game screen',
