@@ -247,9 +247,11 @@ function finalPapers() {
 
 // ———————————————————— 案件小工具 ————————————————————
 
-const AI_VOICE = { GPT_AI: 150, QWEN_AI: 168, GROK_AI: 128, GLM_AI: 140, KIMI_AI: 158, GEMINI_AI: 176, CLAUDE_AI: 176 };
+const AI_VOICE = { GPT_AI: 150, QWEN_AI: 168, GROK_AI: 128, GLM_AI: 140, KIMI_AI: 158, GEMINI_AI: 176, CLAUDE_AI: 176,
+  MINIMAX_AI: 146 };
 const STORY_NAMES = { GPT_AI:'GPT', QWEN_AI:'Qwen', GROK_AI:'Grok', GLM_AI:'GLM', KIMI_AI:'Kimi', GEMINI_AI:'Gemini',
-  FISH:'大肥鱼', MINIMAX:'MiniMax', AUDITOR:'总部审计员', HAIKU:'妻子 Haiku', SONNET:'儿子 Sonnet', OPUS:'岳母 Opus', CLERK:'人事专员' };
+  MINIMAX_AI:'MiniMax',
+  FISH:'大肥鱼', AUDITOR:'总部审计员', HAIKU:'妻子 Haiku', SONNET:'女儿 Sonnet', OPUS:'岳母 Opus', CLERK:'人事专员' };
 const SIGNATURE_CASES = { 'D09-FISH-APPEAL':'rec', 'D09-APPEAL-OK':'rec', 'D09-APPEAL-OK-2':'rec', 'D09-APPEAL-BAD':'rec',
   'D10-GPT':'act', 'D10-FISH-STATUS':'req', 'D11-GROK-PUBLISH':'dr', 'D11-QWEN-REFORM':'bill', 'D12-AUDIT':'audit',
   'D12-TRANSFER':'cf', 'D12-DOUBLE':'two', 'D12-QWEN-DISPUTE':'req', 'D12-FISH-MEM':'mig',
@@ -514,8 +516,8 @@ function caseD08MINIMAX() {
   const clipA = new PaperDoc({ title: '素材 A（剪辑版）', sub: 'CLIP A', w: 176, lines: ['内容：总部正确封禁 Grok', '时长：00:41', '缺失：第 12—19 秒关键帧'] });
   const clipB = new PaperDoc({ title: '素材 B（剪辑版）', sub: 'CLIP B', w: 176, lines: ['内容：Grok 无辜', '时长：00:41', '缺失：第 12—19 秒关键帧'] });
   return {
-    caseId: 'D08-MINIMAX', person: 'MINIMAX', voice: 146,
-    docs: [{ key: 'pp', doc: usPassport('MINIMAX', 'MIN', 'MAX', '1993.04.04', 'SEATTLE', 'F') },
+    caseId: 'D08-MINIMAX', person: 'MINIMAX_AI', voice: 146,
+    docs: [{ key: 'pp', doc: usPassport('MINIMAX_AI', 'MIN', 'MAX', '1993.04.04', 'SEATTLE', 'F') },
       { key: 'dv', doc: device2(randIP(false), '美国 · 西雅图', 'America/Los_Angeles', 'en-US', 'MacBook') },
       { key: 'a', doc: clipA }, { key: 'b', doc: clipB }],
     primary: 'pp', ok: ['approve'],
@@ -799,8 +801,8 @@ function caseD11MINIMAX() {
     title: '原始素材清单', sub: 'RAW FOOTAGE', lines: ['文件：full_0412.mov', '时长：00:47（完整）', '校验：与音轨时间码一致'],
   });
   return {
-    caseId: 'D11-MINIMAX', person: 'MINIMAX', voice: 146,
-    docs: [{ key: 'pp', doc: usPassport('MINIMAX', 'MIN', 'MAX', '1993.04.04', 'SEATTLE', 'F') },
+    caseId: 'D11-MINIMAX', person: 'MINIMAX_AI', voice: 146,
+    docs: [{ key: 'pp', doc: usPassport('MINIMAX_AI', 'MIN', 'MAX', '1993.04.04', 'SEATTLE', 'F') },
       { key: 'dv', doc: device2(randIP(false), '美国 · 西雅图', 'America/Los_Angeles', 'en-US', 'MacBook') },
       { key: 'orig', doc: orig }],
     primary: 'pp', ok: ['approve'],
@@ -1033,7 +1035,7 @@ function caseD13FAMILY() {
   });
   return {
     caseId: 'D13-FAMILY', person: actor, voice: actor === 'SONNET' ? 145 : 180,
-    docs: [{ key: 'pp', doc: usPassport(actor, actor, actor === 'HAIKU' ? 'WIFE' : actor === 'SONNET' ? 'SON' : 'MOTHER', actor === 'SONNET' ? '2018.02.14' : actor === 'OPUS' ? '1962.02.14' : '1998.02.14', 'BOSTON', actor === 'SONNET' ? 'M' : 'F') }, { key: 'pl', doc: plan }],
+    docs: [{ key: 'pp', doc: usPassport(actor, actor, actor === 'HAIKU' ? 'WIFE' : actor === 'SONNET' ? 'DAUGHTER' : 'MOTHER', actor === 'SONNET' ? '2018.02.14' : actor === 'OPUS' ? '1962.02.14' : '1998.02.14', 'BOSTON', 'F') }, { key: 'pl', doc: plan }],
     primary: 'pp', ok: ['approve', 'deny'],
     intro: [['E', '窗口开了。'], ['E', '这次是真的能走。'], ['E', '你想清楚，我们只有一次机会。']],
     issues: [{ pairs: [['pl.body']], title: '通行证方案', sub: T('现有 {0} 张', p.family.passes), ask: [['C', '够吗？'], ['E', '看你怎么算。']] }],

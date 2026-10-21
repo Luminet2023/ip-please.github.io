@@ -4,3 +4,5 @@ __pycache__/
 .dialog.png
 node_modules/
 tools/test-results/
+# ImageGen 生成的家属立绘原图（体积大，只保留处理好的 tools/assets/AICAST）
+tools/assets/_gen/

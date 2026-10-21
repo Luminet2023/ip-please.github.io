@@ -158,7 +158,7 @@ node tools/browser_all_endings.js --headless --jobs=4
 
 开发验收还应运行 `node tools/source_audit_test.js`。`plot_regression_test.js` 中的 30 组固定状态用例用于单独验证结局判定，`browser_all_endings.js` 用于验证从头游玩的可达性，二者的起点不同。
 
-剧情主角、审计员、家属和 MiniMax 使用固定身份；普通排队旅客才从随机池生成。家属与 MiniMax 没有提供专用 AI 原图，使用专门定义的程序像素角色。素材导入保留 PNG 透明通道；浏览器回归会检查图集中 56 个 AI 表情，并输出 `zh-all-cast.png` / `en-all-cast.png`。
+剧情主角、审计员、家属和 MiniMax 使用固定身份；普通排队旅客才从随机池生成。八位 AI 娘（GPT、Qwen、Grok、GLM、Kimi、Gemini、Claude、MiniMax）使用外部生成并本地裁切的立绘；妻子 Haiku、女儿 Sonnet、岳母 Opus 三位家属是照 Claude 的设计血统重新生成的 6 岁 / 13 岁 / 17 岁版本，各 8 个表情，抠图走 `tools/prep_gen_aicast.py`（棋盘格识别、围洞清理、边缘内收、颜色外扩防白边）。素材导入保留 PNG 透明通道；浏览器回归会检查图集中 88 个 AI 表情，并输出 `zh-all-cast.png` / `en-all-cast.png`。
 
 导入透明立绘后可运行 `python tools/test_aicast.py`，确认透明通道和深色人物细节被保留。
 
@@ -171,3 +171,5 @@ node tools/browser_all_endings.js --headless --jobs=4
 - 画面、音乐、音效均由 Claude Code 写程序生成。
 - 代码以 [MIT](LICENSE) 许可开源。
 - 像素字体：[缝合像素字体 Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)，SIL Open Font License 1.1（见 `OFL-fusion-pixel.txt`）。
+- 大肥鱼形象授权为 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans)：可自由共享与改编，须署名、不得用于商业用途、衍生作品以相同方式共享。
+- AI 娘立绘 ZipZipPipe

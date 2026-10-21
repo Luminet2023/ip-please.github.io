@@ -106,8 +106,7 @@ SCRIPTED = {
     "TOM": cast.TOM, "ALEX": cast.ALEX, "CAT_GIRL": cast.CAT_GIRL, "V50": cast.V50, "HOOD": cast.HOOD,
     "SG_MAN": cast.SG_MAN, "RELAY": cast.RELAY, "MIKE": cast.MIKE, "GRANDMA": cast.GRANDMA,
     "JORJI_SUIT": cast.JORJI_SUIT, "AUTHOR": cast.AUTHOR,
-    "AUDITOR": cast.AUDITOR, "HAIKU": cast.HAIKU, "SONNET": cast.SONNET, "OPUS": cast.OPUS,
-    "MINIMAX": cast.MINIMAX, "CLERK": cast.CLERK,
+    "AUDITOR": cast.AUDITOR, "CLERK": cast.CLERK,
     "APPELLANT_A": cast.APPELLANT_A, "APPELLANT_B": cast.APPELLANT_B, "APPELLANT_C": cast.APPELLANT_C,
     **{f"SLANG{i}": p for i, p in enumerate(cast.SLANG)},
 }
@@ -290,7 +289,7 @@ def main():
                 pk.add(f"{key}:{e}:slip", p.sprite(e, slip=True))
         pk.add(f"photo:{key}", photo(p.sprite()), crop=False)
         coat, top = p.walker
-        female = key in {"EMILY", "CAT_GIRL", "GRANDMA", "HAIKU", "OPUS", "MINIMAX", "APPELLANT_A", "APPELLANT_C"}
+        female = key in {"EMILY", "CAT_GIRL", "GRANDMA", "APPELLANT_A", "APPELLANT_C"}
         if key not in SCRIPTED:
             female = p.hair in {"long", "bun"} and p.beard is None
         people[key] = {"expr": p.expr, "walker": [list(coat), list(top)], "scripted": key in SCRIPTED, "fw": 180, "sex": "F" if female else "M"}
@@ -315,6 +314,11 @@ def main():
         "GLM_AI": ([64, 64, 72], [40, 36, 44]),
         "KIMI_AI": ([70, 78, 120], [212, 216, 232]),
         "GEMINI_AI": ([70, 52, 96], [140, 150, 235]),
+        "MINIMAX_AI": ([232, 226, 214], [228, 118, 60]),
+        # 家属三人：ImageGen 按 Claude 的设计血统生成的 6 岁 / 13 岁 / 17 岁版本
+        "HAIKU": ([154, 120, 100], [214, 120, 66]),
+        "SONNET": ([82, 112, 154], [222, 126, 70]),
+        "OPUS": ([114, 82, 126], [230, 120, 58]),
     }
     for key, (coat, hair) in AI_CAST.items():
         d = TOOLS / "assets" / "AICAST" / key
@@ -327,7 +331,8 @@ def main():
         f = d / "passport" / f"{key}_photo_40x50.png"
         if f.exists():
             pk.add(f"photo:{key}", Image.open(f).convert("RGB"), crop=False)
-        people[key] = {"expr": "neutral", "walker": [coat, hair], "scripted": True, "fw": 180}
+        sex = "M" if key == "SONNET" else "F"
+        people[key] = {"expr": "neutral", "walker": [coat, hair], "scripted": True, "fw": 180, "sex": sex}
 
     # 极简蓝鲸 Logo「证件照」（没有眼睛，极简主义）
     whale = Image.new("RGBA", (180, 128), (206, 200, 190, 255))
@@ -373,7 +378,7 @@ def main():
         blobs[name], sizes[name] = png_b64(im)
 
     data = {
-        "version": "2026.10.21.6",
+        "version": "2026.10.21.9",
         "font": {str(k): v for k, v in font_meta.items()},
         "sprites": pos,
         "people": people,

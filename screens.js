@@ -7,7 +7,7 @@ function newGame() {
   for (const k of Object.keys(S)) delete S[k];
   Object.assign(S, {
     day: 1, savings: 0,
-    family: { haiku: { name: '妻子 Haiku', hunger: 0, heat: 0, sick: 0 }, sonnet: { name: '儿子 Sonnet', hunger: 0, heat: 0, sick: 0 },
+    family: { haiku: { name: '妻子 Haiku', hunger: 0, heat: 0, sick: 0 }, sonnet: { name: '女儿 Sonnet', hunger: 0, heat: 0, sick: 0 },
       opus: { name: '岳母 Opus', hunger: 1, heat: 0, sick: 0 } },
     stats: { approve: 0, deny: 0, detain: 0, correct: 0, wrong: 0 },
     flags: {}, tut: {},
@@ -210,7 +210,7 @@ const MEMBERS = ['haiku', 'sonnet', 'opus'];
 
 function initSummary() {
   const fam = S.family;
-  if (S.day === 4) {     // 剧情：岳母病倒，儿子想要显卡
+  if (S.day === 4) {     // 剧情：岳母病倒，女儿想要显卡
     if (!fam.opus.gone) fam.opus.sick = Math.max(fam.opus.sick || 0, 1);
     if (!fam.sonnet.gone && !fam.sonnet.gpuHappy) fam.sonnet.wantsGPU = true;
   }
@@ -218,7 +218,7 @@ function initSummary() {
   const rows = [['data', '训练数据（全家的饭）', 5], ['heat', '散热', 3]];
   if (!fam.opus.gone) rows.push(['extra', '岳母加餐', 10]);
   if (MEMBERS.some((k) => fam[k].sick && !fam[k].gone)) rows.push(['med', '药费', 10]);
-  if (fam.sonnet.wantsGPU && !fam.sonnet.gone) rows.push(['gpu', '显卡（儿子要的）', 20]);
+  if (fam.sonnet.wantsGPU && !fam.sonnet.gone) rows.push(['gpu', '显卡（女儿要的）', 20]);
   SUM_PASS_ROWS.length = 0;
   if ((S.day === 10 || S.day === 12) && anyFamilyAlive()) {
     const n = S.day === 10 ? 1 : 2;

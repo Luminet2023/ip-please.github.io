@@ -35,6 +35,11 @@ CAST = {
     "GLM": "GLM_AI",
     "Kimi": "KIMI_AI",
     "Gemini": "GEMINI_AI",
+    "MiniMax": "MINIMAX_AI",
+    # 家属三人（ImageGen 重新生成，tools/assets/_gen）
+    "Haiku": "HAIKU",
+    "Sonnet": "SONNET",
+    "Opus": "OPUS",
 }
 # 8 个表情槽位（顺序必须和 build_assets.py 的 EXPRS 一致）
 EXPRS = ["neutral", "smile", "grin", "talk", "shock", "nervous", "sad", "angry"]
@@ -44,18 +49,10 @@ BW, BH = 180, 128
 
 # ———————————————————— 去背景 ————————————————————
 
-def strip_background(im: Image.Image, tol: int = 40) -> Image.Image:
-    """已经有 alpha 的直接用；整张不透明的（比如带灰底的肖像）从四边 flood fill 掉底色。"""
-    im = im.convert("RGBA")
-    a = np.asarray(im)
-    if im.getextrema()[3][0] < 255:
-        return im
-    rgb = a[:, :, :3].astype(np.int16)
-    h, w, _ = rgb.shape
-    corners = np.array([rgb[0, 0], rgb[0, w - 1], rgb[h - 1, 0], rgb[h - 1, w - 1]])
-    seed = np.median(corners, axis=0)
-    near = np.abs(rgb - seed).sum(axis=2) <= tol
+def _border_flood(near: np.ndarray) -> np.ndarray:
+    """从四边出发，把 near 里与边界连通的部分标出来。"""
     from collections import deque
+    h, w = near.shape
     mask = np.zeros((h, w), dtype=bool)
     dq = deque()
     for x in range(w):
@@ -75,6 +72,67 @@ def strip_background(im: Image.Image, tol: int = 40) -> Image.Image:
             if 0 <= ny < h and 0 <= nx < w and near[ny, nx] and not mask[ny, nx]:
                 mask[ny, nx] = True
                 dq.append((ny, nx))
+    return mask
+
+
+def checker_mask(rgb: np.ndarray):
+    """生成模型常把「透明背景」画成棋盘格，这里连「被头发围住的棋盘洞」一起吃掉。
+
+    棋盘的两色直接从边框上统计，所以浅灰（253/247）和深一点的灰（223/199）都认。
+    两步：
+      1. 与边框连通的两种棋盘色（中性灰/白）
+      2. 局部窗口里同时出现两种棋盘色的区域 —— 棋盘是规整的 2 色网格，
+         人物身上不会出现这种东西，所以头发缝里的洞也能识别出来
+    米白色的衣服（253,249,243）三通道差 10，被 ≤8 的「中性」条件挡在外面。
+    """
+    from scipy import ndimage
+    h, w, _ = rgb.shape
+    border_px = np.concatenate([rgb[0], rgb[h - 1], rgb[:, 0], rgb[:, w - 1]]).astype(np.int16)
+    neutral_border = border_px[(border_px.max(axis=1) - border_px.min(axis=1)) <= 8]
+    if len(neutral_border) < 10:
+        return None
+    colors, counts = np.unique(neutral_border // 4 * 4, axis=0, return_counts=True)
+    order = np.argsort(-counts)
+    c0 = colors[order[0]]
+    c1 = colors[order[1]] if len(order) > 1 else c0
+
+    def near(c):
+        return (np.abs(rgb - c).max(axis=2) <= 10)
+
+    near0, near1 = near(c0), near(c1)
+    bg = near0 | near1
+    edge = np.concatenate([bg[0], bg[h - 1], bg[:, 0], bg[:, w - 1]])
+    if edge.mean() < 0.6:
+        return None
+    mask = _border_flood(bg)
+    if not near1.any():
+        return mask
+    # 33px 窗口里两种颜色都占一定比例 ＝ 棋盘花纹
+    f0 = ndimage.uniform_filter(near0.astype(np.float32), 33)
+    f1 = ndimage.uniform_filter(near1.astype(np.float32), 33)
+    pattern = (f0 > 0.2) & (f1 > 0.2) & bg
+    pattern = ndimage.binary_opening(pattern, iterations=2)
+    labels, count = ndimage.label(pattern)
+    if count:
+        sizes = ndimage.sum(pattern, labels, range(1, count + 1))
+        keep = [i + 1 for i, s in enumerate(sizes) if s >= 200]
+        pattern = np.isin(labels, keep)
+    return mask | pattern
+
+
+def strip_background(im: Image.Image, tol: int = 40) -> Image.Image:
+    """已经有 alpha 的直接用；整张不透明的从四边 flood fill 掉底色（棋盘格或纯色都认）。"""
+    im = im.convert("RGBA")
+    a = np.asarray(im)
+    if im.getextrema()[3][0] < 255:
+        return im
+    rgb = a[:, :, :3].astype(np.int16)
+    h, w, _ = rgb.shape
+    mask = checker_mask(rgb)
+    if mask is None:
+        corners = np.array([rgb[0, 0], rgb[0, w - 1], rgb[h - 1, 0], rgb[h - 1, w - 1]])
+        seed = np.median(corners, axis=0)
+        mask = _border_flood(np.abs(rgb - seed).sum(axis=2) <= tol)
     out = a.copy()
     out[mask, 3] = 0
     return Image.fromarray(out, "RGBA")
@@ -149,13 +207,15 @@ def main():
     ap.add_argument("--src", required=True)
     ap.add_argument("--preview", action="store_true")
     ap.add_argument("--map", help="JSON：{目录: {expr: 文件名后缀序号}}，不给就按文件名顺序")
+    ap.add_argument("--only", nargs="*", help="只处理指定目录名（如 MiniMax），不给就全处理")
     args = ap.parse_args()
     src = Path(args.src)
     if args.preview:
         montage(src, TOOLS / "preview_aicast.png")
         return
     mapping = json.loads(Path(args.map).read_text(encoding="utf-8")) if args.map else {}
-    for d, key in CAST.items():
+    targets = {d: k for d, k in CAST.items() if not args.only or d in args.only}
+    for d, key in targets.items():
         # 竖构图的那张是「肖像」（1122x1402），裁成 180x128 会变形，只用来做证件照素材，不进立绘序列
         files = []
         for f in sorted((src / d).glob("*.png")):

@@ -3,11 +3,11 @@ const fs=require('node:fs');
 const path=require('node:path');
 module.exports=async function({page,out,language}){
  const result=await page.evaluate(()=>{
-  const cast=['CLAUDE_AI','GPT_AI','QWEN_AI','GROK_AI','GLM_AI','KIMI_AI','GEMINI_AI'];
+  const cast=['CLAUDE_AI','GPT_AI','QWEN_AI','GROK_AI','GLM_AI','KIMI_AI','GEMINI_AI','MINIMAX_AI','HAIKU','SONNET','OPUS'];
   const expressions=['neutral','talk','smile','grin','nervous','shock','sad','angry'];
   const alphaCanvas=document.createElement('canvas');alphaCanvas.width=180;alphaCanvas.height=128;
   const alphaCtx=alphaCanvas.getContext('2d',{willReadFrequently:true});
-  const sheet=document.createElement('canvas');sheet.width=8*203;sheet.height=7*150;
+  const sheet=document.createElement('canvas');sheet.width=8*203;sheet.height=cast.length*150;
   const ctx=sheet.getContext('2d');ctx.imageSmoothingEnabled=false;
   const frame=document.createElement('canvas');frame.width=640;frame.height=360;
   const frameCtx=frame.getContext('2d');frameCtx.imageSmoothingEnabled=false;

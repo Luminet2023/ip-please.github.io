@@ -70,7 +70,7 @@ run(`var longWord=wrapWords('America/Los_Angeles/ExtraLongDeviceIdentifier',10,7
 assert.equal(run('longWord.every(s=>tw(s,10)<=70)'),true);
 console.log('✓ bilingual rule pages and long identifiers fit; amended law is visible');
 
-for(const [factory,person] of [['caseD12AUDIT()','AUDITOR'],['caseD13FAMILY()','HAIKU'],['caseD08MINIMAX()','MINIMAX'],['caseD13RETIRE()','CLERK']]){
+for(const [factory,person] of [['caseD12AUDIT()','AUDITOR'],['caseD13FAMILY()','HAIKU'],['caseD08MINIMAX()','MINIMAX_AI'],['caseD13RETIRE()','CLERK']]){
  run(`resetAudit();var named=${factory};`);
  assert.equal(run('named.person'),person);
  assert.ok(run(`ASSETS.people['${person}'].scripted && !!SPR['photo:${person}']`));

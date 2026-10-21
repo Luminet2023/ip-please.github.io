@@ -106,7 +106,7 @@ const EN = {
 
   // ———————————————— 下班结算 ————————————————
   '妻子 Haiku': 'Wife Haiku',
-  '儿子 Sonnet': 'Son Sonnet',
+  '女儿 Sonnet': 'Daughter Sonnet',
   '岳母 Opus': 'Mother-in-law Opus',
   'DAY {0} · 下班': 'DAY {0} · END OF SHIFT',
   '今日处理 {0} 人，正确 {1} 人': '{0} processed today, {1} correct',
@@ -126,7 +126,7 @@ const EN = {
   '散热': 'Cooling',
   '岳母加餐': 'Extra food for Opus',
   '药费': 'Medicine',
-  '显卡（儿子要的）': 'GPU (for Sonnet)',
+  '显卡（女儿要的）': 'GPU (for Sonnet)',
   '结余': 'Balance',
   '家人': 'Family',
   '家人（明天）': 'Family (tomorrow)',
