@@ -1587,4 +1587,7 @@ Object.assign(EN, {
   '署名与申报不一致。': 'The author does not match the declaration.',
   '保存后可补充第 0000 号的独立来源证明。': 'Retain as independent source evidence for No. 0000.',
   '结局收藏 {0}/30': 'Endings {0}/30',
+  '这次是住宅宽带。': 'Residential broadband this time.',
+  '这次真的有家了！我的枕头也搬过来了！': 'A real home this time! I brought my pillow too!',
+  '好耶！这次可以回家放枕头了！': 'Yay! My pillow can go home this time!',
 });

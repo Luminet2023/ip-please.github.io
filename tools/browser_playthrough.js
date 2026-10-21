@@ -11,6 +11,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(__dirname, 'test-results');
 const language = process.argv.includes('--lang=en') ? 'en' : 'zh';
+const focused = process.argv.includes('--regressions');
 const report = { language, days: [], cases: [], evidence: [], errors: [], ending: null };
 fs.mkdirSync(OUT, { recursive: true });
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,6 +35,7 @@ async function state() {
         primary: B.ent.spec.primary, ok: B.ent.spec.ok, phase: B.ent.phase,
         handed: B.ent.handed, busyUntil: B.ent.busyUntil, decided: B.ent.decided, noJudge: !!B.ent.noJudge,
         issues: (B.ent.spec.issues || []).map((i) => ({ pairs: i.pairs, all: i.all, title: i.title })), found: B.ent.found.size,
+        printedDocs: (B.ent.spec.printedDocs || []).map((d) => d.key),
       },
     },
   }));
@@ -45,7 +47,7 @@ async function point(x, y) {
 async function click(x, y) { const p = await point(x, y); await page.mouse.click(p.x, p.y); }
 async function dragDoc(d, x, y) {
   const pick = await page.evaluate(({ key, owner }) => {
-    const target = B.docs.find((p) => p.key === key && p.owner === owner);
+    const target = [...B.docs].reverse().find((p) => p.key === key && p.owner === owner);
     if (!target) return null;
     const items = [...B.docs].reverse();
     for (let y = target.y + 2; y < Math.min(318, target.y + (target.big ? target.doc.h : 12)); y += 3) {
@@ -86,10 +88,10 @@ async function investigate(e) {
     if (!pair) continue;
     const docKeys = [...new Set(pair.map((k) => k.split('.')[0]))];
     let s = await state();
-    if (!docKeys.every((k) => s.booth.docs.some((d) => d.owner === 'ent' && d.key === k))) continue;
+    if (!docKeys.every((k) => s.booth.docs.some((d) => d.key === k))) continue;
     await inspectMode(false); await tray(false);
     for (let i = 0; i < docKeys.length; i++) {
-      s = await state(); const d = s.booth.docs.find((d) => d.key === docKeys[i] && d.owner === 'ent');
+      s = await state(); const d = s.booth.docs.find((d) => d.key === docKeys[i]);
       await dragDoc(d, 224 + i * 200, 172);
     }
     await inspectMode(true);
@@ -125,6 +127,7 @@ async function evidence(s) {
 async function entrant(s) {
   const e = s.booth.ent;
   await waitFor((v) => v.booth.ent?.handed && v.booth.ent.phase === 'here' && v.now >= v.booth.ent.busyUntil, 'documents: ' + e.person);
+  await waitFor((v) => v.booth.ent.printedDocs.every((key) => v.booth.docs.some((d) => d.key === key)), 'printed documents');
   if (e.caseId === 'D04-GROK') await page.screenshot({ path: path.join(OUT, language + '-grok-transparent.png') });
   await investigate((await state()).booth.ent);
   if (e.caseId === 'D02-QWEN') await page.screenshot({ path: path.join(OUT, language + '-qwen-papers.png') });
@@ -156,7 +159,7 @@ async function entrant(s) {
   const stamped = (await state()).booth.docs.find((d) => d.owner === 'ent' && d.key === e.primary);
   await dragDoc(stamped, 100, 280);
   await waitFor((v) => !v.booth.ent || v.scene !== 'booth', 'return documents: ' + e.caseId);
-  report.cases.push({ day: s.day, caseId: e.caseId || e.person, decision, investigated: (await state()).plot?.verdicts[e.caseId] !== undefined });
+  report.cases.push({ day: s.day, caseId: e.caseId || e.person, decision, investigated: s.booth.ent.found > 0 });
 }
 async function main() {
   server = http.createServer((req, res) => {
@@ -179,6 +182,13 @@ async function main() {
   page.on('pageerror', (error) => report.errors.push(error.message));
   await page.goto('http://127.0.0.1:' + server.address().port);
   await page.waitForFunction(() => typeof scene !== 'undefined' && typeof canvasEl !== 'undefined' && canvasEl);
+  if (focused) {
+    await page.waitForFunction(() => !!ATLAS_IMG && !!FONT_IMG && !!WIN_IMG);
+    report.checks = await require('./browser_regressions')({ page, state, click, dragDoc, waitFor, inspectMode, language, out: OUT });
+    if (report.errors.length) throw new Error(report.errors.join('; '));
+    console.log('PASS: ' + language + ' screenshot regressions (' + report.checks.length + ' checks)');
+    return;
+  }
   const until = Date.now() + 240000;
   let lastProgress = '', stallAt = Date.now();
   while (Date.now() < until) {
@@ -236,6 +246,6 @@ main().catch(async (error) => {
   if (page) { report.failureState = await state().catch(() => null); await page.screenshot({ path: path.join(OUT, language + '-failure.png') }).catch(() => {}); }
   process.exitCode = 1;
 }).finally(async () => {
-  fs.writeFileSync(path.join(OUT, language + '-playthrough.json'), JSON.stringify(report, null, 2));
+  fs.writeFileSync(path.join(OUT, language + (focused ? '-regressions.json' : '-playthrough.json')), JSON.stringify(report, null, 2));
   await browser?.close(); server?.close();
 });

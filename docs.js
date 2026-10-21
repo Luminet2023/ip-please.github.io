@@ -105,13 +105,34 @@ class Card {
   constructor(rows, { title = '设备入境卡', sub = 'DEVICE ENTRY', color = C.PINK, colorD = C.PINK_D, valueX = 38, seal } = {}) {
     this.rows = rows; this.title = T(title); this.sub = T(sub);
     this.shown = rows.map(([k, v]) => [T(k), T(v)]);
-    this.color = rgb(color); this.colorD = rgb(colorD); this.valueX = valueX;
+    this.color = rgb(color); this.colorD = rgb(colorD);
+    this.valueX = Math.max(valueX, ...this.shown.map(([label]) => tw(label, 10) + 14));
+    const dark = (c) => c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722 < 140;
+    this.textInk = dark(color) ? K.WHITE : K.TEXT;
+    this.labelInk = dark(color) ? K.PAPER_D : K.TEXT_L;
+    this.headerInk = dark(colorD) ? K.WHITE : K.TEXT;
     this.seal = seal === undefined ? rows.length >= 4 : seal;
-    this.w = 152;
-    this.h = 20 + 14 * rows.length + (this.seal ? 14 : 6);
+    this.w = Math.min(204, Math.max(152, this.valueX + 80,
+      this.valueX + Math.max(...this.shown.map(([, value]) => tw(value, 8))) + 8));
+    this.headerSize = tw(this.title, 10) + tw(this.sub, 8) + 18 <= this.w ? 10 : 8;
+    this.headerH = tw(this.title, this.headerSize) + tw(this.sub, 8) + 18 <= this.w ? 14 : 26;
+    const room = this.w - this.valueX - 8;
+    let y = this.headerH + 6;
+    this.layout = this.shown.map(([label, value]) => {
+      const size = tw(value, 10) <= room ? 10 : 8;
+      const lines = wrap(value, size, room);
+      const height = Math.max(14, lines.length * (size + 2) + 2);
+      const row = { label, lines, size, y, height };
+      y += height;
+      return row;
+    });
+    this.h = y + (this.seal ? 38 : 6);
     this.icon = ['card', color];
     this.fields = {};
-    rows.forEach(([k], i) => { this.fields[k] = [4, 18 + 14 * i, this.w - 5, 31 + 14 * i]; });
+    rows.forEach(([k], i) => {
+      const row = this.layout[i];
+      this.fields[k] = [4, row.y - 2, this.w - 5, row.y + row.height - 3];
+    });
   }
 
   draw(x, y) {
@@ -119,19 +140,16 @@ class Card {
     docShadow(x, y, w, h);
     rect(x, y, x + w - 1, y + h - 1, this.colorD);
     rect(x + 1, y + 1, x + w - 2, y + h - 2, this.color);
-    rect(x + 1, y + 1, x + w - 2, y + 14, this.colorD);
-    txt(x + 6, y + 4, this.title, 10, K.TEXT);
-    txt(x + w - 6, y + 6, this.sub, 8, K.TEXT_L, 'ra');
+    rect(x + 1, y + 1, x + w - 2, y + this.headerH, this.colorD);
+    txt(x + 6, y + 4, this.title, this.headerSize, this.headerInk);
+    txt(x + w - 6, y + (this.headerH > 14 ? 16 : 6), this.sub, 8, this.headerInk, 'ra');
     if (this.seal) spr('seal', x + w - 40, y + h - 38);
-    const room = w - this.valueX - 6;
-    this.shown.forEach(([k, v], i) => {
-      const yy = y + 20 + i * 14;
-      const size = tw(v, 10) > room ? 8 : 10;
-      if (LANG === 'en' && tw(v, size) > room) v = v.replace(/ · /g, '·');   // 英文地名长，挤一挤
-      txt(x + 8, yy, k, 10, K.TEXT_L);
-      txt(x + this.valueX, yy, v, size, K.TEXT);
+    this.layout.forEach((row) => {
+      const yy = y + row.y;
+      txt(x + 8, yy, row.label, 10, this.labelInk);
+      row.lines.forEach((value, i) => txt(x + this.valueX, yy + i * (row.size + 2), value, row.size, this.textInk));
       G.fillStyle = this.colorD;
-      for (let sx = x + 6; sx < x + w - 6; sx += 2) G.fillRect(sx, yy + 11, 1, 1);
+      for (let sx = x + 6; sx < x + w - 6; sx += 2) G.fillRect(sx, yy + row.height - 3, 1, 1);
     });
   }
 }
@@ -185,7 +203,7 @@ class Citation {
 // 打印机吐出来的长纸条（号码查询 / 登录记录）。fields 可选：给某几行开检查模式的点击区。
 class PrintStrip {
   constructor(header, rows, fields = {}, rowSize = 8, w = 128) {
-    this.header = header.map((s) => T(s)); this.rows = rows;
+    this.header = header.map((s) => T(s)); this.rows = rows.map((s) => T(s));
     const bodyY = 11 + 13 * header.length;
     this.fields = { body: [6, bodyY, w - 7, bodyY + (rowSize + 2) * rows.length], ...fields };
     this.rowSize = rowSize;

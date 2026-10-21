@@ -36,13 +36,13 @@ function runtime(seed) {
         for (const d of B.docs) d.big = false;
         const docs = [...new Set(pair.map(key => key.slice(0, key.indexOf('.'))))];
         docs.forEach((key, i) => {
-          const d = e.docs.find(d => d.key === key);
+          const d = B.docs.find(d => d.key === key);
           if (!d) throw Error(e.spec.caseId + ' missing document ' + key);
           Object.assign(d, { big: true, x: 224 + i * 208, y: 130 });
         });
         setInspect(true);
         for (const key of pair) {
-          const dot = key.indexOf('.'), d = e.docs.find(d => d.key === key.slice(0, dot));
+          const dot = key.indexOf('.'), d = B.docs.find(d => d.key === key.slice(0, dot));
           const field = d.doc.fields[key.slice(dot + 1)];
           if (!field) throw Error(e.spec.caseId + ' missing field ' + key);
           inspectClick(d.x + (field[0] + field[2]) / 2, d.y + (field[1] + field[3]) / 2);
@@ -204,6 +204,72 @@ test('printed audit records expose their content for actual inspection', () => {
   const run = runtime();
   run(`resetTest(9); resolveTestCase(caseD09AUDITLOG(),'approve',true);`);
   assert.equal(run("evd('auditLog')"), 'retained');
+});
+
+test('card labels, values, headers and seals have separate layout space', () => {
+  const run = runtime();
+  for (const lang of ['zh', 'en']) {
+    run(`chooseLang('${lang}'); resetTest(11);
+      var cards=[caseD04GROK().docs[2].doc,modelPermitCard('OpenAI GPT','deepseek-chat','DeepSeek'),
+        modelOriginCard(),caseD07FISH().docs[1].doc,caseD10KIMI().docs[2].doc];`);
+    assert.ok(run(`cards.every(c=>c.layout.every(r=>8+tw(r.label,10)+6<=c.valueX))`));
+    assert.ok(run(`cards.every(c=>c.layout.every(r=>r.lines.every(s=>tw(s,r.size)<=c.w-c.valueX-8)))`));
+    assert.ok(run(`cards.every(c=>!c.seal||c.layout.at(-1).y+c.layout.at(-1).height<=c.h-38)`));
+    assert.ok(run(`cards.every(c=>tw(c.title,c.headerSize)+12<=c.w)`));
+  }
+});
+
+test('wrapped dialogue reveals the first line before the second and keeps the speaker talking', () => {
+  const run = runtime();
+  for (const lang of ['zh', 'en']) {
+    run(`chooseLang('${lang}'); resetTest(7); B.ent=newEntrant(caseD07GLM(),true);
+      say('E',B.ent.spec.intro[0][1]); var rows=lineBoxes();`);
+    assert.equal(run('rows[0].off'), 0);
+    assert.ok(run('rows.length>1'));
+    assert.equal(run('rows[1].off'), run('[...B.lines[0].text.slice(0,B.lines[0].text.indexOf(rows[1].seg,rows[0].seg.length))].length'));
+    assert.ok(run(`B.ent.talkUntil-now>=[...B.lines[0].text].length/('${lang}'==='en'?50:26)-0.001`));
+  }
+});
+
+test('issuer comparisons find model fraud and do not reject certified identity', () => {
+  const run = runtime();
+  run(`resetTest(6); B.ent=newEntrant(fishDay6().fish,true); handDocs(B.ent);`);
+  for (const pair of [['md.发行','rule.model'],['md.模型ID','rule.model'],['md.发行','md.申报']]) {
+    assert.ok(run(`!!matchIssue(${JSON.stringify(pair)})`));
+  }
+  run(`resetTest(5); B.ent=newEntrant(fishDay5().fish,true); handDocs(B.ent);`);
+  assert.ok(run(`!!matchIssue(['md.控制方','rule.corp'])`));
+  run(`resetTest(13); PLOT().law.amended=true; B.ent=newEntrant(caseD13FISHLICENSE(),true); handDocs(B.ent);`);
+  assert.equal(run(`matchIssue(['md.发行','rule.model'])`), null);
+});
+
+test('network dialogue, printed provenance and model cast agree with the documents', () => {
+  const run = runtime();
+  for (let i=0;i<24;i++) {
+    run('var fish=caseD07FISH();');
+    assert.equal(run("fish.intro.some(s=>s[1]==='你的网络是机房。')"), run("!fish.ok.includes('approve')"));
+  }
+  run(`resetTest(9); var spec=caseD09AUDITLOG(); B.ent=newEntrant(spec,true); handDocs(B.ent);`);
+  assert.equal(run("B.ent.docs.some(d=>d.key==='log')"), false);
+  assert.equal(run("B.printing.doc===spec.printedDocs[0].doc"), true);
+  assert.equal(run("B.docs.some(d=>d.key==='log')"), false);
+  run('advance(2);');
+  assert.equal(run("B.docs.find(d=>d.key==='log').owner"), 'desk');
+  assert.equal(run("caseD11API().person"), 'FISH');
+  assert.equal(run("caseD11API().docs[0].doc.person"), 'FISH');
+});
+
+test('printed login records belong to one applicant and cannot leak into the next case', () => {
+  const run = runtime();
+  run(`resetTest(7); var first=newEntrant(randomEntrant(7,'valid'),true); B.ent=first;
+    handDocs(first); advance(3);`);
+  assert.equal(run("B.docs.filter(d=>d.key==='log').length"),1);
+  assert.equal(run("B.docs.find(d=>d.key==='log').forEntrant===first"),true);
+  run("finish(first,'approve');");
+  assert.equal(run("B.docs.some(d=>d.key==='log')"),false);
+  run(`var second=newEntrant(randomEntrant(7,'logins'),true); B.ent=second; handDocs(second);
+    advance(0.7); var third=newEntrant(randomEntrant(7,'valid'),true); B.ent=third; advance(2);`);
+  assert.equal(run("B.docs.some(d=>d.forEntrant===second)"),false,'late output from an absent applicant');
 });
 
 test('unbribed correct play can support all family members and buy three passes', () => {

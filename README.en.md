@@ -112,9 +112,12 @@ The browser playthrough uses real mouse clicks, drags, inspections and stamps to
 npm install --no-save --package-lock=false playwright
 node tools/browser_playthrough.js
 node tools/browser_playthrough.js --lang=en
+node tools/browser_playthrough.js --regressions
 ```
 
 Add `--headed` to watch the run. Daily screenshots, the ending screenshot and a JSON report are written to `tools/test-results/`. On other platforms, first run `npx playwright install chromium`.
+
+`--regressions` uses isolated scenes to check card layout, issuer/constitution inspections, dialogue timing, network details, printer output and character consistency. Combine it with `--lang=en` to check the English UI.
 
 Run `python tools/test_aicast.py` after importing portraits to check that transparency and dark character details are preserved.
 

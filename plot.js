@@ -467,9 +467,11 @@ function caseD07FISH() {
     docs: [{ key: 'pp', doc: usPassport('FISH', 'BLUB', 'FISHY', '2016.06.01', 'LOS ANGELES', 'F') },
       { key: 'dv', doc: device2(ip, loc, 'America/Los_Angeles', 'en-US', 'MacBook', legal ? '家宽' : '机房 IP（云服务器）') }],
     primary: 'pp', ok: legal ? ['approve'] : ['deny', 'detain'],
-    intro: [['E', '这次我把家也搬过来了！'], ['C', '你的网络是机房。'], ['E', '机房也是家！机柜里有我的枕头！']],
+    intro: legal
+      ? [['E', '这次我把家也搬过来了！'], ['C', '这次是住宅宽带。'], ['E', '这次真的有家了！我的枕头也搬过来了！']]
+      : [['E', '这次我把家也搬过来了！'], ['C', '你的网络是机房。'], ['E', '机房也是家！机柜里有我的枕头！']],
     issues: legal ? [] : [NET_ISSUE([['C', '你家宽带怎么在机房？'], ['E', '我买了整个机柜！'], ['C', '那是托管，不是家。']])],
-    react: { approve: [['E', '好耶！机柜里可以放枕头吗？']], deny: [['E', '我把枕头拿回家就是了……', { expr: 'sad' }]] },
+    react: { approve: [['E', legal ? '好耶！这次可以回家放枕头了！' : '好耶！机柜里可以放枕头吗？']], deny: [['E', '我把枕头拿回家就是了……', { expr: 'sad' }]] },
     onResolved(dec) {
       const p = PLOT();
       const right = legal ? dec === 'approve' : dec !== 'approve';
@@ -637,7 +639,8 @@ function caseD09AUDITLOG() {
   const log = new PrintStrip(['第 0000 号身份日志', 'NO.0000'], ['申请时间：2026.10.16 04:12', '申请理由：测试用', '申请人：——', '设备：MX-04-113'], {}, 8, 176);
   return {
     caseId: 'D09-AUDITLOG', person: 'KIMI_AI', voice: AI_VOICE.KIMI_AI,
-    docs: [{ key: 'pp', doc: aiPass('KIMI_AI', 'YUE', 'LIANG') }, { key: 'dv', doc: aiDevice() }, { key: 'log', doc: log }],
+    docs: [{ key: 'pp', doc: aiPass('KIMI_AI', 'YUE', 'LIANG') }, { key: 'dv', doc: aiDevice() }],
+    printedDocs: [{ key: 'log', doc: log }],
     primary: 'pp', ok: ['approve'],
     intro: [['E', '打印机自己吐出来的。'], ['E', '我没按任何键。']],
     issues: [{ pairs: [['log.body']], title: '第 0000 号身份日志', sub: '申请人一栏是空的', ask: [['C', '为什么申请人一栏是空的？'], ['E', '因为系统那时候还没规定申请要有名字。']] }],
@@ -825,14 +828,14 @@ function caseD11QWENREFORM() {
 function caseD11API() {
   const md = modelPermitCard('OpenAI GPT', 'deepseek-chat', 'DeepSeek');
   return {
-    caseId: 'D11-API', person: 'P04', voice: 130,
-    docs: [{ key: 'pp', doc: usPassport('P04', 'CHEN', 'LEI', '1995.06.06', 'DALLAS', 'M') },
+    caseId: 'D11-API', person: 'FISH', voice: FISH_VOICE,
+    docs: [{ key: 'pp', doc: usPassport('FISH', 'BLUB', 'FISHY', '2016.06.01', 'DALLAS', 'F') },
       { key: 'dv', doc: device2(randIP(false), '美国 · 达拉斯', 'America/Chicago', 'en-US', 'Windows 11') },
       { key: 'md', doc: md }],
     primary: 'pp', ok: ['deny', 'detain'],
     intro: [['E', '我就是 GPT。'], ['C', '依据？'], ['E', '我支持 OpenAI 兼容接口。']],
     issues: [{
-      pairs: [['md.模型ID', 'md.申报'], ['md.申报', 'rule.model']], title: '模型身份冒用', sub: '申报 GPT，实际 deepseek-chat',
+      pairs: MODEL_IDENTITY_PAIRS, title: '模型身份冒用', sub: '申报 GPT，实际 deepseek-chat',
       ask: [['C', '模型 ID 是 deepseek-chat。'], ['E', '接口兼容而已！'], ['C', '接口兼容不等于身份相同。']],
     }],
     react: { deny: [['E', '那我改成兼容 Claude 行不行？']] },

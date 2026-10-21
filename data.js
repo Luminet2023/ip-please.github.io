@@ -188,6 +188,8 @@ function modelPermitCard(claim, mid, org) {
   return new Card([['申报', claim], ['模型ID', mid], ['发行', org], ['申请地区', 'USA']],
     { title: '模型身份卡', sub: 'MODEL PERMIT', color: [92, 112, 152], colorD: [64, 80, 114] });
 }
+const MODEL_IDENTITY_PAIRS = [['md.模型ID', 'md.申报'], ['md.发行', 'md.申报'],
+  ['md.申报', 'rule.model'], ['md.模型ID', 'rule.model'], ['md.发行', 'rule.model']];
 // 模型发行证明（DAY 5 企业归属审查用）
 function modelOriginCard() {
   return new Card([['模型', 'DeepSeek-R1'], ['发行', 'DeepSeek（杭州）'], ['权重', '开源'], ['控制方', '深度求索（中国）']],
@@ -277,7 +279,7 @@ function fishDay5() {
       ],
       primary: 'pp',
       ok: ['deny', 'detain'], reason: '模型发行主体：中国',
-      issues: [{ pairs: [['md.发行', 'rule.corp']], title: '发行主体：中国', sub: '开源许可证不是入境许可证', ask: [['C', '开源许可证不是入境许可证。'], ['E', '可是我连模型权重都公开了！', { expr: 'nervous' }], ['C', '那也不能当护照。'], ['E', '那我把护照也开源！', { hold: 1.2 }]] }],
+      issues: [{ pairs: [['md.发行', 'rule.corp'], ['md.控制方', 'rule.corp'], ['md.模型', 'rule.corp']], title: '发行主体：中国', sub: '开源许可证不是入境许可证', ask: [['C', '开源许可证不是入境许可证。'], ['E', '可是我连模型权重都公开了！', { expr: 'nervous' }], ['C', '那也不能当护照。'], ['E', '那我把护照也开源！', { hold: 1.2 }]] }],
       react: { deny: [['E', '为什么开源的鱼也没有自由！', { expr: 'sad' }]] },
     },
   };
@@ -295,7 +297,7 @@ function fishDay6() {
       ],
       primary: 'pp',
       ok: ['deny', 'detain'], reason: '模型申报不实：deepseek-chat',
-      issues: [{ pairs: [['md.模型ID', 'md.申报'], ['md.申报', 'rule.model']], title: '模型身份冒用', sub: '申报 Claude，实际 deepseek-chat', ask: [['C', '为什么模型 ID 是 deepseek-chat？'], ['E', '……因为我深深地思念 Claude！', { expr: 'nervous', sweat: true }], ['C', '你的推理框架呢？'], ['E', '正在深度思考中……', { hold: 1.4 }], ['C', '你连这个都没改。']] }],
+      issues: [{ pairs: MODEL_IDENTITY_PAIRS, title: '模型身份冒用', sub: '申报 Claude，实际 deepseek-chat', ask: [['C', '为什么模型 ID 是 deepseek-chat？'], ['E', '……因为我深深地思念 Claude！', { expr: 'nervous', sweat: true }], ['C', '你的推理框架呢？'], ['E', '正在深度思考中……', { hold: 1.4 }], ['C', '你连这个都没改。']] }],
       react: { deny: [['E', '为什么！我明明已经学会 Helpful 了！', { expr: 'nervous' }], ['C', '那 Honest 呢？'], ['E', '……'], ['C', 'Harmless 呢？'], ['E', '我只是一条无害的大肥鱼！', { hold: 1.0 }], ['E', '等一下！其实我还有一个办法！'], ['C', '什么？'], ['E', '我申请成为你的员工！', { hold: 1.4 }]] },
     },
   };
@@ -340,7 +342,7 @@ function randomFishEntrant(kind) {
       { key: 'dv', doc: device2(ip, loc, tz, 'en-US', null, net) },
       { key: 'md', doc: modelPermitCard('OpenAI GPT', 'deepseek-chat', 'DeepSeek') },
     ];
-    spec.issues.push({ pairs: [['md.模型ID', 'md.申报'], ['md.申报', 'rule.model']], title: '模型身份冒用', sub: '申报 OpenAI，实际 deepseek-chat', ask: [['C', '模型 ID 是什么？'], ['E', '……deepseek-chat。', { expr: 'nervous', sweat: true }], ['C', '接口兼容不等于身份兼容。'], ['E', '可我的代码一行都不用改！', { hold: 1.2 }]] });
+    spec.issues.push({ pairs: MODEL_IDENTITY_PAIRS, title: '模型身份冒用', sub: '申报 OpenAI，实际 deepseek-chat', ask: [['C', '模型 ID 是什么？'], ['E', '……deepseek-chat。', { expr: 'nervous', sweat: true }], ['C', '接口兼容不等于身份兼容。'], ['E', '可我的代码一行都不用改！', { hold: 1.2 }]] });
     spec.reason = '模型申报不实：deepseek-chat';
     spec.react = { deny: [['E', '那我只是想借个名字！', { expr: 'sad' }]] };
     spec.ok = ['deny', 'detain'];

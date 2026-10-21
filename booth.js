@@ -57,7 +57,7 @@ function say(who, text) {
   B.lines.push({ t: now, who, text, ent: e });
   const pitch = who === 'C' ? 176 : who === 'Q' ? 160 : (e ? e.spec.voice : 125);
   SFX.mumble(text, pitch, B.lines.length * 7 + S.day);
-  if (who === 'E' && e) e.talkUntil = now + Math.min(1.3, 0.25 + 0.065 * readLen(text));
+  if (who === 'E' && e) e.talkUntil = now + Math.max(0.5, [...text].length / (LANG === 'en' ? 50 : 26));
 }
 
 // 按顺序播放一串台词/动作，返回总时长
@@ -132,12 +132,13 @@ function handDocs(e) {
     return inst;
   });
   e.handed = true;
+  for (const { doc, key, dur = 1.8 } of e.spec.printedDocs || []) printDoc(doc, dur, key, e);
   if (e.spec.after) runSteps(e.spec.after, 0.3);
   // 无尽模式：对齐部自动核验，打印机吐出登录记录（证据摆上桌，不给结论）
   if ((S.endless || S.day >= 7) && e.spec.logins) {
     later(0.6, () => {
       if (B.ent !== e) return;
-      printDoc(loginStrip(e), 1.8, 'log');
+      printDoc(loginStrip(e), 1.8, 'log', e);
       if (!S.tut.iplog) {
         S.tut.iplog = true;
         flash('对齐部自动核验：登录记录和归属地对得上吗？');
@@ -193,6 +194,7 @@ function stopTension() { if (B.tensionSrc) { SFX.stop(B.tensionSrc); B.tensionSr
 
 function finish(e, dec) {
   if (B.ent !== e) return;
+  B.docs = B.docs.filter((d) => d.forEntrant !== e);
   B.ent = null;
   B.lastFinish = now;
   if (!e.noJudge) judge(e, dec);
@@ -243,13 +245,15 @@ function cite(lines, delay = 0.5) {
   later(delay, () => printDoc(new Citation(lines), 1.1, 'cit'));
 }
 
-function printDoc(doc, dur, key) {
-  if (B.printing) { B.printQueue.push([doc, dur, key]); return; }
-  B.printing = { doc, t0: now, dur };
+function printDoc(doc, dur, key, forEntrant = null) {
+  if (B.printing) { B.printQueue.push([doc, dur, key, forEntrant]); return; }
+  B.printing = { doc, t0: now, dur, forEntrant };
   SFX.printer(Math.round(dur * 10) / 10);
   later(dur, () => {
     B.printing = null;
-    B.docs.push({ doc, key, owner: 'desk', big: true, x: PRINT_X, y: 131, marks: [] });
+    if (!forEntrant || B.ent === forEntrant) {
+      B.docs.push({ doc, key, owner: 'desk', forEntrant, big: true, x: PRINT_X, y: 131, marks: [] });
+    }
     if (key === 'zticket') {
       B.zeroPending = false;
       B.keepable = { inst: B.docs[B.docs.length - 1], evId: 'zeroTicket' };
@@ -445,11 +449,16 @@ function lineBoxes() {
   for (const ln of [...B.lines].reverse()) {
     const size = tw(ln.text, 12) <= 176 ? 12 : tw(ln.text, 10) <= 176 ? 10 : 8;
     const segs = size === 12 ? [ln.text] : wrap(ln.text, size, 168).slice(0, 2);
-    let off = 0;
-    for (let i = segs.length - 1; i >= 0; i--) {   // 从最新往回铺，最后统一反转
-      rows.push({ ln, size, seg: segs[i], off, x1: Math.min(214, 30 + tw(segs[i], size) + 8) });
-      off += segs[i].length;
-    }
+    let cursor = 0;
+    const parts = segs.map((text) => {
+      const index = ln.text.indexOf(text, cursor);
+      const start = index < 0 ? cursor : index;
+      const off = [...ln.text.slice(0, start)].length;
+      const part = { ln, size, seg: text, off, x1: Math.min(214, 30 + tw(text, size) + 8) };
+      cursor = start + text.length;
+      return part;
+    });
+    rows.push(...parts.reverse());
     if (rows.length >= 3) break;
   }
   return rows.slice(0, 3).reverse().map((r, i) => {

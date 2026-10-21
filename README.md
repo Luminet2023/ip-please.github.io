@@ -119,9 +119,12 @@ node tools/plot_regression_test.js
 npm install --no-save --package-lock=false playwright
 node tools/browser_playthrough.js
 node tools/browser_playthrough.js --lang=en
+node tools/browser_playthrough.js --regressions
 ```
 
 加 `--headed` 可观看自动游玩。每日截图、结局截图和 JSON 报告输出到 `tools/test-results/`。非 Windows 环境先运行 `npx playwright install chromium`。
+
+`--regressions` 用独立场景复现卡片排版、发行主体与宪法比对、对白逐字动画、网络信息、打印来源和人物一致性，可与 `--lang=en` 组合检查英文画面。
 
 导入透明立绘后可运行 `python tools/test_aicast.py`，确认透明通道和深色人物细节被保留。
 
