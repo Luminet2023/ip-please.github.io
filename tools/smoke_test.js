@@ -72,7 +72,7 @@ run(`(() => { newGame(); S.day = 14; S.savings = 200; S.flags.bribed = false;
   p.evidence.fishBackup='retained';
   p.gpt.revoked=true; p.gpt.purgeKnown=true; p.gpt.transfer='pending'; p.relation.gpt=2;
   p.zero.verified=true; p.zero.resetKey=true;
-  localStorage.setItem('ip-please-endings-v1', '["E27"]'); })()`);
+  localStorage.setItem(ENDING_ARCHIVE_KEY, '["E27"]'); })()`);
 const papers = run('finalPapers().map(x => x.ending)');
 console.log('  可用终局文书（真相全开）：', papers.join(' '));
 const fromPapers = new Set(papers);
@@ -163,7 +163,7 @@ ok(run("ensurePlot().final.ending === null"), '新档结局应为 null');
 // ———————————————— 5. 旧存档迁移 ————————————————
 console.log('· 检查旧存档迁移');
 run(`newGame(); const old = JSON.parse(JSON.stringify(S)); delete old.plot; old.day = 5;
-  localStorage.setItem('ip-please-save-v1', JSON.stringify(old));`);
+  localStorage.setItem(SAVE_KEY, JSON.stringify(old));`);
 const save = run("loadSave()");
 ok(save && save.day === 5, '旧存档应能读出');
 run("newGame(); migrateSave(loadSave());");

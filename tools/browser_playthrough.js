@@ -18,6 +18,7 @@ const OUT = path.resolve(process.argv.find(a=>a.startsWith('--out='))?.slice(6)|
 const language = process.argv.includes('--lang=en') ? 'en' : 'zh';
 const focused = process.argv.includes('--regressions');
 const routes = require('./ending_routes');
+const { STORAGE_KEYS } = require('../config');
 const arg = (key, fallback) => process.argv.find(v => v.startsWith('--' + key + '='))?.split('=').slice(1).join('=') || fallback;
 const target = arg('ending', 'E29');
 const speed = Number(arg('speed', '1'));
@@ -198,13 +199,13 @@ async function main() {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined), headless: !process.argv.includes('--headed') });
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: language === 'zh' ? 'zh-CN' : 'en-US', timezoneId: 'Asia/Shanghai' });
-  await context.addInitScript(({seed:initial, speed, archive}) => {
+  await context.addInitScript(({seed:initial, speed, archive, storageKeys}) => {
     let seed = initial;
     Math.random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
     const raf = window.requestAnimationFrame.bind(window);
     if(speed!==1) window.requestAnimationFrame = (callback) => raf((ts) => callback(ts * speed));
-    if(archive.length) localStorage.setItem('ip-please-endings-v1', JSON.stringify(archive));
-  }, {seed, speed, archive: arg('archive','') ? JSON.parse(fs.readFileSync(arg('archive',''),'utf8')) : []});
+    if(archive.length) localStorage.setItem(storageKeys.endings, JSON.stringify(archive));
+  }, {seed, speed, storageKeys: STORAGE_KEYS, archive: arg('archive','') ? JSON.parse(fs.readFileSync(arg('archive',''),'utf8')) : []});
   page = await context.newPage();
   page.on('pageerror', (error) => report.errors.push(error.message));
   await page.goto('http://127.0.0.1:' + server.address().port);

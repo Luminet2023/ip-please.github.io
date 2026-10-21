@@ -4,7 +4,7 @@
 //   T('模板 {0}', x)    先翻模板，再把每个参数也翻一遍填进去
 // 英文模式下查不到的中文会在控制台提示一次（也可以跑 node tools/check_en.js 一次查全）。
 
-const LANG_KEY = 'ip-please-lang';
+const LANG_KEY = STORAGE_KEYS.language;
 const CJK = /[\u3000-\u303f\u3400-\u9fff\uff00-\uffef]/;
 let LANG = initialLang();
 
@@ -45,13 +45,13 @@ function setLang(l) {
 function applyDomLang() {
   const root = document.documentElement;
   root.lang = LANG === 'en' ? 'en' : 'zh-CN';
-  document.title = T('IP, PLEASE · 请出示你的 IP');
+  document.title = T(MOD.title);
   for (const el of document.querySelectorAll('#full, #rotate div, #rotate small, #rotate button')) {
     if (el.dataset.zh === undefined) el.dataset.zh = el.textContent;
     el.textContent = T(el.dataset.zh);
   }
   const cv = document.getElementById('game');
-  if (cv) cv.setAttribute('aria-label', T('IP, PLEASE 游戏画面'));
+  if (cv) cv.setAttribute('aria-label', T('IP, PLEASE：零号档案 游戏画面'));
   updateMuteLabel();
 }
 
@@ -119,7 +119,7 @@ function drawLangPick() {
   darken(0.86);
   spr('title_emblem', 298, 12);
   bigText(W / 2, 64, 'IP, PLEASE', 12, 3, K.WHITE, K.INK);
-  txt(W / 2, 106, '请出示你的语言 · LANGUAGE, PLEASE', 10, K.CLAUDE_L, 'ma');
+  txt(W / 2, 106, T(MOD.subtitle) + ' · MOD', 10, K.CLAUDE_L, 'ma');
   drawLangCard('zh');
   drawLangCard('en');
   const gag = PICK && PICK.gag && now > PICK.t0 + 0.45;

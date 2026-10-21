@@ -373,7 +373,7 @@ def main():
         blobs[name], sizes[name] = png_b64(im)
 
     data = {
-        "version": "2026.10.21.5",
+        "version": "2026.10.21.6",
         "font": {str(k): v for k, v in font_meta.items()},
         "sprites": pos,
         "people": people,

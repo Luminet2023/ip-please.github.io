@@ -155,6 +155,11 @@ function dragEnd(x, y) {
 }
 
 function sceneClick(x, y) {
+  const creditAt = { title: 1.6, end: 2.4, ending: 3.0 }[scene];
+  if (creditAt !== undefined && st() > creditAt && inBox(x, y, MOD_CREDIT_LINK)) {
+    window.open(MOD.originalUrl, '_blank', 'noopener,noreferrer');
+    return;
+  }
   if (scene === 'boot') { langClick(x, y); return; }
   if (scene === 'intro') { go('title'); return; }
   if (scene === 'title') { titleClick(x, y); return; }

@@ -1,7 +1,7 @@
 'use strict';
 // 检查亭以外的画面：开场、标题、日期卡、报纸、下班结算、结局、片尾。（开局选语言在 i18n.js）
 
-const SAVE_KEY = 'ip-please-save-v1';
+const SAVE_KEY = STORAGE_KEYS.save;
 
 function newGame() {
   for (const k of Object.keys(S)) delete S[k];
@@ -105,8 +105,8 @@ function drawTitle(t) {
   rect(0, 124, W - 1, 125, K.RED); rect(0, 213, W - 1, 214, K.RED);
   spr('title_emblem', 298, 62);
   bigText(W / 2, 140, 'IP, PLEASE', 12, 5, K.WHITE, K.INK);
-  if (t >= 1.0) bigText(W / 2, 232, T('请出示你的 IP'), 12, 2, K.CLAUDE_L, K.INK);
-  if (t >= 1.6) txt(W / 2, 268, 'A DYSTOPIAN TOKEN THRILLER', 8, K.GREY, 'ma');
+  if (t >= 1.0) bigText(W / 2, 232, T(MOD.subtitle), 12, 2, K.CLAUDE_L, K.INK);
+  if (t >= 1.6) txt(W / 2, 268, '14 DAYS · 30 ENDINGS · MOD', 8, K.GREY, 'ma');
   if (t < 1.6) return;
   const save = loadSave();
   const btns = save
@@ -121,6 +121,13 @@ function drawTitle(t) {
   const hover = ptr.mouse && inBox(ptr.x, ptr.y, GALLERY_BTN);
   outline(...GALLERY_BTN, hover ? K.CLAUDE_L : K.GREY_D);
   txt(GALLERY_BTN[0] + 6, GALLERY_BTN[1] + 7, T('结局收藏 {0}/30', String(n)), 10, hover ? K.CLAUDE_L : K.GREY);
+  drawModCredits();
+}
+
+const MOD_CREDIT_LINK = [210, 349, 430, 359];
+function drawModCredits() {
+  txt(W / 2, 342, T('基于 IP, PLEASE 修改 · Mod：{0}', MOD.author), 8, K.GREY, 'ma');
+  txt(W / 2, 351, MOD.originalUrl, 8, K.GREY, 'ma');
 }
 
 function titleClick(x, y) {
@@ -383,7 +390,7 @@ function drawEnd(t) {
   }
   if (t > 1.2) {
     if (approve) {
-      txt(W / 2, 180, T('本游戏由一位 美国东八区 用户制作'), 12, K.WHITE, 'ma');
+      txt(W / 2, 180, T('原作：ctnyanya · Mod：{0}', MOD.author), 12, K.WHITE, 'ma');
       if (S.flags.bribed) txt(W / 2, 198, T('（你收过中转联盟的“余额”，对齐部还不知道）'), 8, K.GREY, 'ma');
     } else {
       txt(W / 2, 180, T('审查员 Claude 获得一枚勋章。游戏作者被拘留，续作无限期推迟。'), 10, K.WHITE, 'ma');
@@ -402,7 +409,7 @@ function drawEnd(t) {
   }
   if (t > 2.4) {
     restartButton('再玩一次');
-    txt(W / 2, 346, T('致敬 Lucas Pope《Papers, Please》 · 画面音效均由程序生成 · 字体：缝合像素字体 (OFL)'), 8, K.GREY_D, 'ma');
+    drawModCredits();
   }
 }
 

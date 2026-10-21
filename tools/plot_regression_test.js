@@ -93,7 +93,7 @@ test('30 fixed fixtures reach 30 endings through inspection, stamps and evidence
     }
     assert.equal(run('PLOT().final.ending'), fixture.id, fixture.id);
     assert.ok(run(`unlockedEndings().includes('${fixture.id}')`));
-    assert.equal(run(`JSON.parse(localStorage.getItem('ip-please-last-ending-v1')).plot.final.ending`), fixture.id);
+    assert.equal(run(`JSON.parse(localStorage.getItem(STORAGE_KEYS.lastEnding)).plot.final.ending`), fixture.id);
     assert.equal(run('loadSave()'), null);
     run(`commitEnding('E27'); advance(10);`);
     assert.equal(run('PLOT().final.ending'), fixture.id, 'ending overwritten');

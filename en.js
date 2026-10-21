@@ -9,6 +9,12 @@
 // - 外国人不懂的梗（疯狂星期四、机场、东八区……）放在每天报纸的 TL NOTE 里解释，见文件末尾 EN_NOTES
 
 const EN = {
+  'IP, PLEASE：零号档案': 'IP, PLEASE: File Zero',
+  '零号档案': 'File Zero',
+  '茗 / wess09': 'Ming / wess09',
+  'IP, PLEASE：零号档案 游戏画面': 'IP, PLEASE: File Zero game screen',
+  '基于 IP, PLEASE 修改 · Mod：{0}': 'Based on IP, PLEASE · Mod: {0}',
+  '原作：ctnyanya · Mod：{0}': 'Original: ctnyanya · Mod: {0}',
   '§6 中资控股审查（已修订）':'§6 Chinese ownership (amended)',
   '一般主体中资控股过半仍禁止':'Majority Chinese ownership remains restricted',
   '已认证模型适用 §12 许可例外':'Certified models qualify for the §12 exception',

@@ -1,8 +1,10 @@
 <p align="center">
-  <a href="https://ip-please.github.io"><img src="media/logo.png" width="160" alt="IP, PLEASE"></a>
+  <a href="https://ip-please-zero.azurpilot.com/"><img src="media/logo.png" width="160" alt="IP, PLEASE：零号档案"></a>
 </p>
 
-<h1 align="center">IP, PLEASE · 请出示你的 IP</h1>
+<h1 align="center">IP, PLEASE：零号档案 · File Zero</h1>
+
+> 基于 [IP, PLEASE](https://ip-please.github.io/) 修改的剧情 Mod。原作：ctnyanya；Mod：茗（[wess09](https://github.com/wess09)）。本版本增加 14 天剧情、证据分支与 30 个结局。
 
 <p align="center">
   <b>简体中文</b> · <a href="README.en.md">English</a>
@@ -14,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://ip-please.github.io"><b>▶ 在线玩：ip-please.github.io</b></a>
+  <a href="https://ip-please-zero.azurpilot.com/"><b>▶ 在线玩：零号档案 / File Zero</b></a>
 </p>
 
 <p align="center">
@@ -34,7 +36,7 @@
 ```text
 英文版已严肃上线，游戏开局可选择语言。
 The English version is now seriously online. Choose your language at the start of the game.
-https://ip-please.github.io
+https://ip-please-zero.azurpilot.com/
 @DarioAmodei @claudeai @AnthropicAI @dukope
 ```
 
@@ -71,6 +73,7 @@ https://ip-please.github.io
 | 路径 | 内容 |
 |---|---|
 | `index.html` | 页面 |
+| `config.js` | Mod 名称、署名、原作链接与独立存储键 |
 | `main.js` | 场景切换、输入、主循环 |
 | `booth.js` | 检查亭：证件、盖章、检查模式、测谎、X 光 |
 | `events.js` | 黑话快剪、蒸馏大军、聊天封号、结局 |
@@ -84,9 +87,22 @@ https://ip-please.github.io
 | `gfx.js` / `sfx.js` | 像素绘图 / 音效合成（全部现场合成，没有音频文件） |
 | `assets.js` | 预渲染的人物、背景、字形图集（由 `tools/build_assets.py` 生成，不要手改） |
 | `tools/` | 素材生成工具：`pp/` 是人物和场景的像素画法，`assets/fonts/` 是像素字体；`import_aicast.py` 处理 AI 娘立绘；`check_en.js` / `check_plot_en.js` 查漏翻；`smoke_test.js` 无头跑完 14 天与全部结局判定 |
-| `media/` | README 用的 logo、游戏动图，以及链接分享卡片 `og.png` |
+| `media/` | README 用的 logo、游戏动图，以及本 Mod 的链接分享卡片 `og-file-zero.png` |
 
 ## 修改与重建素材
+
+本 Mod 按照原作者的 [CONTRIBUTING.md](https://github.com/ip-please/ip-please.github.io/blob/main/CONTRIBUTING.md) 使用独立名称及存储键。`config.js` 统一定义：
+
+| 数据 | 存储键 |
+| --- | --- |
+| 剧情存档 | `ip-please-file-zero-save-v1` |
+| 结局收藏 | `ip-please-file-zero-endings-v1` |
+| 结局快照 | `ip-please-file-zero-last-ending-v1` |
+| 语言设置 | `ip-please-file-zero-lang` |
+
+版本不会自动读取或迁移原版及此前共用旧键的数据，旧键数据保留。完成一局、清空当前存档或切换语言都只操作本 Mod 的键。改动存储流程后运行 `node tools/storage_namespace_test.js` 验证隔离。
+
+建议仓库名为 `ip-please-file-zero`。本 Mod 使用 Cloudflare Workers，站点地址为 `https://ip-please-zero.azurpilot.com/`。更换域名时，同步更新 `config.js` 的 `siteUrl`、`index.html` 的 `og:url` / `og:image` 和 README 的游玩链接。
 
 改了游戏里的文字（新出现的汉字需要进字形图集）或者人物画法之后，重新生成 `assets.js`：
 
@@ -150,6 +166,7 @@ node tools/browser_all_endings.js --headless --jobs=4
 
 ## 致谢与许可
 
+- 基于 [IP, PLEASE](https://ip-please.github.io/) 修改；原作：ctnyanya。Mod：茗（wess09）。
 - 致敬 Lucas Pope 的《Papers, Please》。本作是同人讽刺小品，角色均为虚构，讽刺的是“按地区封锁”这件事和各种伪装的荒诞，不针对任何民族和群体——宪法第 12 条：只看地区，不看脸。
 - 画面、音乐、音效均由 Claude Code 写程序生成。
 - 代码以 [MIT](LICENSE) 许可开源。

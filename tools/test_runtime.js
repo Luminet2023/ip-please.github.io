@@ -61,7 +61,7 @@ sandbox.webkitAudioContext = sandbox.AudioContext;
 
 vm.createContext(sandbox);
 
-const files = ['assets.js', 'en.js', 'i18n.js', 'gfx.js', 'sfx.js', 'docs.js', 'data.js', 'plot.js', 'endings.js',
+const files = ['config.js', 'assets.js', 'en.js', 'i18n.js', 'gfx.js', 'sfx.js', 'docs.js', 'data.js', 'plot.js', 'endings.js',
   'booth.js', 'events.js', 'screens.js', 'main.js'];
 for (const f of files) {
   const code = fs.readFileSync(path.join(ROOT, f), 'utf8');

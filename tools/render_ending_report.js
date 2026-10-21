@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const { MOD } = require('../config');
 const escape = value => String(value).replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
@@ -19,7 +20,7 @@ function renderEndingReport(file) {
   const html = `<!doctype html>
 <html lang="zh-CN"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IP PLEASE · 全结局实测</title>
+<title>${escape(MOD.title)} · 全结局实测</title>
 <style>
 body { background:#24211f; color:#eee; font:16px/1.6 system-ui; margin:32px }
 main { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr)); gap:20px }

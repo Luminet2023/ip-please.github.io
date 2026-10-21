@@ -174,7 +174,7 @@ function commitEnding(id) {
   p.final.ending = id;
   p.final.resolution = id;
   archiveEnding(id);
-  try { localStorage.setItem('ip-please-last-ending-v1', JSON.stringify(S)); } catch (e) { /* 隐私模式 */ }
+  try { localStorage.setItem(STORAGE_KEYS.lastEnding, JSON.stringify(S)); } catch (e) { /* 隐私模式 */ }
   clearSave();
   SFX.play('bell');
   SFX.play('sad', 0.8);

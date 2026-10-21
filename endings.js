@@ -5,7 +5,7 @@
 //   cast：结局画面右边那张立绘（ASSETS.people 的 key），没有就留空
 //   tone：good / bad / weird —— 只影响配色，不影响任何判定
 
-const ENDING_ARCHIVE_KEY = 'ip-please-endings-v1';
+const ENDING_ARCHIVE_KEY = STORAGE_KEYS.endings;
 
 const ENDINGS = {
   E01: { id: 'E01', title: '荣耀归于安索兹卡', sub: 'GLORY TO ANTHROTZKA', cast: 'GPT_AI', tone: 'bad',
@@ -141,7 +141,7 @@ function drawEndingScene(t) {
   }
   if (t > 3.0) {
     restartButton('再玩一次');
-    txt(W / 2, 348, T('解锁的结局会一直留在标题画面的「结局收藏」里'), 8, K.GREY_D, 'ma');
+    drawModCredits();
   }
 }
 
