@@ -423,13 +423,23 @@ function faceBox() {
 }
 
 // 对话框（左下角最近三句）的位置，绘制和检查模式共用
+// 对话框（左下角最近三行）。超宽的台词折成两行显示：每行带 seg（显示片段）和 off（在整句里的起始位置），
+// 检查模式下马脚匹配仍按 ln.text 整句比较，不受折行影响。
 function lineBoxes() {
-  return B.lines.slice(-3).map((ln, i) => {
-    let size = tw(ln.text, 12) > 176 ? 10 : 12;
-    if (size === 10 && tw(ln.text, 10) > 178) size = 8;
+  const rows = [];
+  for (const ln of [...B.lines].reverse()) {
+    const size = tw(ln.text, 12) <= 176 ? 12 : tw(ln.text, 10) <= 176 ? 10 : 8;
+    const segs = size === 12 ? [ln.text] : wrap(ln.text, size, 168).slice(0, 2);
+    let off = 0;
+    for (let i = segs.length - 1; i >= 0; i--) {   // 从最新往回铺，最后统一反转
+      rows.push({ ln, size, seg: segs[i], off, x1: Math.min(214, 30 + tw(segs[i], size) + 8) });
+      off += segs[i].length;
+    }
+    if (rows.length >= 3) break;
+  }
+  return rows.slice(0, 3).reverse().map((r, i) => {
     const y = 288 + i * 17;
-    const x1 = Math.min(214, 30 + tw(ln.text, size) + 8);
-    return { ln, size, box: [30, y, x1, y + 15] };
+    return { ...r, box: [30, y, r.x1, y + 15] };
   });
 }
 
@@ -724,13 +734,14 @@ function drawBoothLower() {
   outline(x0, y0, x0 + 18, y0 + 16, K.METAL_L);
   for (let yy = y0 + 3; yy < y0 + 15; yy += 3) rect(x0 + 3, yy, x0 + 15, yy, K.INK);
   const cps = LANG === 'en' ? 50 : 26;
-  for (const { ln, size, box } of lineBoxes()) {
+  for (const { ln, size, seg, off, box } of lineBoxes()) {
     const n = Math.max(1, Math.floor((now - ln.t) * cps));
     const [x0, y] = box;
     rect(...box, 'rgb(30,28,26)');
     outline(...box, 'rgb(76,70,64)');
     if (ln.who === 'C') rect(x0, y, x0 + 1, y + 15, K.CLAUDE);
-    txt(35, y + (size === 12 ? 2 : size === 10 ? 3 : 4), ln.text, size, ln.who === 'C' ? K.CLAUDE_L : K.WHITE, 'la', n);
+    const vis = Math.max(0, Math.min([...seg].length, n - off));
+    txt(35, y + (size === 12 ? 2 : size === 10 ? 3 : 4), seg, size, ln.who === 'C' ? K.CLAUDE_L : K.WHITE, 'la', vis);
   }
   if (S.endless) {
     txt(8, 347, T('无尽 · 已处理 {0} 人', B.total), 10, K.GREY);

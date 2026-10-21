@@ -777,7 +777,7 @@ function randomEntrant(day, kind) {
     net = '机房 IP（云服务器）';
     spec.issues.push(NET_ISSUE([['C', '你家宽带怎么在机房？'], nervous(['……家里机架。', '我有家庭机房。', '机房也是房。'])]));
     spec.reason = '网络类型：机房 IP';
-    spec.hint = '提示：设备卡最后一行「网络」，对照宪法 §7';
+    spec.hint = '提示：设备卡最后一行「网络」，对照宪法 §8';
   } else if (kind === 'logins') {
     // 登录历史：点击设备卡上的 IP，打印机吐出最近登录记录（登录地=设备真实足迹，和代理后的 IP 归属矛盾）
     const loc2 = (s) => s.split(' · ').slice(0, 2).join(' · ');

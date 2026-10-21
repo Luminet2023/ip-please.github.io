@@ -87,7 +87,6 @@ const START_TITLE = [190, 292, 312, 318], ENDLESS_SM = [328, 292, 450, 318];
 
 function startEndless() {
   SFX.play('click');
-  clearSave();
   newGame();
   S.endless = true;
   S.day = 7;   // 无尽模式：全部规则生效（不存档，不影响剧情进度）

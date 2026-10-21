@@ -551,7 +551,7 @@ const EN = {
   '我有家庭机房。': 'I have a home datacenter.',
   '机房也是房。': 'A datacenter is a home too.',
   '网络类型：机房 IP': 'Network: datacenter IP',
-  '提示：设备卡最后一行「网络」，对照宪法 §7': 'Tip: the NET row on the device card; check §7',
+  '提示：设备卡最后一行「网络」，对照宪法 §8': 'Tip: the NET row on the device card; check §8',
   'IP 登录记录': 'IP LOGIN LOG',
   '近 3 次登录': 'last 3 logins',
   '登录记录打出来了：上次登录地和归属地对得上吗？': 'Login log printed: does the last login location match the IP location?',
