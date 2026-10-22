@@ -87,6 +87,7 @@ function typedSounds(lines) {
 const CONTINUE_TITLE = [113, 292, 243, 318], NEWGAME_TITLE = [255, 292, 385, 318], ENDLESS_TITLE = [397, 292, 527, 318];
 const START_TITLE = [190, 292, 312, 318], ENDLESS_SM = [328, 292, 450, 318];
 const GALLERY_BTN = [8, 326, 132, 350];
+const LANG_BTN = [560, 320, 632, 342];   // 标题画面右下角：循环切换语言
 
 function startEndless() {
   SFX.play('click');
@@ -121,6 +122,9 @@ function drawTitle(t) {
   const hover = ptr.mouse && inBox(ptr.x, ptr.y, GALLERY_BTN);
   outline(...GALLERY_BTN, hover ? K.CLAUDE_L : K.GREY_D);
   txt(GALLERY_BTN[0] + 6, GALLERY_BTN[1] + 7, T('结局收藏 {0}/30', String(n)), 10, hover ? K.CLAUDE_L : K.GREY);
+  const lh = ptr.mouse && inBox(ptr.x, ptr.y, LANG_BTN);
+  outline(...LANG_BTN, lh ? K.CLAUDE_L : K.GREY_D);
+  txt(LANG_BTN[0] + 6, LANG_BTN[1] + 6, LANG_LABEL[LANG] + ' ▶', 8, lh ? K.CLAUDE_L : K.GREY);
   drawModCredits();
 }
 
@@ -132,6 +136,7 @@ function drawModCredits() {
 
 function titleClick(x, y) {
   if (st() < 1.6) return;
+  if (inBox(x, y, LANG_BTN)) { SFX.play('click'); cycleLang(); return; }
   if (inBox(x, y, GALLERY_BTN)) { SFX.play('click'); go('gallery'); return; }
   const save = loadSave();
   if (!save) {
@@ -184,9 +189,9 @@ function drawNews(t) {
   for (const s of wrap(n.h2, 12, pw - 175)) { txt(px + 160, hy, s, 12, ink); hy += 16; }
   for (let r = 0; r < 4; r++) rect(px + 160, hy + 6 + r * 9, px + 340 - ((r * 37) % 50), hy + 9 + r * 9, faint);
   yy = Math.max(yy + 110, hy + 46);
-  const note = LANG === 'en' && EN_NOTES[S.day];   // 英文版：外国人不懂的梗，在报纸上加一段译注
+  const note = NOTES_FOR(LANG)[S.day];   // 英文 / 日文版：本地玩家不熟的梗，在报纸上加一段译注
   if (note) {
-    txt(px + 14, yy, "TRANSLATOR'S NOTE", 8, K.RED_D);
+    txt(px + 14, yy, T("TRANSLATOR'S NOTE"), 8, K.RED_D);
     yy += 11;
     for (const s of wrap(note, 8, pw - 28)) { txt(px + 14, yy, s, 8, K.TEXT); yy += 10; }
     yy += 4;

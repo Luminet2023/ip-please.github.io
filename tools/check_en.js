@@ -6,13 +6,14 @@
 // - 地名这类“中国 · 浙江 · 电信”，每一段都有译文就算有
 // - 'dv.归属' 这种检查模式的栏位引用不显示，跳过
 // - 拼接出来的含中文模板字符串（`…${x}…`）英文版翻不了，会单独列出来，改成 T('…{0}…', x)
-// - i18n.js（开局双语画面）、en.js、assets.js 不扫
+// - i18n.js（开局多语言画面）、各语言译文、assets.js 不扫
+// - 想看四种语言一起的检查结果，用 node tools/check_i18n.js
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.resolve(__dirname, '..');
-const SKIP = new Set(['assets.js', 'en.js', 'i18n.js']);
+const SKIP = new Set(['assets.js', 'en.js', 'zh-hant.js', 'ja.js', 'i18n.js']);
 const CJK = /[\u3000-\u303f\u3400-\u9fff\uff00-\uffef]/;
 
 const ctx = {};

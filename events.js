@@ -80,8 +80,8 @@ function drawRush() {
     txt((box[0] + box[2]) >> 1, box[1] + 14, label, 12, K.WHITE, 'ma');
     txt((box[0] + box[2]) >> 1, box[1] + 32, T(sub), LANG === 'en' ? 10 : 12, K.WHITE, 'ma');
   }
-  // 英文版：给中文黑话配一行小字注释
-  const gloss = LANG === 'en' && ev.i >= 0 && EN_GLOSS[ev.list[ev.i].line];
+  // 英文 / 日文版：给中文黑话配一行小字注释
+  const gloss = ev.i >= 0 && GLOSS_FOR(LANG)[ev.list[ev.i].line];
   if (gloss) txt(420, 278, gloss, 8, K.GREY, 'ma');
 }
 

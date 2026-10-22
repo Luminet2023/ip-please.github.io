@@ -1024,7 +1024,7 @@ function composeInspect(g) {
     const [x0, y0] = BANNER_BOX;
     rect(...BANNER_BOX, K.INK); outline(...BANNER_BOX, bn.bad ? K.RED : K.GREY_D);
     txt(x0 + 8, y0 + 5, bn.title, 12, bn.bad ? K.RED_L : K.GREY);
-    const room = bn.ask ? 236 : LANG === 'en' ? 282 : Infinity;
+    const room = bn.ask ? 236 : LANG === 'en' || LANG === 'ja' ? 282 : Infinity;
     txt(x0 + 8, y0 + 21, bn.sub, tw(bn.sub, 10) > room ? 8 : 10, K.WHITE);
     if (bn.ask) {
       const hover = ptr.mouse && inBox(ptr.x, ptr.y, ASK_BTN);
@@ -1034,6 +1034,8 @@ function composeInspect(g) {
   } else {
     const s = T(I.sel.length ? '再点一处，看看两者是否矛盾' : '检查模式：点两处信息找矛盾，或点旅客说的话找马脚');
     rect(...BANNER_BOX, 'rgba(22,19,19,0.85)'); outline(...BANNER_BOX, K.GREY_D);
-    txt(BANNER_BOX[0] + 8, BANNER_BOX[1] + 12, s, 10, K.GREY);
+    // 日文这类字数多的语言放不下一行：折成两行（横幅只有 34px 高，最多两行）
+    wrap(s, 10, BANNER_BOX[2] - BANNER_BOX[0] - 16).slice(0, 2)
+      .forEach((ln, i) => txt(BANNER_BOX[0] + 8, BANNER_BOX[1] + 8 + i * 12, ln, 10, K.GREY));
   }
 }

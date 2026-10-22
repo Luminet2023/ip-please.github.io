@@ -59,7 +59,7 @@ run(`localStorage.setItem(ENDING_ARCHIVE_KEY,'["constructor","toString","E29","E
 assert.deepEqual(Array.from(run('unlockedEndings()')),['E29']);
 console.log('✓ malformed nested saves and archive IDs restore safely');
 
-for(const lang of ['zh','en'])for(let day=1;day<=14;day++){
+for(const lang of ['zh','zh-hant','ja','en'])for(let day=1;day<=14;day++){
  run(`resetAudit(${day});chooseLang('${lang}');var rulebook=new Rulebook(${day});`);
  assert.ok(run('rulebook.h<=184'),lang+' day '+day);
  assert.ok(run('rulebook.pages.every(p=>p.rows.every(r=>r.s.includes("|")||tw(r.s,r.size)<=rulebook.w-20))'));
@@ -84,7 +84,7 @@ txt=function(x,y,s,size=12,color,align='la'){
  const width=tw(s,size), left=x-(align==='ra'?width:align==='ma'?width/2:0);
  if(left<0||left+width>auditDoc.w||y<0||y+size>auditDoc.h) auditOverflow.push(auditDoc.constructor.name+': '+s);
 };`);
-for(const lang of ['zh','en']){
+for(const lang of ['zh','zh-hant','ja','en']){
  run(`resetAudit();chooseLang('${lang}');
  for(let day=1;day<=14;day++){S.day=day;startDay();for(const item of plotDayScript(day)){
   if(typeof item!=='function')continue;
@@ -94,5 +94,5 @@ for(const lang of ['zh','en']){
 }
 run('txt=originalTxt;');
 assert.deepEqual(Array.from(run('auditOverflow')),[]);
-console.log('✓ scheduled story documents keep Chinese and English text inside paper edges');
+console.log('✓ scheduled story documents keep every language inside paper edges');
 console.log('Source audit checks passed. Browser playthroughs are reported separately.');

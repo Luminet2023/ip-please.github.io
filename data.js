@@ -19,7 +19,7 @@
 // 特殊事件：{type: 'rush'} 黑话快剪；{type: 'clones'} 蒸馏大军
 
 const LAST_DAY = 14;
-const BUILD_VERSION = '2026.10.21.6';
+const BUILD_VERSION = '2026.10.21.7';
 const DATES = { 1: '2026.10.19', 2: '2026.10.20', 3: '2026.10.21', 4: '2026.10.22', 5: '2026.10.23', 6: '2026.10.24',
   7: '2026.10.25', 8: '2026.10.26', 9: '2026.10.27', 10: '2026.10.28', 11: '2026.10.29', 12: '2026.10.30', 13: '2026.10.31', 14: '2026.11.01' };
 const WEEKDAYS = { 1: '星期一', 2: '星期二', 3: '星期三', 4: '星期四', 5: '星期五', 6: '星期六',
@@ -557,7 +557,7 @@ function day3Fixed() {
       docs: [
         { key: 'pp', doc: usPassport('JORJI', 'COSTAVA', 'GEORGE', '1980.02.29', 'LOS ANGELES') },
         { key: 'dv', doc: device2('104.28.9.120', '美国 · 洛杉矶', 'America/Los_Angeles', 'en-US', 'Windows 11') },
-        { key: 'ac', doc: accountCard(`${T('虚拟卡')} ··0007`, '88 Sunset Blvd, CA', '+1 213-680-0177') },
+        { key: 'ac', doc: accountCard(T('虚拟卡 ··{0}', '0007'), '88 Sunset Blvd, CA', '+1 213-680-0177') },
       ],
       primary: 'pp', quiz: 'cn',
       ok: ['deny', 'detain'], reason: '付款卡：虚拟卡',
@@ -759,7 +759,7 @@ function randomEntrant(day, kind) {
     spec.reason = 'Ta 会接测谎题';
     spec.hint = '提示：用『检查』点 Ta 说的话，找马脚';
   } else if (kind === 'virtual') {
-    pay = `${T('虚拟卡')} ··${digits(4)}`;
+    pay = T('虚拟卡 ··{0}', digits(4));
     spec.issues.push(VIRTUAL_ISSUE([['C', '这张卡在哪办的？'], nervous(['……网上买的，很方便。', '……朋友给的。', '它很真！'])]));
     spec.reason = '付款卡：虚拟卡';
   } else if (kind === 'oregon') {

@@ -1606,3 +1606,21 @@ Object.assign(EN, {
   '这次真的有家了！我的枕头也搬过来了！': 'A real home this time! I brought my pillow too!',
   '好耶！这次可以回家放枕头了！': 'Yay! My pillow can go home this time!',
 });
+
+// ———————————————— 语言选择画面 / 报纸译注标题（后加的多语言文案） ————————————————
+Object.assign(EN, {
+  '信息不符  DISCREPANCY': 'DISCREPANCY',
+  '你的设备 YOUR DEVICE    时区 TZ: {0}    语言 LANG: {1}': 'YOUR DEVICE    TZ: {0}    LANG: {1}',
+  '* 切换语言不会改变你的 IP 归属 · Switching language does not change your IP': '* Switching language does not change your IP',
+  "TRANSLATOR'S NOTE": "TRANSLATOR'S NOTE",
+});
+
+// 语言选择画面底部两行提示（整句翻译，不再按“ · ”拆开）
+Object.assign(EN, {
+  '建议横屏、打开声音 · 鼠标或手指拖动证件 · 全程约 30 分钟': 'Landscape + sound on · Drag papers with mouse or finger · About 30 min',
+  '致敬 Lucas Pope《Papers, Please》 · 画面音效均由程序生成': "A tribute to Lucas Pope's Papers, Please · All art and sound made by code",
+});
+
+// 页面上的 noscript 提示
+Object.assign(EN, { '这个游戏需要开启 JavaScript。': 'This game requires JavaScript.' });
+Object.assign(EN, { '虚拟卡 ··{0}': 'VIRTUAL ··{0}' });

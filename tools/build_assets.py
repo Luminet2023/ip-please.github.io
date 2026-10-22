@@ -19,6 +19,7 @@ from pathlib import Path
 from PIL import Image, ImageChops
 
 TOOLS = Path(__file__).resolve().parent
+LANGS = ("zh", "zh-hant", "ja", "en")   # 网页版支持的四种语言（简体是原文）
 SITE = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
 
@@ -182,12 +183,15 @@ class Packer:
         return sheet, pos
 
 
+SEAL_TEXT = {"zh": "对齐部", "zh-hant": "對齊部", "ja": "整列省", "en": "ALIGN"}
+
+
 def seal_sprite(lang="zh"):
     im = Image.new("RGBA", (34, 34), (0, 0, 0, 0))
     d = draw(im)
     d.ellipse([0, 0, 33, 33], outline=SEAL, width=2)
     txt(d, (17, 8), "M.O.A.", 8, SEAL, anchor="ma")
-    txt(d, (17, 19), "ALIGN" if lang == "en" else "对齐部", 8, SEAL, anchor="ma")
+    txt(d, (17, 19), SEAL_TEXT.get(lang, SEAL_TEXT["zh"]), 8, SEAL, anchor="ma")
     return im
 
 
@@ -354,20 +358,23 @@ def main():
     pk.add("photo:CARPOOL", group_photo(grp), crop=False)
     people["CARPOOL"] = {"expr": grp.expr, "walker": [list(c) for c in grp.walker], "scripted": True, "fw": 300,
                          "extra": [[list(c) for c in q.walker] for q in grp.people[1:4]]}
-    pk.add("seal", seal_sprite(), crop=False)
-    pk.add("seal:en", seal_sprite("en"), crop=False)
+    for lang in LANGS:
+        pk.add("seal" if lang == "zh" else "seal:" + lang, seal_sprite(lang), crop=False)
     pk.add("emblem", emblem_sprite(), crop=False)
     pk.add("title_emblem", title_emblem(), crop=False)
     for kind in ("deny", "approve"):
-        pk.add(f"stamp:{kind}", stamp_sprite(kind), crop=False)
-        pk.add(f"stamp:{kind}:en", stamp_sprite(kind, "en"), crop=False)
+        for lang in LANGS:
+            pk.add(f"stamp:{kind}" if lang == "zh" else f"stamp:{kind}:{lang}", stamp_sprite(kind, lang), crop=False)
     pk.add("crayon", CrayonPassport().image(), crop=False)
     for k in ("gate", "clock", "plane", "drumstick", "medal"):
         pk.add(f"news:{k}", news_icon(k), crop=False)
     pk.add("news:jorji", news_icon_jorji(), crop=False)
     bg = static_layer().copy()
-    for i, im in enumerate(bg_patches(bg, static_layer("en"))):
-        pk.add(f"bg:en:{i}", im)
+    for lang in LANGS:
+        if lang == "zh":
+            continue
+        for i, im in enumerate(bg_patches(bg, static_layer(lang))):
+            pk.add(f"bg:{lang}:{i}", im)
     sheet, pos = pk.build()
 
     wbg = window_bg().copy()

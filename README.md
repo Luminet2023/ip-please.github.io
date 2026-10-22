@@ -27,7 +27,7 @@
 
 - **14 天剧情 + 30 个结局**，每天自动存档；结局会收进标题画面的「结局收藏」
 - 九位 AI 娘旅客：GPT、Qwen、Grok、GLM、Kimi、Gemini、MiniMax、大肥鱼，以及作者本人
-- 中文 / English 双语，开局选择（英文版里外国人看不懂的梗，在每天报纸的译注里解释）
+- **简体中文 / 繁體中文 / 日本語 / English** 四种语言，开局选择，标题画面右下角随时切换（英文和日文版里本地玩家不熟的梗，在每天报纸的译注里解释）
 - 手机横屏用手指、电脑用鼠标拖证件
 - 纯静态网页，不加载任何外部资源；下载仓库后直接双击 `index.html` 也能玩
 
@@ -78,15 +78,17 @@ https://ip-please-zero.azurpilot.com/
 | `booth.js` | 检查亭：证件、盖章、检查模式、测谎、X 光 |
 | `events.js` | 黑话快剪、蒸馏大军、聊天封号、结局 |
 | `screens.js` | 开场、报纸、下班结算、片尾、存档 |
-| `i18n.js` | 语言切换 `T()`，以及开局选语言的画面 |
+| `i18n.js` | 语言切换 `T()`、折行与行首禁则，以及开局选语言的画面 |
 | `en.js` | 英文译文（以中文原句为键）、报纸上的译注、黑话注释 |
+| `ja.js` | 日文译文、日文版报纸译注与黑话注释 |
+| `zh-hant.js` | 繁體中文译文（繁體字・道地譯法），由 `tools/gen_zh_hant.py` 从 `en.js` 的键自动转出 |
 | `data.js` | 剧本：每天的旅客、报纸、随机路人 |
 | `plot.js` | 14 天调度、`S.plot` 状态字典、证据处理、结局判定（新增） |
 | `endings.js` | 30 个结局的文本与演出、结局收藏画面（新增） |
 | `docs.js` | 证件：护照、设备卡、账户卡、宪法、公文/证据单/终局文书 |
 | `gfx.js` / `sfx.js` | 像素绘图 / 音效合成（全部现场合成，没有音频文件） |
 | `assets.js` | 预渲染的人物、背景、字形图集（由 `tools/build_assets.py` 生成，不要手改） |
-| `tools/` | 素材生成工具：`pp/` 是人物和场景的像素画法，`assets/fonts/` 是像素字体；`import_aicast.py` 处理 AI 娘立绘；`check_en.js` / `check_plot_en.js` 查漏翻；`smoke_test.js` 无头跑完 14 天与全部结局判定 |
+| `tools/` | 素材生成工具：`pp/` 是人物和场景的像素画法，`assets/fonts/` 是像素字体；`import_aicast.py` 处理 AI 娘立绘；`check_i18n.js` 一次查四种语言的漏翻、`gen_zh_hant.py` 生成繁體中文譯文、`check_plot_en.js` 查剧情漏翻；`smoke_test.js` 无头跑完 14 天与全部结局判定 |
 | `media/` | README 用的 logo、游戏动图，以及本 Mod 的链接分享卡片 `og-file-zero.png` |
 
 ## 修改与重建素材
@@ -111,11 +113,15 @@ pip install -r tools/requirements.txt
 python tools/build_assets.py
 ```
 
-改了中文台词，要同步改 `en.js` 里对应的键（中文原句一字不差）。漏没漏可以跑：
+改了中文台词，要同步改 `en.js` / `ja.js` 里对应的键（中文原句一字不差）。繁體是自动转的，重跑一次生成脚本即可。漏没漏一次查全：
 
 ```bash
-node tools/check_en.js
+python tools/gen_zh_hant.py     # 重新生成 zh-hant.js（需要 opencc-python-reimplemented）
+node tools/check_i18n.js        # 四种语言：漏翻 + {0} 占位符是否对得上
+node tools/check_i18n.js ja     # 只看某一种语言
 ```
+
+新增的日文假名、繁體字同样要进字形图集，所以改完译文记得重跑 `python tools/build_assets.py`。
 
 提供原图的七位 AI 娘使用 `Ai 资源` 中的立绘，由脚本保留透明通道、裁切并量化成 180×128 的像素立绘和 40×50 的证件照，不重绘。其他角色沿用现有人物素材：
 

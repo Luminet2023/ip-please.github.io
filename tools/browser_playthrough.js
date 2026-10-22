@@ -3,7 +3,7 @@
 // Real Chromium playthrough. Game state is read for assertions/strategy; all
 // gameplay uses Playwright mouse input. No case/ending functions are invoked.
 // Install: npm install --no-save --package-lock=false playwright
-// Run: node tools/browser_playthrough.js [--headed] [--lang=en]
+// Run: node tools/browser_playthrough.js [--headed] [--lang=zh|zh-hant|ja|en]
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -15,7 +15,12 @@ if(!playwright)throw Error('Install browser test dependency: npm install --no-sa
 const { chromium }=playwright;
 const ROOT = path.resolve(__dirname, '..');
 const OUT = path.resolve(process.argv.find(a=>a.startsWith('--out='))?.slice(6)||path.join(__dirname, 'test-results'));
-const language = process.argv.includes('--lang=en') ? 'en' : 'zh';
+// 开局选语言是四张横排的卡片（i18n.js 里 CARD_W=96、CARD_GAP=10，x 从 113 起，y 124—190）
+const LANGS = ['zh', 'zh-hant', 'ja', 'en'];
+const LOCALES = { zh: 'zh-CN', 'zh-hant': 'zh-TW', ja: 'ja-JP', en: 'en-US' };
+const langArg = (process.argv.find((a) => a.startsWith('--lang=')) || '').slice(7);
+const language = LANGS.includes(langArg) ? langArg : 'zh';
+const langCardPoint = () => [161 + LANGS.indexOf(language) * 106, 157];
 const focused = process.argv.includes('--regressions');
 const routes = require('./ending_routes');
 const { STORAGE_KEYS } = require('../config');
@@ -198,7 +203,7 @@ async function main() {
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined), headless: !process.argv.includes('--headed') });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: language === 'zh' ? 'zh-CN' : 'en-US', timezoneId: 'Asia/Shanghai' });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: LOCALES[language], timezoneId: 'Asia/Shanghai' });
   await context.addInitScript(({seed:initial, speed, archive, storageKeys}) => {
     let seed = initial;
     Math.random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -229,7 +234,7 @@ async function main() {
     const progress = [s.scene, s.day, s.booth?.idx, s.booth?.ent?.phase, s.booth?.evidence?.id, s.booth?.final?.index].join(':');
     if (progress !== lastProgress) { lastProgress = progress; stallAt = Date.now(); }
     if (Date.now() - stallAt > 20000 * Math.max(1,12/speed)) throw new Error('Playthrough stalled: ' + progress);
-    if (s.scene === 'boot') { await click(language === 'en' ? 410 : 230, 170); }
+    if (s.scene === 'boot') { const [lx, ly] = langCardPoint(); await click(lx, ly); }
     else if (s.scene === 'intro') await click(320, 300);
     else if (s.scene === 'title') await click(250, 305);
     else if (s.scene === 'news') await click(320, 310);
