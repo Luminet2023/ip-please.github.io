@@ -1,10 +1,11 @@
 'use strict';
 // 特殊桥段：黑话快剪、蒸馏大军、地址卡堆、规则书特写、Day 6 聊天封号、结局。
 
+// item.srv：无尽模式由服务器下发的波次（脸 / 冲关者参数），结束后把操作交给服务器结算
 function startEvent(item) {
   B.speakerT = now;
-  if (item.type === 'rush') startRush();
-  if (item.type === 'clones') startClones();
+  if (item.type === 'rush') startRush(item.srv);
+  if (item.type === 'clones') startClones(item.srv);
 }
 
 // ———————————————————— 黑话快剪 ————————————————————
@@ -12,10 +13,12 @@ function startEvent(item) {
 const RUSH_APPROVE = [250, 214, 400, 274], RUSH_DENY = [440, 214, 590, 274];
 const RUSH_TIME = 2.6;
 
-function startRush() {
+function startRush(srv) {
   SFX.play('intercom');
   say('C', '快速通道，开！');
-  B.event = { type: 'rush', list: RUSH.map((r) => ({ ...r, person: r.person === 'pool' ? takePoolPerson() : r.person })), i: -1, t0: now, tFace: 0, hits: 0, wrong: 0, missed: 0, lock: true };
+  const list = srv ? srv.faces.map((f) => ({ person: f.person, line: f.line }))
+    : RUSH.map((r) => ({ ...r, person: r.person === 'pool' ? takePoolPerson() : r.person }));
+  B.event = { type: 'rush', srv, list, picks: [], i: -1, t0: now, tFace: 0, hits: 0, wrong: 0, missed: 0, lock: true };
   later(2.6, rushNext);
 }
 
@@ -47,7 +50,8 @@ function rushPick(kind) {
   B.slams.push({ t: now, kind });
   SFX.play('stamp_' + kind);
   B.shake = now;
-  if (kind === r.ok) { ev.hits++; B.pay += 2; } else ev.wrong++;
+  if (ev.srv) ev.picks.push({ i: ev.i, pick: kind, rt_ms: Math.round((now - ev.tFace) * 1000) });
+  else if (kind === r.ok) { ev.hits++; B.pay += 2; } else ev.wrong++;
   B.ent.expr = kind === 'deny' ? 'shock' : 'smile';
   later(0.5, rushNext);
 }
@@ -56,11 +60,11 @@ function rushEnd() {
   const ev = B.event;
   B.event = null;
   B.lastFinish = now;
+  if (ev.srv) { Endless.submitWave(ev, { picks: ev.picks }); return; }
   B.total += ev.list.length;
   say('C', T('快剪结束：判对 {0}，判错 {1}，漏掉 {2}。', ev.hits, ev.wrong, ev.missed));
   if (ev.wrong) cite([T('黑话快剪：判错 {0} 人', ev.wrong), '说中文黑话的拒绝，说人话的放行'], 0.8);
-  if (S.endless) topUpEndless();
-  else if (B.idx >= B.queue.length) endDaySoon();
+  if (B.idx >= B.queue.length) endDaySoon();
 }
 
 function drawRush() {
@@ -89,12 +93,16 @@ function drawRush() {
 
 const GATE_X = 356;
 
-function startClones() {
+function startClones(srv) {
   const items = [];
-  for (let i = 0; i < 10; i++) {
-    items.push({ ts: now + 1.6 + i * 0.6, x0: 226 + (i % 3) * 20, y: 104 + (i * 7) % 18, v: 30 + (i % 4) * 5, state: 'wait', th: 0 });
+  if (srv) {
+    srv.clones.forEach((c, i) => items.push({ i, ts: now + c.ts_ms / 1000, x0: c.x0, y: c.y, v: c.v, state: 'wait', th: 0 }));
+  } else {
+    for (let i = 0; i < 10; i++) {
+      items.push({ ts: now + 1.6 + i * 0.6, x0: 226 + (i % 3) * 20, y: 104 + (i * 7) % 18, v: 30 + (i % 4) * 5, state: 'wait', th: 0 });
+    }
   }
-  B.event = { type: 'clones', t0: now, items, hits: 0, passed: 0, siren: SFX.play('siren', 0.55), done: false };
+  B.event = { type: 'clones', srv, t0: now, items, shots: [], hits: 0, passed: 0, siren: SFX.play('siren', 0.55), done: false };
   B.xray.on = false;
   if (B.insp.on) setInspect(false);
   say('C', '警报！');
@@ -124,11 +132,11 @@ function updateClones() {
       SFX.stop(ev.siren);
       B.event = null;
       B.lastFinish = now;
+      if (ev.srv) { Endless.submitWave(ev, { hits: ev.shots }); return; }
       say('C', ev.passed ? T('……拦下 {0} 个，漏了 {1} 个。', ev.hits, ev.passed) : '……限流完毕。');
       B.bonus += ev.hits;
       if (ev.passed) cite([T('蒸馏大军冲关：{0} 人', ev.passed), '警报响起时，点击冲关的人'], 0.8);
-      if (S.endless) topUpEndless();
-      else if (B.idx >= B.queue.length) endDaySoon();
+      if (B.idx >= B.queue.length) endDaySoon();
     });
   }
 }
@@ -144,7 +152,10 @@ function shootAt(x, y) {
     const d = Math.hypot(cx - x, cy - 6 - y);
     if (d < bd) { bd = d; best = c; }
   }
-  if (best) { best.state = 'hit'; best.th = now; ev.hits++; }
+  if (best) {
+    best.state = 'hit'; best.th = now; ev.hits++;
+    if (ev.srv) ev.shots.push({ i: best.i, t_ms: Math.round((now - ev.t0) * 1000) });
+  }
 }
 
 function drawClones() {

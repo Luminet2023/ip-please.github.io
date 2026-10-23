@@ -244,6 +244,45 @@ TokenResponse：
   公告与昵称**只用 DOM 的 `textContent` 显示**：canvas 像素字库没有任意文字的字形，也避免 XSS。
 - 管理员区块挂在云同步面板里（`CloudSync.addPanelSection`），权限以后端为准。
 
+## 无尽模式协议（服务器权威，`run_*` / `ent_*` / `wave_*`）
+
+服务器生成旅客、判定、计分；前端只拿到「证件上写了什么」（`PublicEntrant`：证件字段、开场白原文、登录记录、
+X 光物品），**正确答案、破绽、谁会接测谎题都不下发**。实现：`backend/src/endless/`，前端 `endless.js`。
+
+- 生成：第 `t` 位旅客只由 `(种子, t)` 决定（ChaCha20 + HMAC 子流，自写抽样函数）。改生成逻辑必须提升
+  `GENERATOR_VERSION` 并更新 golden hash，且只在 UTC+8 午夜后上线（否则当天每日挑战的序列会变）。
+  每第 9 格是波次（黑话快剪 / 蒸馏大军交替）。
+- 会显示给玩家的字符串（开场白、地名、黑话）必须与前端 JS 原文一致：`tables.rs` 的测试会读 `data.js` /
+  `endless.js` / `assets.js` 核对；破绽说明、追问、反应、罚单文案只在前端（按 `kind` 取）。
+- 接口（全部需要会话，按用户限流）：
+  - `POST /endless/runs {mode: endless|daily}` → 201 `{run, item:null}`；已有进行中对局 409 `endless_run_active`，
+    今天的每日挑战已玩过 409 `daily_already_played`。
+  - `GET /endless/runs/current` → `{run, item}`（刷新页面后接着玩；闲置 / 超时的对局会被结算，返回 404）。
+  - `GET /endless/runs/{run_id}` → `{run, final}`（本人或管理员）。
+  - `POST …/next` → `{run, item}`：待处理项目未处理时重复返回同一个。
+  - `POST …/inspect {entrant_id, fields:[a,b] | say:i}` → `{match, issue?, new, claims_left, locked}`：
+    两个字段顺序无关；单字段只接受 `xr.*`；每位旅客错 6 次锁定。
+  - `POST …/quiz {entrant_id}` → `{exposed}`：先指认出破绽才能测谎（否则 400），结果缓存。
+  - `POST …/decision {entrant_id, decision}` → `{correct, points, breakdown, reveal, citation, run, final}`：
+    距离发放不足 1.8 秒返回 429；同一请求重发返回同一结果，换判定 409。
+  - `POST …/waves/{wave_id}/result`：快剪 `{picks:[{i, pick, rt_ms}]}`，蒸馏大军 `{hits:[{i, t_ms}]}`；
+    服务器按波次时长、反应时间、冲关者窗口校验，太早提交 429，不合理的时序记一次违规。
+  - `POST …/abandon` → `{run, final}`。
+  - `GET /endless/daily`（可不登录）→ `{date, played, in_progress, run_id, travelers:40, resets_at}`。
+  - `GET /endless/leaderboard?board=endless|weekly|daily&period=&limit=`（可不登录）→
+    `{board, period, entries:[{rank, nickname, tag, score, travelers, best_streak, achieved_at, me}], me}`。
+- 计分（`scoring.rs`，只增不减）：判对 100；拒绝 / 拘留有破绽的旅客时既没指认也没测谎揭穿 = 猜，只有 60；
+  盖章前指认出真实破绽 +50（第一次指认成功前错超过 3 次不算）；拘留被测谎揭穿的说谎者 +50；连对倍率
+  ×1 / ×1.5（5+）/ ×2（10+）/ ×3（20+）；拘留通缉犯 +500（不乘倍率）；快剪每张 20、全对 +60；蒸馏大军每个 15、
+  全中 +50；判错 0 分、连对清零、警告 +1，3 次结束。
+- 新玩法：每日挑战（日期 + `ENDLESS_SEED_SECRET` 定种子，全服同一批 40 位，每人每天一次）；
+  突发规则（第 10–14 位起每段 5 位，临时禁令 device / country / state，违者按有破绽判，可点 `bul.规则` 指认）；
+  通缉令（每 40 位一张，通缉犯用化名混进来，只有脸对得上，可点 `face` / `pp.photo` + `wt.photo` 指认）。
+- 防作弊：每人同时一局（`active_user_id` 唯一键）、每日一次（`(user_id, daily_date)` 唯一键）、所有变更在
+  `SELECT … FOR UPDATE` 事务里并写操作日志、时间以服务器为准；时序违规 3 次的对局不上榜。闲置 15 分钟、
+  无尽 4 小时 / 每日 1 小时自动结算。读证件内容的机器人无法根绝：目标是答案不下发、分数只由服务器计算。
+- 排行榜：总榜 `endless/all`、周榜 `weekly/2026-W43`（UTC+8 ISO 周）、日榜 `daily/2026-10-24`，个人最高分。
+
 ## 前端鉴权约定
 
 - 登录态存 `localStorage`（键 `ip-please-auth-v2`）：`{access_token, refresh_token, expires_at(毫秒),
@@ -261,11 +300,13 @@ TokenResponse：
 index.html / *.js          游戏本体（无构建）
 cloud.js                   登录与云同步前端模块（也提供 api / 面板扩展给其他模块）
 announce.js                公告横幅与管理员区块
+endless.js                 无尽模式前端：服务器数据 → 证件对象、指认 / 判定 / 波次接口、大厅与排行榜
 backend/                   Rust 后端（lib + bin）
   src/lib.rs               AppState、build_app、client_ip
   src/main.rs              启动
   src/{config,error,ids,db,util,extract,ratelimit,maintenance,profile,routes}.rs
   src/auth/{mod,jwks,oidc,tokens,session,routes}.rs
+  src/endless/{rng,tables,model,generator,scoring,state,store,routes}.rs
   migrations/00N_*.sql     每次启动按顺序执行（只建新表，不 ALTER）
   tests/{router,integration}.rs、tests/fixtures/（仅测试用 RSA 密钥）
   Dockerfile
@@ -280,14 +321,19 @@ AGENT.md                   本文件
 | 范围 | 命令 | 覆盖内容 |
 | --- | --- | --- |
 | 后端单元 + 路由测试 | `cd backend && cargo test --locked` | 错误码、ID 格式、AT 签发校验 / 算法混淆、RT 轮换判定、ID Token 与 Logout Token 校验、限流、不连库路径的双信封 |
-| 后端集成测试 | `docker run -d -p 127.0.0.1:33306:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=ip_please_test mysql:8.0`，然后 `TEST_DATABASE_URL=mysql://root:root@127.0.0.1:33306/ip_please_test cargo test --locked -- --ignored` | 迁移幂等、完整登录（模拟 IdP 校验 PKCE 与 client secret）、RT 轮换与重放吊销、反向通道注销、管理员与昵称 |
+| 无尽模式前端 | `node tools/endless_client_test.js` | 服务器证件组装、无答案、破绽文案覆盖、指认 / 测谎 / 判定 / 波次、恢复、冲突重同步 |
+| 剧情回归 | `node tools/plot_regression_test.js`、`node tools/smoke_test.js` | 14 天剧情与 30 个结局不受影响 |
+| 后端集成测试 | `docker run -d -p 127.0.0.1:33306:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=ip_please_test mysql:8.0`，然后 `TEST_DATABASE_URL=mysql://root:root@127.0.0.1:33306/ip_please_test cargo test --locked -- --ignored` | 迁移幂等、完整登录（模拟 IdP 校验 PKCE 与 client secret）、RT 轮换与重放吊销、反向通道注销、管理员与昵称、公告、无尽模式完整对局 / 排行榜 / 每日挑战 / API 指认 |
 | 前端集成 | `cd tests/frontend && npm ci && npm test` | jsdom 加载真实 `cloud.js` / `announce.js`：发起登录、回调换会话、旧登录态清理、日终上传、冲突弹窗、刷新 / 并发刷新 / 吊销登出、昵称；公告横幅、关闭记忆、XSS、管理员发布 / 下线 |
 | 线上验收 | `bash deploy/verify.sh` | health、401 双信封、CORS 预检、`/auth/*` 契约、Keycloak 机密客户端 |
 
 CI 要求（main 分支必须保持绿）：
 - `backend.yml`：`cargo fmt --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked`，
   MySQL 服务容器上的 `cargo test --locked -- --ignored`，随后多架构构建推送 GHCR。
-- `frontend.yml`：`npm ci`、`node --check cloud.js announce.js`、jsdom 测试。
+- `frontend.yml`：`npm ci`、所有根目录 JS 的 `node --check`、jsdom 测试、`tools/endless_client_test.js`、
+  剧情回归（`plot_regression_test.js`、`smoke_test.js`、`storage_namespace_test.js`）。
+- 改了画布上显示的中文：同步 `en.js` / `ja.js`（`node tools/check_i18n.js` 检查），`python tools/gen_zh_hant.py`
+  重新生成繁体，`python tools/build_assets.py` 重建像素字库（`tools/requirements.txt`）。
 
 ## 环境变量（backend）
 
@@ -296,6 +342,7 @@ CI 要求（main 分支必须保持绿）：
 | `SYNC_DATABASE_URL` | 是 | `mysql://user:pass@host:3306/db`，复用服务器现有数据库 |
 | `SESSION_JWT_SECRET` | 是 | AT 签名密钥，至少 32 字节（`openssl rand -hex 32`） |
 | `SESSION_JWT_SECRET_PREVIOUS` | 否 | 轮换期间仍接受的上一把密钥 |
+| `ENDLESS_SEED_SECRET` | 是 | 每日挑战种子密钥，至少 32 字节；上线后不要更换 |
 | `OIDC_ISSUER` | 否 | 默认 `https://auth.luminet.cn/realms/prod` |
 | `OIDC_CLIENT_ID` | 否 | 默认 `app_vXmK3nB7cmKcW6q7` |
 | `OIDC_CLIENT_SECRET` | 否 | 机密客户端 secret；留空时按公共客户端换码（切换期兼容） |

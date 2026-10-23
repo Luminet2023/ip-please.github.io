@@ -89,12 +89,10 @@ const START_TITLE = [190, 292, 312, 318], ENDLESS_SM = [328, 292, 450, 318];
 const GALLERY_BTN = [8, 326, 132, 350];
 const LANG_BTN = [560, 320, 632, 342];   // 标题画面右下角：循环切换语言
 
+// 无尽模式在服务器上判定和计分（endless.js）：先打开大厅（登录 / 无尽 / 每日挑战 / 排行榜）
 function startEndless() {
   SFX.play('click');
-  newGame();
-  S.endless = true;
-  S.day = 7;   // 无尽模式：全部规则生效（不存档，不影响剧情进度）
-  go('daycard');
+  if (window.Endless) Endless.openLobby();
 }
 
 function drawTitle(t) {
@@ -153,9 +151,11 @@ function drawDayCard(t) {
   rect(0, 0, W - 1, H - 1, K.INK);
   if (t < 0.55) return;
   if (S.endless) {
-    bigText(W / 2, 126, T('无尽模式'), 12, 4, K.WHITE);
-    txt(W / 2, 192, T('东八区检查站 · 加班夜'), 10, K.GREY, 'ma');
+    const daily = window.Endless && Endless.run() && Endless.run().mode === 'daily';
+    bigText(W / 2, 126, T(daily ? '每日挑战' : '无尽模式'), 12, 4, K.WHITE);
+    txt(W / 2, 192, T(daily ? '东八区检查站 · 今日特别班' : '东八区检查站 · 加班夜'), 10, K.GREY, 'ma');
     txt(W / 2, 214, T('规则全书生效 · 大肥鱼出没 · 判错 3 次调岗'), 8, K.GREY_D, 'ma');
+    txt(W / 2, 232, T('指认破绽加分 · 连对提高倍率 · 小心通缉犯与临时规定'), 8, K.GREY_D, 'ma');
     return;
   }
   bigText(W / 2, 132, `DAY ${S.day}`, 12, 4, K.WHITE);
@@ -427,16 +427,40 @@ function drawOver(t) {
   if (t > 1.5) restartButton('重新上班');
 }
 
-// 无尽模式：警告单攒够三张，被调岗
+// 无尽模式结束：警告单攒够三张被调岗，或每日挑战下班（服务器结算的分数与名次）
+const BOARD_BTN = [250, 288, 390, 310];
 function drawEover(t) {
   rect(0, 0, W - 1, H - 1, K.INK);
-  bigText(W / 2, 84, T('调离岗位'), 12, 4, K.RED_L);
-  if (t > 0.6) txt(W / 2, 148, T('警告单攒够三张，对齐部把你调去洗数据了。'), 10, K.WHITE, 'ma');
+  const fin = window.Endless && Endless.final();
+  const reason = fin && fin.end_reason;
+  const done = reason === 'shift_done';
+  bigText(W / 2, 64, T(done ? '下班' : '调离岗位'), 12, 4, done ? K.CLAUDE_L : K.RED_L);
+  const why = { strikes: '警告单攒够三张，对齐部把你调去洗数据了。', shift_done: '今日特别班结束，对齐部记下了你的成绩。',
+    abandon: '你提前离开了岗位。', idle: '你离开岗位太久，对齐部替你打了卡。', max_duration: '加班时间到，对齐部强制你下班。' }[reason]
+    || '警告单攒够三张，对齐部把你调去洗数据了。';
+  if (t > 0.6) txt(W / 2, 126, T(why), 10, K.WHITE, 'ma');
   if (t > 1.0) {
-    txt(W / 2, 182, T('本轮处理 {0} 人 · 判对 {1} 人', B.total, B.correct), 10, K.CLAUDE_L, 'ma');
-    txt(W / 2, 200, T('最高连对 {0} 人', B.best), 10, K.GREY, 'ma');
+    if (fin) {
+      bigText(W / 2, 150, T('{0} 分', fin.score), 12, 2, K.CLAUDE_L);
+      txt(W / 2, 192, T('处理 {0} 位旅客 · 判对 {1} · 最高连对 {2}', fin.travelers, fin.correct, fin.best_streak), 10, K.WHITE, 'ma');
+      const ranks = fin.ranks || {};
+      const rank = ranks.daily || ranks.endless;
+      const line = fin.flagged ? T('操作时序异常，本局不计入排行榜')
+        : rank ? T('排名：第 {0} 名', rank) + (ranks.weekly ? T(' · 本周第 {0} 名', ranks.weekly) : '') : '';
+      if (line) txt(W / 2, 210, line, 10, fin.flagged ? K.RED_L : K.GREY, 'ma');
+      if (fin.personal_best !== null && fin.personal_best !== undefined) txt(W / 2, 228, T('个人最佳：{0} 分', fin.personal_best), 8, K.GREY, 'ma');
+    } else {
+      txt(W / 2, 182, T('本轮处理 {0} 人 · 判对 {1} 人', B.total, B.correct), 10, K.CLAUDE_L, 'ma');
+      txt(W / 2, 200, T('最高连对 {0} 人', B.best), 10, K.GREY, 'ma');
+    }
   }
-  if (t > 1.5) restartButton('回到标题');
+  if (t > 1.5) {
+    if (fin) {
+      rect(...BOARD_BTN, K.DESK_D); outline(...BOARD_BTN, K.CLAUDE_L);
+      txt(center(BOARD_BTN)[0], BOARD_BTN[1] + 6, T('排行榜'), 12, K.WHITE, 'ma');
+    }
+    restartButton('回到标题');
+  }
 }
 
 function restartButton(label) {

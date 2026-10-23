@@ -30,7 +30,7 @@ const st = () => now - sceneT0;
 
 function startDay() {
   B = {
-    queue: S.endless ? buildEndlessQueue() : buildQueue(S.day), idx: 0, ent: null, docs: [], lines: [], timers: [],
+    queue: S.endless ? [] : buildQueue(S.day), idx: 0, ent: null, docs: [], lines: [], timers: [],
     tray: { open: false, t: -9 }, presses: [], shake: -9,
     insp: { on: false, sel: [], banner: null, all: false },
     xray: { on: false, t: -9 }, printing: null, printQueue: [], effects: [], slams: [],
@@ -39,6 +39,8 @@ function startDay() {
     ending: false, event: null, cut: null, closeup: null, lastFinish: now, tensionSrc: null, allTokens: false,
     streak: 0, best: 0, strikes: 0,
   };
+  // 无尽模式的旅客由服务器发（endless.js）：摆上通缉令 / 临时规定，接着处理刷新前没处理完的
+  if (S.endless && window.Endless) Endless.onBoothStart();
 }
 
 function later(dt, fn) { B.timers.push({ t: now + dt, fn }); }
@@ -101,6 +103,7 @@ function callNext() {
   if (B.ent || B.event || B.cut || B.closeup || B.ending) return;
   if (B.evidence || (B.evidenceQueue || []).length) { flash('请先处理桌上的文书'); return; }
   if (B.finalPhase) { flash('请翻阅终局文书，将选中的文书移到准予章下'); return; }
+  if (S.endless && Endless.on()) { Endless.callNext(); return; }
   if (B.idx >= B.queue.length) return;
   if (isEvent(nextItem())) { startEvent(B.queue[B.idx++]); return; }
   B.speakerT = now;
@@ -169,6 +172,17 @@ function checkLeave() {
   }
   const dec = decisionOf(prim);
   e.phase = 'waiting';
+  if (e.spec.srv) {
+    // 服务器判定：等结果回来再演旅客的反应（盖章时不泄露对错），然后离场
+    flash('对齐部核验中…');
+    Endless.decide(e, dec).then((result) => {
+      if (B.ent !== e) return;
+      B.flash = null;
+      runSteps(endlessReaction(e, dec, result), 0.1);
+      later(Math.max(0, e.busyUntil - now) + 0.2, () => leave(e, dec));
+    }, () => leave(e, dec));
+    return;
+  }
   later(Math.max(0, e.busyUntil - now) + 0.2, () => leave(e, dec));
 }
 
@@ -186,6 +200,7 @@ function detain() {
   SFX.play('click');
   if (!e || e.phase !== 'here' || !e.handed || B.event) return;
   e.phase = 'detained'; e.tDetain = now + 0.2; B.detainT = now;
+  if (e.spec.srv) Endless.decide(e, 'detain').catch(() => {});   // 拘留动画期间请求已在路上
   stopTension();
   SFX.play('detain');
   SFX.play('scuffle', 1, 0.2);
@@ -208,8 +223,8 @@ function finish(e, dec) {
   if (then === 'ending') afterAuthor(dec);
   if (S.endless) {
     B.docs = B.docs.filter((d) => d.key !== 'log');   // 登录记录小票跟着旅客走，不给下一个人留旧证据
+    if (e.spec.srv) return;                          // 服务器结算（Endless.settle），结束时由它去调岗画面
     if (B.strikes >= 3) { B.ending = true; later(2.2, () => go('eover')); return; }
-    topUpEndless();
     return;
   }
   if (B.idx >= B.queue.length && !B.cut && then !== 'ending') endDaySoon();
@@ -217,6 +232,7 @@ function finish(e, dec) {
 
 function judge(e, dec) {
   const spec = e.spec;
+  if (spec.srv) { Endless.settle(e); return; }
   B.total++;
   S.stats[dec] = (S.stats[dec] || 0) + 1;
   if (spec.author) { if (!S.endless) onCaseResolved(e, dec); return; }
@@ -399,6 +415,19 @@ function quiz() {
   if (now < e.busyUntil) return;
   if (!e.suspect) { flash('先找到疑点才能测谎：证件矛盾，或者用『检查』点 Ta 说的话'); return; }
   S.tut.quiz = true;
+  if (e.spec.srv) {
+    // 谁会接中文梗只有服务器知道（每位旅客只问一次，结果缓存在服务器）
+    if (e.quizBusy) return;
+    e.quizBusy = true;
+    Endless.quiz(e).then((exposed) => { e.quizBusy = false; if (B.ent === e) askQuiz(e, exposed); },
+      (error) => { e.quizBusy = false; flash(error.message || '测谎失败'); });
+    return;
+  }
+  const q = e.spec.quiz;
+  askQuiz(e, q === 'cn' || (q && q.first !== undefined));
+}
+
+function askQuiz(e, cn) {
   const q = e.spec.quiz;
   const pool = QUIZ.map((_, i) => i).filter((i) => i !== QUIZ_THURSDAY || S.day === 4);
   let idx;
@@ -410,7 +439,6 @@ function quiz() {
   e.quizDone.push(idx);
   const [question, answer] = QUIZ[idx];
   const tofu = idx === QUIZ_TOFU;
-  const cn = q === 'cn' || (q && q.first !== undefined);
   const steps = [['C', question]];
   if (cn) {
     steps.push(['E', answer, { expr: tofu ? 'angry' : 'grin', hold: tofu ? 1.0 : 1.1 }]);
@@ -546,8 +574,27 @@ function showIssue(issue) {
   if (!S.endless && e.spec.onInvestigated) e.spec.onInvestigated(issue, e);
 }
 
+// 服务器旅客的指认：问服务器这组字段是不是破绽（等结果时显示「核验中」）
+function srvInspect(claim, noMatch) {
+  const e = B.ent, I = B.insp;
+  if (!e || I.pending) return;
+  I.pending = true;
+  I.banner = { title: T('对齐部核验中…'), sub: '', bad: false };
+  Endless.inspect(e, claim).then((r) => {
+    I.pending = false;
+    if (B.ent !== e || B.insp !== I) return;
+    if (r.match) showIssue(issueFromServer(r.issue));
+    else if (r.locked) I.banner = { title: T('核验次数用完了'), sub: T('这位旅客只能靠你自己判断了'), bad: false };
+    else I.banner = noMatch;
+  }, (error) => {
+    I.pending = false;
+    if (B.insp === I) I.banner = { title: T('核验失败'), sub: error.message || '', bad: false };
+  });
+}
+
 function inspectClick(x, y) {
   const I = B.insp;
+  if (I.pending) return;
   if (I.banner && I.banner.ask && inBox(x, y, ASK_BTN)) {
     const issue = I.banner.issue;
     if (!B.ent || B.ent.phase !== 'here') { setInspect(false); return; }
@@ -563,6 +610,12 @@ function inspectClick(x, y) {
   if (hit.key === 'say') {            // 点旅客说的话：单独判断有没有马脚
     I.sel = [hit];
     SFX.play('select');
+    const fine = { title: T('这句话没什么问题'), sub: T('换一句听听，或者去查证件'), bad: false };
+    if (B.ent.spec.srv) {
+      const index = B.ent.spec.intro.findIndex(([who, text]) => who === 'E' && T(text) === hit.ln.text);
+      if (index < 0) I.banner = fine; else srvInspect({ say: index }, fine);
+      return;
+    }
     const tell = B.ent.spec.tell;
     if (tell && hit.ln.text === T(tell.say)) { S.tut.tell = true; showIssue(tell); }
     else I.banner = { title: T('这句话没什么问题'), sub: T('换一句听听，或者去查证件'), bad: false };
@@ -573,6 +626,12 @@ function inspectClick(x, y) {
   if (k >= 0) { I.sel.splice(k, 1); return; }
   I.sel.push(hit);
   SFX.play('select');
+  const differ = { title: T('没有发现不符'), sub: T('这两项对得上（或者不相关）'), bad: false };
+  if (B.ent && B.ent.spec.srv) {
+    if (I.sel.length === 1 && hit.key.startsWith('xr.')) srvInspect({ fields: [hit.key] }, differ);
+    else if (I.sel.length >= 2) srvInspect({ fields: I.sel.slice(0, 2).map((s) => s.key) }, differ);
+    return;
+  }
   const single = I.sel.length === 1 && matchIssue([hit.key]);
   if (single) { showIssue(single); return; }
   if (I.sel.length < 2) return;
@@ -782,14 +841,19 @@ function drawBoothLower() {
     txt(35, y + (size === 12 ? 2 : size === 10 ? 3 : 4), seg, size, ln.who === 'C' ? K.CLAUDE_L : K.WHITE, 'la', vis);
   }
   if (S.endless) {
-    txt(8, 347, T('无尽 · 已处理 {0} 人', B.total), 10, K.GREY);
+    const r = window.Endless && Endless.run();
+    const head = !r ? T('无尽 · 已处理 {0} 人', B.total)
+      : r.mode === 'daily' ? T('每日 · {0}/{1} 位 · {2} 分', r.travelers, r.travelers_total, r.score)
+        : T('无尽 · {0} 分', r.score);
+    txt(8, 347, head, 10, K.GREY);
     txt(236, 348, T('警告'), 8, K.GREY_D);
     for (let i = 0; i < 3; i++) {
       const x0 = 262 + i * 14;
       rect(x0, 347, x0 + 9, 355, i < B.strikes ? K.RED : K.DESK_D);
       outline(x0, 347, x0 + 9, 355, K.OUTLINE);
     }
-    txt(314, 348, T('连对 {0}', B.streak), 8, B.streak >= 3 ? K.CLAUDE_L : K.GREY);
+    const mult = r && r.multiplier > 1 ? ` ×${r.multiplier}` : '';
+    txt(314, 348, T('连对 {0}', B.streak) + mult, 8, B.streak >= 3 ? K.CLAUDE_L : K.GREY);
   } else {
     txt(8, 347, `${DATES[S.day]}  ${T(WEEKDAYS[S.day])}`, 10, K.GREY);
   }
@@ -932,8 +996,11 @@ function hintText() {
   if (B.flash && now < B.flash.t + 3.2) return B.flash.text;
   const e = B.ent, here = e && e.phase === 'here' && e.handed && !B.event, T = S.tut;
   if (S.endless) {
+    const r = window.Endless && Endless.run();
     if (!S.tut.iplog && e && e.handed) return '小票上的登录地，和设备卡的归属地对得上吗？';
-    if (!S.tut.sniper && B.idx >= 6) return '后面还会出现波次事件：黑话快剪、蒸馏大军，注意警报';
+    if (r && r.bulletin && !S.tut.bulletin) return '临时规定生效：违反规定的旅客要拒绝（检查模式里可以点规定来指认）';
+    if (r && r.wanted && !S.tut.wanted) return '桌上有通缉令：照片上的人会换个名字混进队伍，拘留有重赏';
+    if (e && e.handed && !e.suspect && !S.tut.pointing) return '先用『检查』指认出破绽再盖章，分数更高';
     return '';
   }
   if (S.day === 1) {

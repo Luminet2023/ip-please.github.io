@@ -4,18 +4,18 @@ on:
   push:
     branches: [main]
     paths:
-      - 'cloud.js'
-      - 'announce.js'
+      - '*.js'
       - 'index.html'
-      - 'screens.js'
+      - 'tools/**'
+      - 'backend/src/endless/**'
       - 'tests/frontend/**'
       - '.github/workflows/frontend.yml'
   pull_request:
     paths:
-      - 'cloud.js'
-      - 'announce.js'
+      - '*.js'
       - 'index.html'
-      - 'screens.js'
+      - 'tools/**'
+      - 'backend/src/endless/**'
       - 'tests/frontend/**'
   workflow_dispatch:
 
@@ -41,5 +41,12 @@ jobs:
           cache: npm
           cache-dependency-path: tests/frontend/package-lock.json
       - run: npm ci
-      - run: node --check ../../cloud.js && node --check ../../announce.js
+      - run: for f in ../../*.js; do node --check "$f"; done
       - run: npm test
+      - name: endless client + story regression
+        working-directory: .
+        run: |
+          node tools/endless_client_test.js
+          node tools/plot_regression_test.js
+          node tools/smoke_test.js
+          node tools/storage_namespace_test.js

@@ -140,7 +140,25 @@ status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: appl
   -d '{"title":"t","body":"b"}' "$API_BASE/admin/announcements" 2>/dev/null || echo 000)"
 check "未登录发布公告返回 401" 401 "$status"
 
-echo "== 6. Keycloak 客户端为机密客户端 =="
+echo "== 6. 无尽模式 =="
+status="$(curl -sS -o "$tmpdir/lb.json" -D "$tmpdir/lb.h" -w '%{http_code}' "$API_BASE/endless/leaderboard?board=endless" 2>/dev/null || echo 000)"
+check "GET /endless/leaderboard 返回 200" 200 "$status"
+check "排行榜带 private, no-store" "private, no-store" \
+  "$(tr -d '\r' < "$tmpdir/lb.h" 2>/dev/null | awk -F': ' 'tolower($1)=="cache-control"{print $2}')"
+status="$(curl -sS -o /dev/null -w '%{http_code}' "$API_BASE/endless/daily" 2>/dev/null || echo 000)"
+check "GET /endless/daily 返回 200" 200 "$status"
+status="$(curl -sS -o "$tmpdir/run.json" -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+  -d '{"mode":"endless"}' "$API_BASE/endless/runs" 2>/dev/null || echo 000)"
+check "未登录开局返回 401" 401 "$status"
+check "未登录开局为 Detail 信封" '{"detail":"Unauthorized"}' "$(tr -d '\n' < "$tmpdir/run.json" 2>/dev/null)"
+cors_headers="$(curl -sS -X OPTIONS -o /dev/null -D - \
+  -H "Origin: $GAME_ORIGIN" -H "Access-Control-Request-Method: POST" \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  "$API_BASE/endless/runs" 2>/dev/null | tr -d '\r')"
+check "/endless/runs 预检允许 $GAME_ORIGIN" "$GAME_ORIGIN" \
+  "$(printf '%s\n' "$cors_headers" | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')"
+
+echo "== 7. Keycloak 客户端为机密客户端 =="
 kc_status="$(curl -sS -o "$tmpdir/kc.json" -w '%{http_code}' \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=authorization_code' \

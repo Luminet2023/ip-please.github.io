@@ -25,6 +25,7 @@
 </p>
 
 - 14 days, 30 endings and an endless mode, from Ming's [File Zero](https://github.com/wess09/ip-please-zero) mod; autosaves at the end of every day
+- Endless mode is judged and scored on the server (log in required): all-time, weekly and daily leaderboards; bonus for pointing out the flaw before stamping, streak multipliers, a daily challenge with the same 40 entrants for everyone, surprise bulletins and fugitives slipping through under fake names
 - English / 简体中文, chosen on the start screen
 - Drag papers with a mouse, or with your finger on a phone (landscape)
 - A plain static web page that loads nothing external; download the repo and double-click `index.html` to play offline

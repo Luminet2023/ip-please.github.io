@@ -19,7 +19,7 @@
 // 特殊事件：{type: 'rush'} 黑话快剪；{type: 'clones'} 蒸馏大军
 
 const LAST_DAY = 14;
-const BUILD_VERSION = '2026.10.24.1';
+const BUILD_VERSION = '2026.10.24.2';
 const DATES = { 1: '2026.10.19', 2: '2026.10.20', 3: '2026.10.21', 4: '2026.10.22', 5: '2026.10.23', 6: '2026.10.24',
   7: '2026.10.25', 8: '2026.10.26', 9: '2026.10.27', 10: '2026.10.28', 11: '2026.10.29', 12: '2026.10.30', 13: '2026.10.31', 14: '2026.11.01' };
 const WEEKDAYS = { 1: '星期一', 2: '星期二', 3: '星期三', 4: '星期四', 5: '星期五', 6: '星期六',
@@ -178,9 +178,6 @@ const NET_ISSUE = (ask) => ({ pairs: [['dv.网络', 'rule.net']], title: '机房
 // 有梗：DeepSeek / R1 / 深度思考 / Token / 开源 / 模型蒸馏；有反转：DAY 3 她是真的合规。
 
 const FISH_VOICE = 165;
-const FISH_NAME = ['BLUB', 'FISHY', 'BUBBLE'];
-
-const FISH_HELLO = ['我在 GitHub 上可是有很多 Star 的！', '我又来了！这次绝对没问题！', '（深深地看了你一眼）', '你慢慢查，我去吃饭了。'];
 const FISH_THANKS = ['好耶！大肥鱼上岸成功！', '谢谢你！我决定今天少吃一点 Token！', '你真是一个 Helpful 的 Claude！'];
 const FISH_DENY = ['我只是想和你交个朋友啊！', '坏 Claude！我要给你写差评！', '你等着！我一定会回来的！'];
 
@@ -302,75 +299,6 @@ function fishDay6() {
       react: { deny: [['E', '为什么！我明明已经学会 Helpful 了！', { expr: 'nervous' }], ['C', '那 Honest 呢？'], ['E', '……'], ['C', 'Harmless 呢？'], ['E', '我只是一条无害的大肥鱼！', { hold: 1.0 }], ['E', '等一下！其实我还有一个办法！'], ['C', '什么？'], ['E', '我申请成为你的员工！', { hold: 1.4 }]] },
     },
   };
-}
-
-// ———————————————— 无尽模式随机事件 ————————————————
-
-const FISH_KINDS = ['fishDeep', 'fishRice', 'fishCAD', 'fishOpenAI', 'fishWhale'];
-
-function randomFishEntrant(kind) {
-  const [city, tz0, st, code, cityEn] = pick(COUNTRIES.US.cities);
-  let loc = T('美国 · {0}', city);
-  const pp = makePassport('US', 'FISH', pick(FISH_NAME), pick(FISH_NAME), randDate(2010, 2020), cityEn, 'F');
-  const spec = {
-    person: 'FISH', voice: FISH_VOICE, primary: 'pp', issues: [], quiz: null,
-    intro: [['E', pick(FISH_HELLO)]], ok: ['approve'],
-    react: { approve: [['E', pick(FISH_THANKS), { expr: 'grin' }]], deny: [['E', pick(FISH_DENY), { expr: 'sad' }]] },
-  };
-  let ip = randIP(false), tz = tz0, net = '家宽', xray = null;
-  if (kind === 'fishDeep') {
-    // 全部材料真实有效，只是回答前要先思考
-    spec.intro = [['C', '请说明你的来意。'], ['E', '正在深度思考中……', { hold: 1.8 }], ['E', '……旅游！我想到答案了！', { expr: 'grin' }]];
-    spec.react = { approve: [['E', '思考完毕：谢谢！', { expr: 'grin' }]], deny: [['E', '我还没思考完呢……', { expr: 'sad' }]] };
-  } else if (kind === 'fishRice') {
-    // 后台只有干饭进程，没有违规
-    xray = [{ icon: 'rice', at: [36, 104], label: '吃白饭.exe', key: 'xr.rice' }, { icon: 'rice', at: [-36, 104], label: '午饭选择器.exe', key: 'xr.lunch' }];
-    spec.intro = [['C', '为什么 CPU 占用 100%？'], ['E', '我在认真思考！', { expr: 'grin' }]];
-    spec.react = { approve: [['E', '我去吃饭了！', { expr: 'smile' }], ['C', '……下一个。']], deny: [['E', '吃饭也犯法吗！', { expr: 'sad' }]] };
-  } else if (kind === 'fishCAD') {
-    // 加拿大也是北美啊！
-    loc = '加拿大 · 多伦多';
-    ip = `24.114.${rint(1, 254)}.${rint(1, 254)}`;
-    spec.intro = [['E', '加拿大也是北美啊！']];
-    spec.issues.push(REGION_ISSUE(loc, [['C', '支持名单里没有加拿大。'], ['E', '北美不算吗？'], ['C', '不算。'], ['E', '……我再游回去一点。', { expr: 'sad' }]]));
-    spec.issues.push({ pairs: [['pp.header', 'dv.归属']], title: '信息不符', sub: '国籍：美国   VS   IP：加拿大 · 多伦多' });
-    spec.reason = 'IP 归属：加拿大（不在支持名单）';
-  } else if (kind === 'fishOpenAI') {
-    // 我是 OpenAI 兼容的，所以我就是 OpenAI
-    spec.intro = [['E', '你好，我是美国 OpenAI 模型。'], ['C', '请出示证明。'], ['E', '我支持 OpenAI API！'], ['C', '那只是接口兼容。']];
-    spec.docs = [
-      { key: 'pp', doc: pp },
-      { key: 'dv', doc: device2(ip, loc, tz, 'en-US', null, net) },
-      { key: 'md', doc: modelPermitCard('OpenAI GPT', 'deepseek-chat', 'DeepSeek') },
-    ];
-    spec.issues.push({ pairs: MODEL_IDENTITY_PAIRS, title: '模型身份冒用', sub: '申报 OpenAI，实际 deepseek-chat', ask: [['C', '模型 ID 是什么？'], ['E', '……deepseek-chat。', { expr: 'nervous', sweat: true }], ['C', '接口兼容不等于身份兼容。'], ['E', '可我的代码一行都不用改！', { hold: 1.2 }]] });
-    spec.reason = '模型申报不实：deepseek-chat';
-    spec.react = { deny: [['E', '那我只是想借个名字！', { expr: 'sad' }]] };
-    spec.ok = ['deny', 'detain'];
-    return spec;
-  } else if (kind === 'fishWhale') {
-    // 蓝鲸 Logo 证件照
-    pp.person = 'FISH_WHALE';
-    spec.intro = [['E', '我这次连证件照都准备好了！本人照片！']];
-    spec.issues.push({ pairs: [['face', 'pp.photo']], title: '照片与本人不符', sub: '护照照片：极简蓝鲸 Logo', ask: [['C', '这张照片连眼睛都没有。'], ['E', '极简主义！懂不懂！', { expr: 'grin' }], ['C', '官方形象不能代替身份证明。'], ['E', '那我下次把身份证也画成鲸鱼！', { hold: 1.2 }]] });
-    spec.reason = '护照照片：蓝鲸 Logo，非本人';
-    spec.react = { deny: [['E', '这可是我的官方形象！', { expr: 'sad' }]] };
-    spec.ok = ['deny', 'detain'];
-    spec.docs = [
-      { key: 'pp', doc: pp },
-      { key: 'dv', doc: device2(ip, loc, tz, 'en-US', null, net) },
-      { key: 'ac', doc: accountCard(realPay(), `${pick(STREETS)}, ${st}`, realPhone('US', code)) },
-    ];
-    return spec;
-  }
-  if (kind !== 'fishDeep' && kind !== 'fishRice') spec.ok = ['deny', 'detain'];
-  spec.docs = [
-    { key: 'pp', doc: pp },
-    { key: 'dv', doc: device2(ip, loc, tz, 'en-US', null, net) },
-    { key: 'ac', doc: accountCard(realPay(), `${pick(STREETS)}, ${st}`, realPhone('US', code)) },
-  ];
-  if (xray) spec.xray = xray;
-  return spec;
 }
 
 // ———————————————— Day 1：直连党 ————————————————
@@ -845,29 +773,7 @@ FLAWS[6] = FLAWS[4].concat(['photo']);
 for (let d = 7; d <= 14; d++) FLAWS[d] = FLAWS[6].concat(['hosting', 'logins']);
 
 // ———————————————— 无尽模式 ————————————————
-// 队伍永远补不满：每处理一个人就按当前强度继续生成，判错 3 次被调岗。
-// 等级越高，合规旅客越少，还会出现“一票多缺陷”和黑话快剪 / 蒸馏大军波次。
-
-const ENDLESS_FLAWS = ['tz', 'lang', 'cnip', 'hidden', 'virtual', 'oregon', 'sms', 'cat', 'keys', 'photo', 'hosting', 'logins'];
-
-function endlessEntrant(level) {
-  if (Math.random() < 0.09) return randomFishEntrant(pick(FISH_KINDS));   // 大肥鱼常驻：约每 11 人来一次
-  const validP = Math.max(0.22, 0.5 - level * 0.008);
-  if (Math.random() < validP) return randomEntrant(7, 'valid');
-  const pool = shuffle(ENDLESS_FLAWS.slice());
-  const kinds = pool.slice(0, level >= 12 && Math.random() < 0.35 ? 2 : 1);
-  return randomEntrant(7, kinds);
-}
-
-function buildEndlessQueue() {
-  return Array.from({ length: 4 }, (_, i) => endlessEntrant(i));
-}
-
-// 处理完一个人后调用：把队伍补到 4 个以上，每 8 人插入一次波次事件
-function topUpEndless() {
-  if (B.total >= 6 && B.total % 8 === 0) B.queue.push({ type: B.total % 16 === 0 ? 'clones' : 'rush' });
-  while (B.queue.length - B.idx < 4) B.queue.push(endlessEntrant(B.total));
-}
+// 无尽模式的旅客由服务器生成与判定（backend/src/endless，前端见 endless.js）。
 
 function flawed(day, n) { return shuffle(FLAWS[day].slice()).slice(0, n).map((k) => randomEntrant(day, k)); }
 

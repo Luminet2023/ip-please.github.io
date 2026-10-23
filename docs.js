@@ -33,6 +33,31 @@ class Passport {
   }
 }
 
+// 通缉令（无尽模式）：照片 + 真名 + 罪名。通缉犯会用化名混进队伍，只有脸对得上
+class WantedPoster {
+  constructor({ person, name, crime, reward }) {
+    Object.assign(this, { person, name, crime: T(crime), reward });
+    this.w = 156; this.h = 92;
+    this.icon = ['card', [232, 218, 186]];
+    this.fields = { photo: [6, 18, 47, 69], name: [52, 18, this.w - 5, 41] };
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    docShadow(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, 'rgb(150,110,70)');
+    rect(x + 1, y + 1, x + w - 2, y + h - 2, 'rgb(232,218,186)');
+    rect(x + 1, y + 1, x + w - 2, y + 13, 'rgb(150,40,36)');
+    txt(x + 6, y + 3, T('通缉令'), 10, K.WHITE);
+    txt(x + w - 6, y + 4, 'WANTED', 8, K.WHITE, 'ra');
+    rect(x + 6, y + 18, x + 47, y + 69, K.PAPER_D);
+    spr('photo:' + this.person, x + 7, y + 19);
+    wrap(this.name, 10, w - 58).slice(0, 2).forEach((ln, i) => txt(x + 52, y + 19 + i * 11, ln, 10, K.TEXT));
+    wrap(this.crime, 8, w - 58).slice(0, 3).forEach((ln, i) => txt(x + 52, y + 44 + i * 9, ln, 8, K.TEXT_L));
+    txt(x + 6, y + 76, T('拘留赏金：{0} 分', this.reward), 10, 'rgb(150,40,36)');
+  }
+}
+
 // 中转站本站：一本护照上写着 1,000 个名字，放到桌上会像手风琴一样往下展开
 const HOLDER_NAMES = ['KEVIN', '小王', 'TONY', '阿强', 'LUCY', '老张', 'MOMO', '大刘', 'JACK', '小美', 'ERIC', '阿杰',
   'AMY', '胖虎', 'LEO', '小林', 'MIA', '二狗', 'SAM', '阿珍', 'BEN', '老李', 'IVY', '小赵'];

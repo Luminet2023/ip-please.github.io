@@ -138,6 +138,7 @@ function dragEnd(x, y) {
     return;
   }
   if (d.key === 'rule' && d.owner !== 'ent') { d.x = prev.x; d.y = prev.y; d.big = true; toggleRules(); return; }
+  if ((d.key === 'wt' || d.key === 'bul') && d.owner === 'desk') { Object.assign(d, prev); return; }   // 通缉令 / 临时规定留在桌上
   const e = B.ent;
   const bounce = () => { Object.assign(d, prev); if (!prev.big && d.slot) { d.x = d.slot[0]; d.y = d.slot[1]; } };
   if (!e || (e.phase !== 'here' && e.phase !== 'waiting')) { bounce(); return; }
@@ -170,6 +171,10 @@ function sceneClick(x, y) {
   if (scene === 'gallery' && st() > 0.3 && (inBox(x, y, GALLERY_CLOSE) || x < 20)) { go('title'); return; }
   if ((scene === 'end' || scene === 'over') && st() > 1.5 && inBox(x, y, RESTART_BTN)) { clearSave(); newGame(); go('daycard'); }
   if (scene === 'eover' && st() > 1.5 && inBox(x, y, RESTART_BTN)) { newGame(); go('title'); }
+  if (scene === 'eover' && st() > 1.5 && inBox(x, y, BOARD_BTN) && window.Endless) {
+    const r = Endless.run();
+    Endless.openLeaderboard(r && r.mode === 'daily' ? 'daily' : 'endless');
+  }
 }
 
 // ———————————————————— 主循环 ————————————————————
@@ -181,6 +186,7 @@ function update() {
     if (B.event && B.event.type === 'clones') updateClones();
     const idle = !B.ent && !B.event && !B.cut && !B.closeup && !B.ending && !B.evidence && !(B.evidenceQueue || []).length && !B.finalPhase;
     if (idle && isEvent(nextItem()) && now > B.lastFinish + 1.6) startEvent(B.queue[B.idx++]);
+    if (idle && S.endless && window.Endless) Endless.maybeAutoWave();
   }
   if (scene === 'boot') updateLangPick();
   if (scene === 'intro') { typedSounds(INTRO_LINES); if (st() > INTRO_LINES.end) go('title'); }
