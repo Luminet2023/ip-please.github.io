@@ -137,7 +137,7 @@ function dragEnd(x, y) {
 }
 
 function sceneClick(x, y) {
-  if (scene === 'boot') { go('intro'); return; }
+  if (scene === 'boot') { langClick(x, y); return; }
   if (scene === 'intro') { go('title'); return; }
   if (scene === 'title') { titleClick(x, y); return; }
   if (scene === 'news' && st() > 0.6) { go('booth'); return; }
@@ -156,6 +156,7 @@ function update() {
     const idle = !B.ent && !B.event && !B.cut && !B.closeup && !B.ending;
     if (idle && isEvent(nextItem()) && now > B.lastFinish + 1.6) startEvent(B.queue[B.idx++]);
   }
+  if (scene === 'boot') updateLangPick();
   if (scene === 'intro') { typedSounds(INTRO_LINES); if (st() > INTRO_LINES.end) go('title'); }
   if (scene === 'erased') { typedSounds(ERASED_LINES); if (st() > ERASED_LINES.end + 1) go('end'); }
   if (scene === 'daycard' && st() > 1.9) go('news');
@@ -164,7 +165,7 @@ function update() {
 function render() {
   setCtx(F.getContext('2d'));
   const t = st();
-  if (scene === 'boot') drawBoot();
+  if (scene === 'boot') drawLangPick();
   else if (scene === 'intro') drawTyped(INTRO_LINES);
   else if (scene === 'erased') drawTyped(ERASED_LINES);
   else if (scene === 'title') drawTitle(t);
@@ -215,13 +216,18 @@ function fit() {
 
 function toggleMute() {
   SFX.init();
-  const m = SFX.toggleMute();
+  SFX.toggleMute();
+  updateMuteLabel();
+}
+
+function updateMuteLabel() {
   const b = document.getElementById('mute');
-  if (b) b.textContent = m ? '声音：关' : '声音：开';
+  if (b) b.textContent = T(SFX.muted ? '声音：关' : '声音：开');
 }
 
 function boot() {
   canvasEl = document.getElementById('game');
+  applyDomLang();
   canvasEl.width = W; canvasEl.height = H;
   [F] = makeCanvas(W, H);
   fit();
