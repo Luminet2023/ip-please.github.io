@@ -127,7 +127,6 @@
 | `unauthorized` | 401 | `Unauthorized`（缺少 `Authorization` 头） |
 | `login_attempt_invalid` | 400 | `The login attempt is invalid or has expired.` |
 | `rate_limited` | 429 | `Too many requests. Please retry later.`（必须带 `Retry-After`） |
-| `nickname_invalid` | 400 | `The nickname is not allowed.` |
 | `endless_run_active` | 409 | `An endless run is already in progress.` |
 | `endless_state_conflict` | 409 | `The endless run state has changed. Please reload.` |
 | `daily_already_played` | 409 | `Today's daily challenge has already been played.` |
@@ -206,8 +205,8 @@ IdP 的 Token 用完即弃，对外只发本服务自己的 AT / RT。
    Logout 1.0 校验 RS256 签名、`iss`、`aud`、`iat`（600 秒内）、`events` 含
    `http://schemas.openid.net/event/backchannel-logout`、无 `nonce`、至少有 `sid` / `sub`、`jti` 防重放。
    有 `sid` 只吊销对应 IdP 会话的本地会话；只有 `sub` 时吊销该用户全部会话。成功 200，校验失败 400。
-7. `GET /me` → `{ user_id, nickname, nickname_set, tag, is_admin, session }`；`POST /me/profile`
-   `{ nickname }`（2–16 字，字母数字与 ` _-·.`，禁止网址与「官方」「管理」「客服」「admin」字样）。
+7. `GET /me` → `{ user_id, display_name, avatar_url|null, tag, is_admin, session }`。
+   没有改名接口：名字与头像取自 IdP，见下文「玩家资料」。
 8. `POST /admin/sessions/revoke` `{ user_id }` → `{ revoked }`（仅管理员）。
 
 TokenResponse：
@@ -217,7 +216,7 @@ TokenResponse：
   "token_type": "Bearer", "access_token": "<HS256 JWT>", "expires_in": 600, "expires_at": 1761234567,
   "refresh_token": "<43 位 b64url>", "refresh_expires_at": 1762444167,
   "session_id": "sess_…", "session_expires_at": 1763826567,
-  "user": { "user_id": "user_…", "nickname": "审查员-7F3K", "nickname_set": false, "tag": "A1B2", "is_admin": false }
+  "user": { "user_id": "user_…", "display_name": "小鱼干", "avatar_url": "https://…/a.png", "tag": "A1B2", "is_admin": false }
 }
 ```
 
@@ -228,7 +227,13 @@ TokenResponse：
 - 管理员：Keycloak 客户端角色 `OIDC_ADMIN_ROLE`（默认 `ip-please-admin`），登录时从 ID Token 的
   `OIDC_ROLES_CLAIM` 或 IdP Access Token 的 `resource_access.<client>.roles` 读取并写入会话；
   撤销角色在下次登录（或 IdP 注销触发反向通道）后生效。
-- 排行榜与面板只显示昵称 + 4 位标签（`sha256(user_id)` 前缀），永不显示 IdP 用户名或邮箱。
+- 玩家资料（`profile.rs`，表 `ip_please_player_profiles`）：每次登录用 ID Token 覆盖。
+  - 名字：按 `OIDC_NAME_CLAIMS`（默认 `name,nickname,preferred_username`）取第一个可用的值；去掉控制 /
+    方向 / 零宽字符、合并空白、最长 32 字；含 `@` 的（像邮箱）跳过；都没有时为「审查员」。
+  - 头像：`OIDC_AVATAR_CLAIM`（默认 `picture`），只收 https、不带账号密码、≤512 字节，否则为 `null`。
+  - `tag`（`sha256(user_id)` 前 4 位）只给前端的首字头像取色，不显示。
+  - 前端（`CloudSync.ui.avatar`）用 `<img referrerpolicy="no-referrer">` 加载头像，没有或加载失败时显示名字首字。
+  - IdP 里改了名字 / 头像，下次登录才生效（本服务不保存 IdP 的 Token）。
 
 ## 公告协议（`ann_*`）
 
@@ -241,7 +246,7 @@ TokenResponse：
   - `POST /admin/announcements/{announcement_id}/retire` → 200（重复下线幂等）。
 - 前端 `announce.js`：左上角横幅显示最新一条未关掉的公告，关掉的 ID 存 `localStorage`
   （`ip-please-announce-dismissed-v1`，只保留仍生效的）；页面可见时每 15 分钟刷新。
-  公告与昵称**只用 DOM 的 `textContent` 显示**：canvas 像素字库没有任意文字的字形，也避免 XSS。
+  公告与玩家名字**只用 DOM 的 `textContent` 显示**：canvas 像素字库没有任意文字的字形，也避免 XSS。
 - 管理员区块挂在云同步面板里（`CloudSync.addPanelSection`），权限以后端为准。
 
 ## 无尽模式协议（服务器权威，`run_*` / `ent_*` / `wave_*`）
@@ -270,7 +275,7 @@ X 光物品），**正确答案、破绽、谁会接测谎题都不下发**。�
   - `POST …/abandon` → `{run, final}`。
   - `GET /endless/daily`（可不登录）→ `{date, played, in_progress, run_id, travelers:40, resets_at}`。
   - `GET /endless/leaderboard?board=endless|weekly|daily&period=&limit=`（可不登录）→
-    `{board, period, entries:[{rank, nickname, tag, score, travelers, best_streak, achieved_at, me}], me}`。
+    `{board, period, entries:[{rank, display_name, avatar_url, tag, score, travelers, best_streak, achieved_at, me}], me}`。
 - 计分（`scoring.rs`，只增不减）：判对 100；拒绝 / 拘留有破绽的旅客时既没指认也没测谎揭穿 = 猜，只有 60；
   盖章前指认出真实破绽 +50（第一次指认成功前错超过 3 次不算）；拘留被测谎揭穿的说谎者 +50；连对倍率
   ×1 / ×1.5（5+）/ ×2（10+）/ ×3（20+）；拘留通缉犯 +500（不乘倍率）；快剪每张 20、全对 +60；蒸馏大军每个 15、
@@ -323,8 +328,8 @@ AGENT.md                   本文件
 | 后端单元 + 路由测试 | `cd backend && cargo test --locked` | 错误码、ID 格式、AT 签发校验 / 算法混淆、RT 轮换判定、ID Token 与 Logout Token 校验、限流、不连库路径的双信封 |
 | 无尽模式前端 | `node tools/endless_client_test.js` | 服务器证件组装、无答案、破绽文案覆盖、指认 / 测谎 / 判定 / 波次、恢复、冲突重同步 |
 | 剧情回归 | `node tools/plot_regression_test.js`、`node tools/smoke_test.js` | 14 天剧情与 30 个结局不受影响 |
-| 后端集成测试 | `docker run -d -p 127.0.0.1:33306:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=ip_please_test mysql:8.0`，然后 `TEST_DATABASE_URL=mysql://root:root@127.0.0.1:33306/ip_please_test cargo test --locked -- --ignored` | 迁移幂等、完整登录（模拟 IdP 校验 PKCE 与 client secret）、RT 轮换与重放吊销、反向通道注销、管理员与昵称、公告、无尽模式完整对局 / 排行榜 / 每日挑战 / API 指认 |
-| 前端集成 | `cd tests/frontend && npm ci && npm test` | jsdom 加载真实 `cloud.js` / `announce.js`：发起登录、回调换会话、旧登录态清理、日终上传、冲突弹窗、刷新 / 并发刷新 / 吊销登出、昵称；公告横幅、关闭记忆、XSS、管理员发布 / 下线 |
+| 后端集成测试 | `docker run -d -p 127.0.0.1:33306:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=ip_please_test mysql:8.0`，然后 `TEST_DATABASE_URL=mysql://root:root@127.0.0.1:33306/ip_please_test cargo test --locked -- --ignored` | 迁移幂等、完整登录（模拟 IdP 校验 PKCE 与 client secret）、RT 轮换与重放吊销、反向通道注销、管理员、IdP 名字与头像、公告、无尽模式完整对局 / 排行榜 / 每日挑战 / API 指认 |
+| 前端集成 | `cd tests/frontend && npm ci && npm test` | jsdom 加载真实 `cloud.js` / `announce.js`：发起登录、回调换会话、旧登录态清理、日终上传、冲突弹窗、刷新 / 并发刷新 / 吊销登出、面板与排行榜的名字和头像；公告横幅、关闭记忆、XSS、管理员发布 / 下线 |
 | 线上验收 | `bash deploy/verify.sh` | health、401 双信封、CORS 预检、`/auth/*` 契约、Keycloak 机密客户端 |
 
 CI 要求（main 分支必须保持绿）：
@@ -349,6 +354,8 @@ CI 要求（main 分支必须保持绿）：
 | `OIDC_REDIRECT_URIS` | 否 | 逗号分隔，默认 `https://www.fuckanthropic.dev/` |
 | `OIDC_SCOPE` | 否 | 默认 `openid profile` |
 | `OIDC_ROLES_CLAIM` | 否 | ID Token 里的角色 claim，默认 `ip_please_roles` |
+| `OIDC_NAME_CLAIMS` | 否 | 玩家名字依次尝试的 ID Token claim，逗号分隔，默认 `name,nickname,preferred_username` |
+| `OIDC_AVATAR_CLAIM` | 否 | 头像地址的 ID Token claim，默认 `picture` |
 | `OIDC_ADMIN_ROLE` | 否 | 管理员角色，默认 `ip-please-admin` |
 | `OIDC_JWKS_URL` | 否 | 覆盖 discovery 里的 jwks_uri，测试用 |
 | `TOKEN_ISSUER` | 否 | AT 的 `iss`，默认 `https://api.luminet.cn/anthropic` |

@@ -441,9 +441,10 @@ pub async fn leaderboard(
     viewer: Option<(&str, bool)>,
 ) -> Result<Value, AppError> {
     let rows = sqlx::query(
-        "SELECT l.user_id, l.score, l.travelers, l.best_streak, l.achieved_at_ms, p.nickname
+        "SELECT l.user_id, l.score, l.travelers, l.best_streak, l.achieved_at_ms,
+                p.display_name, p.avatar_url
          FROM ip_please_leaderboard l
-         LEFT JOIN ip_please_profiles p ON p.user_id = l.user_id
+         LEFT JOIN ip_please_player_profiles p ON p.user_id = l.user_id
          WHERE l.board = ? AND l.period = ?
          ORDER BY l.score DESC, l.achieved_at_ms ASC
          LIMIT ?",
@@ -458,10 +459,12 @@ pub async fn leaderboard(
     let mut entries = Vec::with_capacity(rows.len());
     for (i, row) in rows.iter().enumerate() {
         let user_id: String = row.try_get("user_id").map_err(AppError::db)?;
-        let nickname: Option<String> = row.try_get("nickname").map_err(AppError::db)?;
+        let display_name: Option<String> = row.try_get("display_name").map_err(AppError::db)?;
+        let avatar_url: Option<String> = row.try_get("avatar_url").map_err(AppError::db)?;
         let mut entry = json!({
             "rank": i + 1,
-            "nickname": nickname.unwrap_or_else(|| "审查员".to_string()),
+            "display_name": display_name.unwrap_or_else(|| profile::FALLBACK_NAME.to_string()),
+            "avatar_url": avatar_url,
             "tag": profile::display_tag(&user_id),
             "score": row.try_get::<i64, _>("score").map_err(AppError::db)?,
             "travelers": row.try_get::<i32, _>("travelers").map_err(AppError::db)?,

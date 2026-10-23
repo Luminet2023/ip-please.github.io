@@ -23,7 +23,7 @@ function makeRes(status, body) {
   return { status, ok: status >= 200 && status < 300, headers: { get: () => null }, text: async () => text };
 }
 
-const USER = { user_id: 'user_abcdefghijklmnopqrstuv', nickname: '审查员-AB12', nickname_set: false, tag: 'BEEF', is_admin: false };
+const USER = { user_id: 'user_abcdefghijklmnopqrstuv', display_name: '小鱼干', avatar_url: 'https://cdn.test/fish.png', tag: 'BEEF', is_admin: false };
 const XSS = '<img src=x onerror="window.pwned=1">';
 const ITEMS = [
   { announcement_id: 'ann_aaaaaaaaaaaaaaaaaaaaaa', title: XSS + '维护', body: '今晚 22:00\n停机', level: 'maintenance', starts_at: '2026-10-24T00:00:00.000Z', ends_at: null, created_at: '2026-10-24T00:00:00.000Z' },
@@ -149,7 +149,7 @@ async function testAdminSection() {
   await wait(60);
   const panel = win.document.getElementById('cloud-panel');
   check('管理员看到公告管理', panel.textContent.indexOf('公告管理') >= 0);
-  check('列表里的标题已转义', panel.querySelector('img') === null && panel.innerHTML.indexOf('&lt;img') >= 0);
+  check('列表里的标题已转义', panel.querySelector('img:not(.avatar)') === null && panel.innerHTML.indexOf('&lt;img') >= 0);
 
   win.document.getElementById('ann-title').value = '新活动';
   win.document.getElementById('ann-body').value = '无尽模式排行榜上线';

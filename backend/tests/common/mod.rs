@@ -99,6 +99,8 @@ async fn mock_token(
         "iss": issuer, "aud": client_id, "azp": client_id,
         "sub": pending.subject, "sid": pending.sid, "nonce": pending.nonce,
         "iat": now_secs(), "exp": now_secs() + 300,
+        "name": format!("玩家 {}", pending.subject),
+        "picture": format!("https://avatars.test/{}.png", pending.subject),
     }));
     let access_token = sign(&json!({
         "iss": issuer, "aud": "account", "azp": client_id,

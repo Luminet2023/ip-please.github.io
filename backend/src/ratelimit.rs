@@ -38,7 +38,6 @@ impl Rule {
 pub const AUTH_LOGIN: Rule = Rule::per_minute("auth_login", 10);
 pub const AUTH_REFRESH: Rule = Rule::per_minute("auth_refresh", 30);
 pub const AUTH_BACKCHANNEL: Rule = Rule::per_minute("auth_backchannel", 60);
-pub const PROFILE_UPDATE: Rule = Rule::per_seconds("profile_update", 1, 30);
 pub const PUBLIC_READ: Rule = Rule::per_minute("public_read", 120);
 pub const ADMIN_WRITE: Rule = Rule::per_minute("admin_write", 30);
 pub const ENDLESS_ACTION: Rule = Rule::per_seconds("endless_action", 8, 1);

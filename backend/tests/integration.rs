@@ -97,10 +97,13 @@ async fn login_refresh_reuse_and_logout() {
     assert_eq!(body["token_type"], "Bearer");
     assert_eq!(body["expires_in"], 600);
     assert!(body["session_id"].as_str().unwrap().starts_with("sess_"));
-    assert!(body["user"]["nickname"]
-        .as_str()
-        .unwrap()
-        .starts_with("审查员-"));
+    // 名字与头像直接取自 IdP 的 ID Token
+    assert_eq!(body["user"]["display_name"], format!("玩家 {subject}"));
+    assert_eq!(
+        body["user"]["avatar_url"],
+        format!("https://avatars.test/{subject}.png")
+    );
+    assert!(body["user"].get("nickname").is_none());
     assert_eq!(body["user"]["is_admin"], false);
     assert_eq!(body["refresh_token"].as_str().unwrap().len(), 43);
 
@@ -415,31 +418,33 @@ async fn admin_role_and_profile() {
     .await;
     assert_auth_error(&denied, StatusCode::FORBIDDEN, "insufficient_scope");
 
-    // 改昵称
-    let bad = call(
+    // /me 带 IdP 的名字与头像；自定义昵称接口已取消
+    let me = call(
+        &state,
+        "GET",
+        "/anthropic/v1/me",
+        Some(&player.access_token),
+        None,
+    )
+    .await;
+    assert_eq!(me.status, StatusCode::OK, "{}", me.text);
+    assert!(me.body["display_name"]
+        .as_str()
+        .unwrap()
+        .starts_with("玩家 "));
+    assert!(me.body["avatar_url"]
+        .as_str()
+        .unwrap()
+        .starts_with("https://avatars.test/"));
+    let gone = call(
         &state,
         "POST",
         "/anthropic/v1/me/profile",
         Some(&player.access_token),
-        Some(json!({"nickname": "官方客服"})),
+        Some(json!({"nickname": "小鱼干"})),
     )
     .await;
-    assert_detail(
-        &bad,
-        StatusCode::BAD_REQUEST,
-        "The nickname is not allowed.",
-    );
-    let ok = call(
-        &state,
-        "POST",
-        "/anthropic/v1/me/profile",
-        Some(&player.access_token),
-        Some(json!({"nickname": " 小鱼干 "})),
-    )
-    .await;
-    assert_eq!(ok.status, StatusCode::OK, "{}", ok.text);
-    assert_eq!(ok.body["nickname"], "小鱼干");
-    assert_eq!(ok.body["nickname_set"], true);
+    assert_eq!(gone.status, StatusCode::NOT_FOUND);
 
     // 管理员强制下线
     let revoked = call(
@@ -832,7 +837,7 @@ async fn endless_run_to_three_strikes_and_leaderboard() {
     .await;
     assert_eq!(none.status, StatusCode::NOT_FOUND);
 
-    // 排行榜：显示昵称与标签，不显示 user_id；登录后带「我的排名」
+    // 排行榜：显示 IdP 名字与头像，不显示 user_id；登录后带「我的排名」
     let board = call(
         &state,
         "GET",
@@ -849,7 +854,11 @@ async fn endless_run_to_three_strikes_and_leaderboard() {
         .find(|e| e["me"] == true)
         .expect("my entry is listed")
         .clone();
-    assert!(mine["nickname"].as_str().unwrap().starts_with("审查员"));
+    assert!(mine["display_name"].as_str().unwrap().starts_with("玩家 "));
+    assert!(mine["avatar_url"]
+        .as_str()
+        .unwrap()
+        .starts_with("https://avatars.test/"));
     assert!(mine.get("user_id").is_none());
     assert_eq!(board.body["me"]["score"], final_view["score"]);
     let public = call(

@@ -78,6 +78,13 @@
     border-radius: 4px; padding: 4px 8px; min-width: 0; flex: 1;
   }
   .panel .tag { color: #8d857c; font-size: 11px; }
+  .avatar {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 28px; height: 28px; border-radius: 50%; object-fit: cover; overflow: hidden;
+    background: #3a3431; color: #f4efe6; font-size: 13px; font-weight: 600; line-height: 1;
+  }
+  .panel .who { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+  .panel .who .name { min-width: 0; overflow-wrap: anywhere; color: #e4dfd4; font-weight: 600; }
   .panel .credit {
     font-size: 11px; line-height: 1.55; color: #8d857c; margin-top: 8px;
     padding-top: 8px; border-top: 1px solid #3a3431;
@@ -95,12 +102,12 @@
   .dialog button:disabled { opacity: 0.5; cursor: default; }
   .dialog ol.board { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; }
   .dialog ol.board li {
-    display: flex; gap: 8px; align-items: baseline; padding: 3px 4px; border-bottom: 1px solid #2b2523;
+    display: flex; gap: 8px; align-items: center; padding: 3px 4px; border-bottom: 1px solid #2b2523;
   }
   .dialog ol.board li.me { background: #2b2523; color: #e89c74; }
   .dialog ol.board .rank { width: 34px; color: #8d857c; }
   .dialog ol.board .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-  .dialog ol.board .tag { color: #8d857c; font-size: 11px; }
+  .dialog ol.board .avatar { width: 22px; height: 22px; font-size: 11px; }
   .dialog ol.board .score { min-width: 64px; text-align: right; }
   .announce {
     position: fixed; top: 8px; left: 8px; z-index: 4; width: min(340px, 72vw);
@@ -146,25 +153,25 @@
   <button type="button" onclick="this.parentNode.classList.remove('show')" style="margin-top:8px;padding:6px 14px">先竖着玩</button>
 </div>
 <noscript>这个游戏需要开启 JavaScript。</noscript>
-<script src="config.js?v=20261024-2"></script>
-<script src="assets.js?v=20261024-2"></script>
-<script src="en.js?v=20261024-2"></script>
-<script src="zh-hant.js?v=20261024-2"></script>
-<script src="ja.js?v=20261024-2"></script>
-<script src="i18n.js?v=20261024-2"></script>
-<script src="gfx.js?v=20261024-2"></script>
-<script src="sfx.js?v=20261024-2"></script>
-<script src="docs.js?v=20261024-2"></script>
-<script src="data.js?v=20261024-2"></script>
-<script src="plot.js?v=20261024-2"></script>
-<script src="endings.js?v=20261024-2"></script>
-<script src="booth.js?v=20261024-2"></script>
-<script src="events.js?v=20261024-2"></script>
-<script src="screens.js?v=20261024-2"></script>
-<script src="main.js?v=20261024-2"></script>
-<script src="cloud.js?v=20261024-2"></script>
-<script src="announce.js?v=20261024-2"></script>
-<script src="endless.js?v=20261024-2"></script>
+<script src="config.js?v=20261024-3"></script>
+<script src="assets.js?v=20261024-3"></script>
+<script src="en.js?v=20261024-3"></script>
+<script src="zh-hant.js?v=20261024-3"></script>
+<script src="ja.js?v=20261024-3"></script>
+<script src="i18n.js?v=20261024-3"></script>
+<script src="gfx.js?v=20261024-3"></script>
+<script src="sfx.js?v=20261024-3"></script>
+<script src="docs.js?v=20261024-3"></script>
+<script src="data.js?v=20261024-3"></script>
+<script src="plot.js?v=20261024-3"></script>
+<script src="endings.js?v=20261024-3"></script>
+<script src="booth.js?v=20261024-3"></script>
+<script src="events.js?v=20261024-3"></script>
+<script src="screens.js?v=20261024-3"></script>
+<script src="main.js?v=20261024-3"></script>
+<script src="cloud.js?v=20261024-3"></script>
+<script src="announce.js?v=20261024-3"></script>
+<script src="endless.js?v=20261024-3"></script>
 <script>
   document.getElementById('mute').addEventListener('click', () => toggleMute());
   const fullBtn = document.getElementById('full');

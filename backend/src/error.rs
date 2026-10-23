@@ -28,7 +28,6 @@ pub enum DetailCode {
     Unauthorized,
     LoginAttemptInvalid,
     RateLimited,
-    NicknameInvalid,
     EndlessRunActive,
     EndlessStateConflict,
     DailyAlreadyPlayed,
@@ -36,7 +35,7 @@ pub enum DetailCode {
 
 impl DetailCode {
     /// 全部已登记的错误码（测试与文档核对用）。
-    pub const ALL: [DetailCode; 18] = [
+    pub const ALL: [DetailCode; 17] = [
         DetailCode::NotFound,
         DetailCode::ValidationError,
         DetailCode::MethodNotAllowed,
@@ -51,7 +50,6 @@ impl DetailCode {
         DetailCode::Unauthorized,
         DetailCode::LoginAttemptInvalid,
         DetailCode::RateLimited,
-        DetailCode::NicknameInvalid,
         DetailCode::EndlessRunActive,
         DetailCode::EndlessStateConflict,
         DetailCode::DailyAlreadyPlayed,
@@ -62,9 +60,9 @@ impl DetailCode {
     pub fn status(self) -> StatusCode {
         match self {
             DetailCode::NotFound => StatusCode::NOT_FOUND,
-            DetailCode::ValidationError
-            | DetailCode::LoginAttemptInvalid
-            | DetailCode::NicknameInvalid => StatusCode::BAD_REQUEST,
+            DetailCode::ValidationError | DetailCode::LoginAttemptInvalid => {
+                StatusCode::BAD_REQUEST
+            }
             DetailCode::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
             DetailCode::SyncConflict
             | DetailCode::EndlessRunActive
@@ -103,7 +101,6 @@ impl DetailCode {
             DetailCode::Unauthorized => "Unauthorized",
             DetailCode::LoginAttemptInvalid => "The login attempt is invalid or has expired.",
             DetailCode::RateLimited => "Too many requests. Please retry later.",
-            DetailCode::NicknameInvalid => "The nickname is not allowed.",
             DetailCode::EndlessRunActive => "An endless run is already in progress.",
             DetailCode::EndlessStateConflict => "The endless run state has changed. Please reload.",
             DetailCode::DailyAlreadyPlayed => "Today's daily challenge has already been played.",

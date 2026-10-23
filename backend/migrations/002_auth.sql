@@ -1,4 +1,4 @@
--- 本服务自己的会话（sess_*）、Refresh Token 与玩家资料。
+-- 本服务自己的会话（sess_*）与 Refresh Token。
 -- 哈希列存小写十六进制，默认排序规则即可（不要用 *_bin，见 001_init.sql 的说明）。
 -- 只新增表、不改已有表：迁移每次启动全部重跑，没有版本表。
 
@@ -42,12 +42,4 @@ CREATE TABLE IF NOT EXISTS ip_please_refresh_tokens (
     PRIMARY KEY (token_hash),
     KEY idx_ip_please_refresh_session (session_id),
     KEY idx_ip_please_refresh_exp (expires_at_ms)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS ip_please_profiles (
-    user_id       VARCHAR(40) NOT NULL,
-    nickname      VARCHAR(64) NOT NULL,
-    nickname_set  BOOLEAN     NOT NULL DEFAULT FALSE,
-    updated_at_ms BIGINT      NOT NULL,
-    PRIMARY KEY (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

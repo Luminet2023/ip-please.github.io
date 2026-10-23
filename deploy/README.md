@@ -132,6 +132,20 @@ nginx 中与 anthropic 相关的配置片段与公网链路结果。
    `resource_access.<client>.roles`。
 4. 角色在下次登录时写入会话；撤销角色后，在 Keycloak 里对该用户 Sign out（触发反向通道注销）即可立即生效。
 
+**玩家名字与头像**（云同步面板、排行榜）：直接取 ID Token 的 claims，每次登录更新。
+
+- 名字：`profile` scope 自带的 full name mapper 给出 `name`（名 + 姓）。没填姓名的账号依次退到
+  `nickname`、`preferred_username`（含 `@` 的值跳过，不会把邮箱登上排行榜），都没有时显示「审查员」。
+  想用别的 claim，改 `.env` 的 `OIDC_NAME_CLAIMS`。
+- 头像：`profile` scope 自带的 `picture` mapper 读用户属性 `picture`（须是 https 图片地址）。
+  Keycloak 24+ 的声明式 User profile 默认不收未登记的属性：Realm settings → User profile →
+  Create attribute `picture`（或把 Unmanaged attributes 打开）。社交登录导入头像：Identity providers →
+  对应 IdP → Mappers → Attribute Importer，把对方的头像 claim（GitHub 是 `avatar_url`）写进 `picture`。
+  没有头像的玩家显示名字首字。
+- 升级前已登录的玩家要重新登录一次，才会显示名字与头像（之前显示「审查员」）。
+- 早期版本的自定义昵称表 `ip_please_profiles` 已不再使用，确认无误后可手动删除：
+  `DROP TABLE ip_please_profiles;`
+
 **切换顺序**（全体玩家需要重新登录一次）：
 
 1. 部署新后端（`OIDC_CLIENT_SECRET` 先留空：公共客户端也能换码）。

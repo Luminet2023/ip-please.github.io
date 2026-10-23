@@ -39,7 +39,6 @@ pub fn router(state: AppState) -> Router {
             post(auth::routes::backchannel_logout),
         )
         .route("/anthropic/v1/me", get(profile::get_me))
-        .route("/anthropic/v1/me/profile", post(profile::update_me))
         .route(
             "/anthropic/v1/admin/sessions/revoke",
             post(auth::routes::admin_revoke_sessions),

@@ -10,7 +10,7 @@ use crate::auth::tokens::{new_refresh_token, refresh_token_hash};
 use crate::config::Config;
 use crate::error::{AppError, AuthErrorCode};
 use crate::ids;
-use crate::profile;
+use crate::profile::{self, Profile};
 
 pub const REUSE_GRACE_MS: i64 = 10_000;
 
@@ -111,6 +111,7 @@ pub struct NewSession<'a> {
     pub subject: &'a str,
     pub idp_sid: Option<&'a str>,
     pub is_admin: bool,
+    pub profile: &'a Profile,
 }
 
 pub async fn create(
@@ -144,7 +145,7 @@ pub async fn create(
     .await
     .map_err(AppError::db)?;
     insert_refresh_token(&mut tx, &session_id, &refresh_token, idle_expires_at, now).await?;
-    profile::ensure(&mut *tx, new.user_id, now)
+    profile::save(&mut *tx, new.user_id, new.profile, now)
         .await
         .map_err(AppError::db)?;
     tx.commit().await.map_err(AppError::db)?;

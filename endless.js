@@ -521,8 +521,8 @@ window.Endless = (function () {
       for (const entry of body.entries) {
         const item = el('li', entry.me ? { class: 'me' } : {});
         item.appendChild(el('span', { class: 'rank' }, '#' + entry.rank));
-        item.appendChild(el('span', { class: 'name' }, entry.nickname));
-        item.appendChild(el('span', { class: 'tag' }, '#' + entry.tag));
+        item.appendChild(cloud().ui.avatar(entry));
+        item.appendChild(el('span', { class: 'name' }, cloud().ui.displayName(entry)));
         item.appendChild(el('span', { class: 'score' }, T('{0} 分', entry.score)));
         list.appendChild(item);
       }

@@ -14,6 +14,7 @@ use serde_json::Value;
 use crate::auth::jwks::JwksCache;
 use crate::config::Config;
 use crate::error::{AppError, AuthErrorCode, DetailCode};
+use crate::profile::Profile;
 
 pub const BACKCHANNEL_EVENT: &str = "http://schemas.openid.net/event/backchannel-logout";
 const LEEWAY_SECS: u64 = 30;
@@ -122,6 +123,8 @@ pub struct Identity {
     pub subject: String,
     pub idp_sid: Option<String>,
     pub roles: Vec<String>,
+    /// 展示用的名字与头像（`profile` scope 的 claims）。
+    pub profile: Profile,
 }
 
 fn strings(value: Option<&Value>) -> Vec<String> {
@@ -188,6 +191,7 @@ pub async fn verify_id_token(
     let mut roles = strings(claims.extra.get(&config.oidc_roles_claim));
     roles.extend(client_roles(&claims.extra, &config.oidc_client_id));
     Ok(Identity {
+        profile: Profile::from_claims(&claims.extra, config),
         subject: claims.sub,
         idp_sid: claims.sid.filter(|sid| !sid.is_empty()),
         roles,
@@ -390,6 +394,7 @@ mod tests {
             "sub": "kc-subject-1", "sid": "kc-session-1", "nonce": "nonce-1",
             "iat": now(), "exp": now() + 300,
             "ip_please_roles": ["ip-please-admin"],
+            "name": "小鱼干", "picture": "https://cdn.test/fish.png",
         })
     }
 
@@ -401,6 +406,11 @@ mod tests {
         assert_eq!(identity.subject, "kc-subject-1");
         assert_eq!(identity.idp_sid.as_deref(), Some("kc-session-1"));
         assert_eq!(identity.roles, vec!["ip-please-admin".to_string()]);
+        assert_eq!(identity.profile.display_name, "小鱼干");
+        assert_eq!(
+            identity.profile.avatar_url.as_deref(),
+            Some("https://cdn.test/fish.png")
+        );
     }
 
     #[tokio::test]

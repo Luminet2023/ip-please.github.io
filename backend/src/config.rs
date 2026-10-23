@@ -18,6 +18,10 @@ pub struct Config {
     /// ID Token 里携带角色列表的 claim（Keycloak 专用 mapper）。
     pub oidc_roles_claim: String,
     pub oidc_admin_role: String,
+    /// 玩家名字依次尝试的 ID Token claim（取第一个可用的值）。
+    pub oidc_name_claims: Vec<String>,
+    /// 头像地址所在的 ID Token claim（OIDC 标准为 `picture`）。
+    pub oidc_avatar_claim: String,
     pub session_jwt_secret: Vec<u8>,
     pub session_jwt_secret_previous: Option<Vec<u8>>,
     /// 每日挑战种子密钥（上线后不要更换，否则当天的旅客序列会变）。
@@ -110,6 +114,11 @@ impl Config {
             oidc_scope: var_or("OIDC_SCOPE", "openid profile"),
             oidc_roles_claim: var_or("OIDC_ROLES_CLAIM", "ip_please_roles"),
             oidc_admin_role: var_or("OIDC_ADMIN_ROLE", "ip-please-admin"),
+            oidc_name_claims: list(&var_or(
+                "OIDC_NAME_CLAIMS",
+                "name,nickname,preferred_username",
+            )),
+            oidc_avatar_claim: var_or("OIDC_AVATAR_CLAIM", "picture"),
             session_jwt_secret,
             session_jwt_secret_previous: secret("SESSION_JWT_SECRET_PREVIOUS")?,
             endless_seed_secret,
@@ -140,6 +149,12 @@ impl Config {
             oidc_scope: "openid profile".to_string(),
             oidc_roles_claim: "ip_please_roles".to_string(),
             oidc_admin_role: "ip-please-admin".to_string(),
+            oidc_name_claims: vec![
+                "name".to_string(),
+                "nickname".to_string(),
+                "preferred_username".to_string(),
+            ],
+            oidc_avatar_claim: "picture".to_string(),
             session_jwt_secret: b"test-session-secret-0123456789abcdef".to_vec(),
             session_jwt_secret_previous: None,
             endless_seed_secret: b"test-endless-seed-secret-0123456789".to_vec(),

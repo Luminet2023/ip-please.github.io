@@ -256,6 +256,7 @@ pub async fn callback(
             subject: &identity.subject,
             idp_sid: identity.idp_sid.as_deref(),
             is_admin,
+            profile: &identity.profile,
         },
         now,
     )

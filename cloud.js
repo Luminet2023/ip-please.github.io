@@ -47,7 +47,6 @@ window.CloudSync = (function () {
     Unauthorized: 'unauthorized',
     'The login attempt is invalid or has expired.': 'login_attempt_invalid',
     'Too many requests. Please retry later.': 'rate_limited',
-    'The nickname is not allowed.': 'nickname_invalid',
     'An endless run is already in progress.': 'endless_run_active',
     'The endless run state has changed. Please reload.': 'endless_state_conflict',
     "Today's daily challenge has already been played.": 'daily_already_played',
@@ -68,7 +67,6 @@ window.CloudSync = (function () {
     unauthorized: '请先登录',
     login_attempt_invalid: '登录校验失败，请重新登录',
     rate_limited: '操作太频繁，请稍后再试',
-    nickname_invalid: '昵称不合规：2–16 个字，不能含网址或「官方」「管理」等字样',
     endless_run_active: '已有一局无尽模式在进行中',
     endless_state_conflict: '对局状态已变化，正在重新同步',
     daily_already_played: '今天的每日挑战已经玩过了',
@@ -92,6 +90,32 @@ window.CloudSync = (function () {
 
   function el(id) {
     return document.getElementById(id);
+  }
+
+  // 名字来自 IdP；升级前存下的登录态还没有 display_name，下次刷新 Token 后补上。
+  function displayName(user) {
+    return (user && user.display_name) || '审查员';
+  }
+
+  const AVATAR_COLORS = ['#7a3b2a', '#3b5a7a', '#4a6b3a', '#6b4a7a', '#7a6a2a', '#2a6b6b'];
+
+  // 头像：IdP 给了 https 图片就用，没有或加载失败时显示名字首字（底色按 tag 区分同名玩家）。
+  function avatar(user) {
+    const fallback = document.createElement('span');
+    fallback.className = 'avatar';
+    fallback.setAttribute('aria-hidden', 'true');
+    fallback.textContent = Array.from(displayName(user))[0].toUpperCase();
+    fallback.style.background = AVATAR_COLORS[(parseInt(user && user.tag, 16) || 0) % AVATAR_COLORS.length];
+    const url = user && user.avatar_url;
+    if (typeof url !== 'string' || !/^https:\/\//i.test(url)) return fallback;
+    const img = document.createElement('img');
+    img.className = 'avatar';
+    img.alt = '';
+    img.setAttribute('referrerpolicy', 'no-referrer');
+    img.setAttribute('loading', 'lazy');
+    img.addEventListener('error', () => img.replaceWith(fallback), { once: true });
+    img.src = url;
+    return img;
   }
 
   function escapeHtml(text) {
@@ -729,21 +753,6 @@ window.CloudSync = (function () {
     }
   }
 
-  async function updateNickname(nickname) {
-    try {
-      const me = await apiFetch('/me/profile', { method: 'POST', body: { nickname: nickname } });
-      if (auth) {
-        storeAuth(Object.assign({}, auth, {
-          user: Object.assign({}, auth.user, { nickname: me.nickname, nickname_set: me.nickname_set }),
-        }));
-      }
-      render();
-      toast('昵称已更新为「' + me.nickname + '」');
-    } catch (error) {
-      toast(error.retryAfter ? '改得太频繁了，请 ' + error.retryAfter + ' 秒后再试' : error.message || '修改失败');
-    }
-  }
-
   // ———————————————————— 界面 ————————————————————
 
   function maybePromptLogin() {
@@ -761,7 +770,7 @@ window.CloudSync = (function () {
       } else {
         const meta = loadMeta();
         button.textContent = meta ? '云同步 · 第' + meta.day + '天' : '云同步 · 已登录';
-        button.title = '已登录：' + auth.user.nickname;
+        button.title = '已登录：' + displayName(auth.user);
       }
     }
     renderPanel();
@@ -778,10 +787,8 @@ window.CloudSync = (function () {
       rows.push(CREDIT_HTML);
       rows.push('<div class="row"><button class="primary" data-action="login">登录</button><button data-action="close">关闭</button></div>');
     } else {
-      rows.push('<p>昵称：' + escapeHtml(auth.user.nickname) + ' <span class="tag">#' +
-        escapeHtml(auth.user.tag || '') + '</span>' + (auth.user.is_admin ? '（管理员）' : '') + '</p>');
-      rows.push('<div class="row"><input id="cloud-nickname" maxlength="16" placeholder="新昵称（2–16 字）" value="' +
-        escapeHtml(auth.user.nickname_set ? auth.user.nickname : '') + '"><button data-action="nickname">改昵称</button></div>');
+      rows.push('<div class="who"><span class="avatar-slot"></span><span class="name">' +
+        escapeHtml(displayName(auth.user)) + '</span>' + (auth.user.is_admin ? '<span class="tag">管理员</span>' : '') + '</div>');
       rows.push('<p>存档：' + (meta ? '第 ' + meta.day + ' 天 · ' + formatTime(meta.synced_at) + ' 已同步' : '尚未同步过') + '</p>');
       rows.push('<div class="row"><button class="primary" data-action="sync">立即同步</button><button data-action="restore">从云端恢复</button></div>');
       panelSections.forEach((section) => {
@@ -796,6 +803,8 @@ window.CloudSync = (function () {
       rows.push(CREDIT_HTML);
     }
     panel.innerHTML = rows.join('');
+    const slot = panel.querySelector('.avatar-slot');
+    if (slot) slot.replaceWith(avatar(auth.user));
   }
 
   function togglePanel(force) {
@@ -840,11 +849,6 @@ window.CloudSync = (function () {
   }
 
   function handleAction(action, target) {
-    if (action === 'nickname') {
-      const input = el('cloud-nickname');
-      updateNickname(input ? input.value : '');
-      return;
-    }
     for (const section of panelSections) {
       if (section.onAction && section.onAction(action, target)) return;
     }
@@ -919,6 +923,6 @@ window.CloudSync = (function () {
       if (reason) toast(reason, 4200);
       togglePanel(true);
     },
-    ui: { toast: toast, showDialog: showDialog, closeDialog: closeDialog, escapeHtml: escapeHtml },
+    ui: { toast: toast, showDialog: showDialog, closeDialog: closeDialog, escapeHtml: escapeHtml, avatar: avatar, displayName: displayName },
   };
 })();

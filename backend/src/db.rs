@@ -20,6 +20,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../migrations/003_announcements.sql"),
     ),
     ("004_endless", include_str!("../migrations/004_endless.sql")),
+    (
+        "005_profiles",
+        include_str!("../migrations/005_profiles.sql"),
+    ),
 ];
 
 /// 启动时 MySQL 可能还没就绪（docker compose 拉起顺序不定），带重试连接。

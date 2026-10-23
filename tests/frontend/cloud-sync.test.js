@@ -9,6 +9,7 @@ const { JSDOM } = require('jsdom');
 const REPO = path.join(__dirname, '..', '..');
 const CONFIG_JS = fs.readFileSync(path.join(REPO, 'config.js'), 'utf8');
 const CLOUD_JS = fs.readFileSync(path.join(REPO, 'cloud.js'), 'utf8');
+const ENDLESS_JS = fs.readFileSync(path.join(REPO, 'endless.js'), 'utf8');
 const failures = [];
 let checks = 0;
 
@@ -23,7 +24,7 @@ function check(name, condition, detail) {
 
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
 const sha256b64url = (text) => b64url(crypto.createHash('sha256').update(text).digest());
-const USER = { user_id: 'user_abcdefghijklmnopqrstuv', nickname: '审查员-AB12', nickname_set: false, tag: 'BEEF', is_admin: false };
+const USER = { user_id: 'user_abcdefghijklmnopqrstuv', display_name: '小鱼干', avatar_url: 'https://cdn.test/fish.png', tag: 'BEEF', is_admin: false };
 const unix = (offsetSecs) => Math.floor(Date.now() / 1000) + offsetSecs;
 
 function tokenResponse(n, extra) {
@@ -161,7 +162,7 @@ async function testCallbackAndDayEnd() {
   check('expires_at 换算成毫秒', !!stored && Math.abs(stored.expires_at - (unix(600) * 1000)) < 5000, stored && stored.expires_at);
   check('保存会话与用户', !!stored && stored.session_id.startsWith('sess_') && stored.user.user_id === USER.user_id);
   check('登录态生效', win.CloudSync.isLoggedIn() === true);
-  check('user() 返回昵称', win.CloudSync.user().nickname === USER.nickname);
+  check('user() 返回 IdP 名字', win.CloudSync.user().display_name === USER.display_name);
   check('回调参数清理', win.location.search === '');
   check('登录状态已清理', win.sessionStorage.getItem('ip-please-login-v2') === null);
   const callback = calls.find((call) => call.url.endsWith('/auth/callback'));
@@ -350,37 +351,100 @@ async function testStaleRefreshAdoptsOtherTab() {
   check('没有被登出', win.CloudSync.isLoggedIn() === true && !failed, failed && failed.message);
 }
 
-async function testLogoutAndNickname() {
-  console.log('→ 登出通知后端 / 改昵称');
+async function openPanelWith(user) {
+  const dom = newDom('https://www.fuckanthropic.dev/');
+  const win = dom.window;
+  seedAuth(win, { user });
+  win.fetch = async () => makeRes(200, { status: 'ok' });
+  load(dom);
+  await wait(40);
+  win.document.getElementById('cloud').click();
+  await wait(20);
+  return win;
+}
+
+async function testPanelAvatar() {
+  console.log('→ 面板显示 IdP 名字与头像');
+  let win = await openPanelWith(USER);
+  let panel = win.document.getElementById('cloud-panel');
+  const who = panel.querySelector('.who');
+  check('面板显示 IdP 名字', !!who && who.textContent.indexOf('小鱼干') >= 0, panel.textContent);
+  check('不再有改昵称表单', !panel.querySelector('input') && panel.textContent.indexOf('昵称') < 0, panel.innerHTML);
+  let img = panel.querySelector('img.avatar');
+  check('头像用 IdP 图片', !!img && img.getAttribute('src') === USER.avatar_url, panel.innerHTML);
+  check('头像不带 Referer', !!img && img.getAttribute('referrerpolicy') === 'no-referrer');
+  img.dispatchEvent(new win.Event('error'));
+  const fallback = panel.querySelector('.avatar');
+  check('图片加载失败换成首字头像', !panel.querySelector('img.avatar') && !!fallback && fallback.textContent === '小',
+    panel.innerHTML);
+
+  win = await openPanelWith(Object.assign({}, USER, { display_name: 'claude', avatar_url: null, is_admin: true }));
+  panel = win.document.getElementById('cloud-panel');
+  const letter = panel.querySelector('span.avatar');
+  check('没有头像时显示首字', !panel.querySelector('img') && !!letter && letter.textContent === 'C', panel.innerHTML);
+  check('首字头像按 tag 取色', !!letter && letter.style.background !== '', letter && letter.getAttribute('style'));
+  check('管理员标记', panel.querySelector('.who').textContent.indexOf('管理员') >= 0);
+
+  win = await openPanelWith(Object.assign({}, USER, { display_name: '<img src=x onerror=alert(1)>', avatar_url: 'javascript:alert(1)' }));
+  panel = win.document.getElementById('cloud-panel');
+  check('名字按文本显示', panel.querySelectorAll('img').length === 0 && panel.querySelector('.who .name').textContent === '<img src=x onerror=alert(1)>',
+    panel.innerHTML);
+
+  // 升级前存下的登录态没有 display_name：显示「审查员」，不再显示旧的「审查员-XXXX」
+  win = await openPanelWith({ user_id: USER.user_id, nickname: '审查员-AB12', nickname_set: false, tag: 'BEEF', is_admin: false });
+  panel = win.document.getElementById('cloud-panel');
+  check('旧登录态显示默认名字', panel.querySelector('.who .name').textContent === '审查员' && panel.textContent.indexOf('AB12') < 0,
+    panel.textContent);
+}
+
+async function testLeaderboardAvatars() {
+  console.log('→ 排行榜显示 IdP 名字与头像');
+  const dom = newDom('https://www.fuckanthropic.dev/');
+  const win = dom.window;
+  seedAuth(win);
+  win.fetch = async (url) => {
+    if (String(url).indexOf('/endless/leaderboard') >= 0) {
+      return makeRes(200, {
+        board: 'endless', period: 'all', me: { rank: 2, score: 300 },
+        entries: [
+          { rank: 1, display_name: 'Opus', avatar_url: 'https://cdn.test/opus.png', tag: '0A1F', score: 900, me: false },
+          { rank: 2, display_name: '小鱼干', avatar_url: null, tag: 'BEEF', score: 300, me: true },
+        ],
+      });
+    }
+    return makeRes(200, { status: 'ok' });
+  };
+  load(dom);
+  // endless.js 只用到 T() 做文案替换，这里给个最小实现
+  vm.runInContext("var T = (s, ...a) => String(s).replace(/\\{(\\d+)\\}/g, (_, i) => a[i]);", dom.getInternalVMContext());
+  vm.runInContext(ENDLESS_JS, dom.getInternalVMContext());
+  await win.Endless.openLeaderboard('endless');
+  await wait(20);
+  const rows = Array.from(win.document.querySelectorAll('#cloud-overlay ol.board li'));
+  check('排行榜两行', rows.length === 2, rows.length);
+  const first = rows[0];
+  check('第一名用 IdP 头像', !!first && !!first.querySelector('img.avatar') &&
+    first.querySelector('img.avatar').getAttribute('src') === 'https://cdn.test/opus.png', first && first.innerHTML);
+  check('第一名显示名字', !!first && first.querySelector('.name').textContent === 'Opus');
+  const mine = rows[1];
+  check('没头像的显示首字', !!mine && mine.classList.contains('me') && mine.querySelector('span.avatar').textContent === '小',
+    mine && mine.innerHTML);
+  check('不再显示 #标签', rows.every((row) => row.textContent.indexOf('#BEEF') < 0 && row.textContent.indexOf('#0A1F') < 0),
+    rows.map((row) => row.textContent));
+}
+
+async function testLogout() {
+  console.log('→ 登出通知后端');
   const dom = newDom('https://www.fuckanthropic.dev/');
   const win = dom.window;
   seedAuth(win);
   const calls = [];
   win.fetch = async (url, options) => {
     calls.push({ url: String(url), options });
-    if (String(url).endsWith('/me/profile')) {
-      const body = JSON.parse(options.body);
-      if (body.nickname === '官方') return makeRes(400, { detail: 'The nickname is not allowed.' });
-      return makeRes(200, Object.assign({}, USER, { nickname: body.nickname, nickname_set: true }));
-    }
     return makeRes(200, { status: 'ok' });
   };
   load(dom);
   await wait(40);
-  win.document.getElementById('cloud').click();
-  await wait(20);
-  const panel = win.document.getElementById('cloud-panel');
-  check('面板显示昵称而不是 IdP 账号', panel.textContent.indexOf(USER.nickname) >= 0, panel.textContent);
-
-  win.document.getElementById('cloud-nickname').value = '官方';
-  Array.from(panel.querySelectorAll('button')).find((b) => b.dataset.action === 'nickname').click();
-  await wait(40);
-  check('不合规昵称提示', toastText(win).indexOf('昵称不合规') >= 0, toastText(win));
-
-  win.document.getElementById('cloud-nickname').value = '小鱼干';
-  Array.from(win.document.getElementById('cloud-panel').querySelectorAll('button')).find((b) => b.dataset.action === 'nickname').click();
-  await wait(40);
-  check('昵称已更新', win.CloudSync.user().nickname === '小鱼干', win.CloudSync.user());
 
   win.CloudSync.logout();
   await wait(40);
@@ -479,7 +543,9 @@ async function testNewErrorCodes() {
   await testRefreshAndRevoke();
   await testSingleRefreshForParallelCalls();
   await testStaleRefreshAdoptsOtherTab();
-  await testLogoutAndNickname();
+  await testPanelAvatar();
+  await testLeaderboardAvatars();
+  await testLogout();
   await testFileZeroSaves();
   await testNewErrorCodes();
   console.log('');
