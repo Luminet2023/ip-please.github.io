@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#161313">
-<meta name="description" content="IP, PLEASE：Papers, Please 像素风小游戏。你是东八区检查站的审查员 Claude，揪出假装是美国人的旅客。">
+<meta name="description" content="IP, PLEASE：零号档案（File Zero），基于 IP, PLEASE 修改的 14 天剧情 Mod。调查第 0000 号申请，在证据、规则与选择之间走向 30 个结局。支持简体中文 / 繁體中文 / 日本語 / English。Mod：茗 / wess09。">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="IP, PLEASE">
-<meta property="og:title" content="IP, PLEASE · 请出示你的 IP">
-<meta property="og:description" content="A Papers, Please parody: you are Claude, the border inspector catching travelers pretending to be American. 中文 / English, free in your browser.">
+<meta property="og:site_name" content="IP, PLEASE：零号档案 / File Zero">
+<meta property="og:title" content="IP, PLEASE：零号档案 · File Zero Mod">
+<meta property="og:description" content="A 14-day story mod based on IP, PLEASE. Investigate File No. 0000 and reach 30 endings. 中文 / 繁體中文 / 日本語 / English. Mod by Ming / wess09.">
 <meta property="og:url" content="https://ip-please.github.io/">
 <meta property="og:image" content="https://ip-please.github.io/media/og.png">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
 <meta name="twitter:card" content="summary_large_image">
-<title>IP, PLEASE · 请出示你的 IP</title>
+<title>IP, PLEASE：零号档案</title>
 <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABLUlEQVR42t1Xyw2DMAxNokxRdQ4OzJEDh4oZGIAjAzAD4sCBOTh0DsQa7aVIVho7cSANqo989J6fX2Jbik887reX+GGM6yaFEELlAIeYMgc4DB3zU2MK5/N+fqYjAEGbaXETqEo2maASNKZAQbHoqzKIBElgz5oLbitCEUEJxGQdo4YSmUMdyX7u6jADTwt6chQXHAP1kcFIsEtg2uELbO5qYdrhvBL4MoQkbPDQsjgvIkp+COrKlnoHy2CfCM2V35XlkRJorvyh34QS0pzMKULJTbgDu+Te/cE1IMsDvjpDf3DUUHY/hy0VkxiC2PcCBe7qCeyLiCpBcg9QGcaa0NmOz2zFvpassNkO88LfzQPXHckuMZReZixPuZhkX83UvqXmiHHdpIKrco71/A3Xf8M4EeFWCQAAAABJRU5ErkJggg==">
 <style>
   html, body { margin: 0; height: 100%; background: #161313; overflow: hidden; }
@@ -90,7 +90,7 @@
 </style>
 </head>
 <body>
-<canvas id="game" width="640" height="360" aria-label="IP, PLEASE 游戏画面"></canvas>
+<canvas id="game" width="640" height="360" aria-label="IP, PLEASE：零号档案 游戏画面"></canvas>
 <div class="ui">
   <button id="cloud" type="button">云同步</button>
   <button id="mute" type="button">声音：开</button>
@@ -105,18 +105,23 @@
   <button type="button" onclick="this.parentNode.classList.remove('show')" style="margin-top:8px;padding:6px 14px">先竖着玩</button>
 </div>
 <noscript>这个游戏需要开启 JavaScript。</noscript>
-<script src="assets.js"></script>
-<script src="en.js"></script>
-<script src="i18n.js"></script>
-<script src="gfx.js"></script>
-<script src="sfx.js"></script>
-<script src="docs.js"></script>
-<script src="data.js"></script>
-<script src="booth.js"></script>
-<script src="events.js"></script>
-<script src="screens.js"></script>
-<script src="main.js"></script>
-<script src="cloud.js"></script>
+<script src="config.js?v=20261021-7"></script>
+<script src="assets.js?v=20261021-7"></script>
+<script src="en.js?v=20261021-7"></script>
+<script src="zh-hant.js?v=20261021-7"></script>
+<script src="ja.js?v=20261021-7"></script>
+<script src="i18n.js?v=20261021-7"></script>
+<script src="gfx.js?v=20261021-7"></script>
+<script src="sfx.js?v=20261021-7"></script>
+<script src="docs.js?v=20261021-7"></script>
+<script src="data.js?v=20261021-7"></script>
+<script src="plot.js?v=20261021-7"></script>
+<script src="endings.js?v=20261021-7"></script>
+<script src="booth.js?v=20261021-7"></script>
+<script src="events.js?v=20261021-7"></script>
+<script src="screens.js?v=20261021-7"></script>
+<script src="main.js?v=20261021-7"></script>
+<script src="cloud.js?v=20261021-7"></script>
 <script>
   document.getElementById('mute').addEventListener('click', () => toggleMute());
   const fullBtn = document.getElementById('full');

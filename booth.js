@@ -7,7 +7,6 @@ const DETAIN_BTN = [172, 268, 212, 280];
 const QUIZ_BTN = [126, 268, 166, 280];
 const INSPECT_BTN = [602, 322, 634, 354];
 const XRAY_BTN = [566, 322, 598, 354];
-const RULE_BTN = [530, 322, 562, 354];
 const ASK_BTN = [548, 140, 590, 162];
 const BANNER_BOX = [300, 134, 598, 168];
 const TRAY_Y0 = 196, TRAY_Y1 = 252, TRAY_W = 170, TRAY_X = W - TRAY_W;
@@ -31,13 +30,14 @@ const st = () => now - sceneT0;
 
 function startDay() {
   B = {
-    queue: buildQueue(S.day), idx: 0, ent: null, docs: [], lines: [], timers: [],
+    queue: S.endless ? buildEndlessQueue() : buildQueue(S.day), idx: 0, ent: null, docs: [], lines: [], timers: [],
     tray: { open: false, t: -9 }, presses: [], shake: -9,
     insp: { on: false, sel: [], banner: null, all: false },
     xray: { on: false, t: -9 }, printing: null, printQueue: [], effects: [], slams: [],
     ruleInst: null, rulePos: [228, 136], ruleOpened: false, speakerT: -9, fightT: -9, harmlessT: -9,
     pay: 0, bonus: 0, bribe: 0, fines: 0, cites: 0, correct: 0, total: 0, flash: null, clock0: now,
     ending: false, event: null, cut: null, closeup: null, lastFinish: now, tensionSrc: null, allTokens: false,
+    streak: 0, best: 0, strikes: 0,
   };
 }
 
@@ -56,7 +56,7 @@ function say(who, text) {
   B.lines.push({ t: now, who, text, ent: e });
   const pitch = who === 'C' ? 176 : who === 'Q' ? 160 : (e ? e.spec.voice : 125);
   SFX.mumble(text, pitch, B.lines.length * 7 + S.day);
-  if (who === 'E' && e) e.talkUntil = now + Math.min(1.3, 0.25 + 0.065 * readLen(text));
+  if (who === 'E' && e) e.talkUntil = now + Math.max(0.5, [...text].length / (LANG === 'en' ? 50 : 26));
 }
 
 // 按顺序播放一串台词/动作，返回总时长
@@ -85,6 +85,7 @@ function runSteps(steps, delay = 0) {
 }
 
 function newEntrant(spec, instant) {
+  if (!S.endless) spec = applyCaseWorkflow(spec);
   return {
     spec, tEnter: instant ? now - 1 : now + 0.35, phase: instant ? 'here' : 'enter',
     expr: ASSETS.people[spec.person].expr, talkUntil: 0, sweatT: null, slip: false, busyUntil: 0,
@@ -97,13 +98,17 @@ const isEvent = (it) => it && it.type;
 
 function callNext() {
   SFX.play('click');
-  if (B.ent || B.event || B.cut || B.closeup || B.ending || B.idx >= B.queue.length) return;
+  if (B.ent || B.event || B.cut || B.closeup || B.ending) return;
+  if (B.evidence || (B.evidenceQueue || []).length) { flash('请先处理桌上的文书'); return; }
+  if (B.finalPhase) { flash('请翻阅终局文书，将选中的文书移到准予章下'); return; }
+  if (B.idx >= B.queue.length) return;
   if (isEvent(nextItem())) { startEvent(B.queue[B.idx++]); return; }
   B.speakerT = now;
   SFX.play('intercom', 1, 0.03);
   say('C', '下一位！');
   S.tut.called = true;
-  const spec = B.queue[B.idx++];
+  const item = B.queue[B.idx++];
+  const spec = typeof item === 'function' ? item() : item;   // 条件案件在真正叫号时才生成
   const e = newEntrant(spec, false);
   B.ent = e;
   for (let i = 0; i < 4; i++) later(0.41 + i * 0.19, () => SFX.step(i));
@@ -121,12 +126,32 @@ function handDocs(e) {
   SFX.paper(S.day);
   if (e.spec.docs.some((d) => d.key === 'pp')) later(0.1, () => SFX.play('thud', 0.5));
   e.docs = e.spec.docs.map(({ key, doc }, i) => {
-    const inst = { doc, key, owner: 'ent', big: false, x: 48 + i * 24, y: 265, slot: [48 + i * 24, 265], marks: [] };
+    const slot = [48 + (i % 3) * 24, 265 - Math.floor(i / 3) * 18];
+    const inst = { doc, key, owner: 'ent', big: false, x: slot[0], y: slot[1], slot, marks: [] };
     B.docs.push(inst);
     return inst;
   });
   e.handed = true;
+  for (const { doc, key, dur = 1.8 } of e.spec.printedDocs || []) printDoc(doc, dur, key, e);
   if (e.spec.after) runSteps(e.spec.after, 0.3);
+  // 无尽模式：对齐部自动核验，打印机吐出登录记录（证据摆上桌，不给结论）
+  if ((S.endless || S.day >= 7) && e.spec.logins) {
+    later(0.6, () => {
+      if (B.ent !== e) return;
+      printDoc(loginStrip(e), 1.8, 'log', e);
+      if (!S.tut.iplog) {
+        S.tut.iplog = true;
+        flash('对齐部自动核验：登录记录和归属地对得上吗？');
+      }
+    });
+  }
+}
+
+// 登录记录小票：机器只出数据，比对靠审查员
+function loginStrip(e) {
+  const strip=new PrintStrip([T('IP 登录记录'), T('近 3 次登录')], e.spec.logins, {}, 10, 170);
+  strip.fields.last=strip.rowFields[0];
+  return strip;
 }
 
 const decisionOf = (inst) => (inst.marks.length ? inst.marks[inst.marks.length - 1].kind : null);
@@ -137,6 +162,7 @@ function checkLeave() {
   if (!e || e.phase !== 'here') return;
   const prim = primaryOf(e);
   if (!prim || !prim.returned) return;
+  if (B.evidence || (B.evidenceQueue || []).length) return;
   if (B.docs.some((d) => d.owner === 'ent' && d.big && !d.loose)) {
     if (!e.complained) { e.complained = true; say('E', '我的证件还在你那儿。'); }
     return;
@@ -171,13 +197,21 @@ function stopTension() { if (B.tensionSrc) { SFX.stop(B.tensionSrc); B.tensionSr
 
 function finish(e, dec) {
   if (B.ent !== e) return;
+  B.docs = B.docs.filter((d) => d.forEntrant !== e);
   B.ent = null;
   B.lastFinish = now;
   if (!e.noJudge) judge(e, dec);
+  if (B.ending) return;
   const then = e.spec.then;
   if (then === 'closeup') { B.closeup = { t0: now }; SFX.play('thud'); }
   if (then === 'jorji5') afterJorji5(e, dec);
   if (then === 'ending') afterAuthor(dec);
+  if (S.endless) {
+    B.docs = B.docs.filter((d) => d.key !== 'log');   // 登录记录小票跟着旅客走，不给下一个人留旧证据
+    if (B.strikes >= 3) { B.ending = true; later(2.2, () => go('eover')); return; }
+    topUpEndless();
+    return;
+  }
   if (B.idx >= B.queue.length && !B.cut && then !== 'ending') endDaySoon();
 }
 
@@ -185,7 +219,7 @@ function judge(e, dec) {
   const spec = e.spec;
   B.total++;
   S.stats[dec] = (S.stats[dec] || 0) + 1;
-  if (spec.author) return;
+  if (spec.author) { if (!S.endless) onCaseResolved(e, dec); return; }
   if (spec.bribe && dec === 'approve' && S.flags.sawNote) {
     B.bribe += 20; S.flags.bribed = true; B.harmlessT = now;
     later(0.8, () => flash('地下中转联盟：$20 余额已到账。合作愉快。'));
@@ -194,13 +228,16 @@ function judge(e, dec) {
     B.correct++; S.stats.correct++;
     B.pay += 5;
     if (dec === 'detain' && e.exposed) B.bonus += 5;
-    return;
-  }
+    if (S.endless) { B.streak++; B.best = Math.max(B.best, B.streak); }
+  } else {
   S.stats.wrong++;
+  if (S.endless) { B.streak = 0; B.strikes++; }
   const lines = dec === 'approve' ? ['放行了不合规旅客', spec.reason || ''] :
     dec === 'detain' ? ['无故拘留合规旅客', '证件齐全，信息一致'] : ['拒绝了合规旅客', '证件齐全，信息一致'];
   if (dec === 'approve' && spec.hint) lines.push(spec.hint);
   cite(lines);
+  }
+  if (!S.endless) onCaseResolved(e, dec);
 }
 
 // 开一张警告单：每天第一张只警告，之后每张罚 5 token
@@ -211,20 +248,28 @@ function cite(lines, delay = 0.5) {
   later(delay, () => printDoc(new Citation(lines), 1.1, 'cit'));
 }
 
-function printDoc(doc, dur, key) {
-  if (B.printing) { B.printQueue.push([doc, dur, key]); return; }
-  B.printing = { doc, t0: now, dur };
+function printDoc(doc, dur, key, forEntrant = null) {
+  if (B.printing) { B.printQueue.push([doc, dur, key, forEntrant]); return; }
+  B.printing = { doc, t0: now, dur, forEntrant };
   SFX.printer(Math.round(dur * 10) / 10);
   later(dur, () => {
     B.printing = null;
-    B.docs.push({ doc, key, owner: 'desk', big: true, x: PRINT_X, y: 131, marks: [] });
+    if (!forEntrant || B.ent === forEntrant) {
+      B.docs.push({ doc, key, owner: 'desk', forEntrant, big: true, x: PRINT_X, y: 131, marks: [] });
+    }
+    if (key === 'zticket') {
+      B.zeroPending = false;
+      B.keepable = { inst: B.docs[B.docs.length - 1], evId: 'zeroTicket' };
+      flash('打印机自己吐出一张空白小票（拖到桌上左下角的档案槽里可以留下）');
+    }
     if (key === 'cit') SFX.play('citation');
     if (B.printQueue.length) printDoc(...B.printQueue.shift());
   });
 }
 
 function endDaySoon() {
-  if (B.ending) return;
+  if (B.ending || B.finalPhase) return;
+  if (dayEndGate()) return;
   B.ending = true;
   const wait = B.printing ? 2 : 0;
   later(2.4 + wait, () => SFX.play('bell'));
@@ -302,8 +347,15 @@ function stamp(kind) {
   const [mx, my] = MARK_XY[kind];
   const cx = mx + 29, cy = my + 17;
   const target = [...B.docs].reverse().find((d) => d.big && inBox(cx, cy, [d.x, d.y, d.x + d.doc.w - 1, d.y + d.doc.h - 1]));
+  if (target?.owner === 'ent' && B.ent?.spec.signature && target.key !== B.ent.spec.signature) {
+    flash('请在待决文书上盖准予或拒绝章，再归还文书');
+    later(0.5, () => setTray(false));
+    return;
+  }
   if (target) {
     later(0.05, () => target.marks.push({ kind, rx: mx - target.x, ry: my - target.y }));
+    if (target.doc instanceof FinalPaper && kind === 'approve') { later(0.3, () => commitEnding(target.doc.ending)); }
+    if (target.doc instanceof EvidenceSheet) { flash('在右侧印章栏选择『保留 / 上交 / 销毁』来处理这张证据单'); }
     S.tut.stamped = true;
     const e = B.ent;
     if (e && target.owner === 'ent' && target.key === e.spec.primary && !e.decided) {
@@ -334,7 +386,7 @@ function toggleRules() {
 }
 
 function ruleTabHit(d, x, y) {
-  if (d.key !== 'rule' || d.doc.npages < 2) return false;
+  if (!(d.doc instanceof Rulebook) || d.doc.npages < 2) return false;
   const t = d.doc.tab;
   return inBox(x, y, [d.x + t[0], d.y + t[1], d.x + t[2], d.y + t[3]]);
 }
@@ -391,13 +443,35 @@ function xrayItemBox(e, it) {
 
 function docBox(d) { return [d.x, d.y, d.x + d.doc.w - 1, d.y + d.doc.h - 1]; }
 
+// 旅客脸部的全屏选区（检查模式里和护照照片连线用）
+function faceBox() {
+  const ex = entrantX(B.ent) || WIN_CX;
+  return [WIN[0] + ex - 30, WIN[1] + 14, WIN[0] + ex + 30, WIN[1] + 82];
+}
+
 // 对话框（左下角最近三句）的位置，绘制和检查模式共用
+// 对话框（左下角最近三行）。超宽的台词折成两行显示：每行带 seg（显示片段）和 off（在整句里的起始位置），
+// 检查模式下马脚匹配仍按 ln.text 整句比较，不受折行影响。
 function lineBoxes() {
-  return B.lines.slice(-3).map((ln, i) => {
-    let size = tw(ln.text, 12) > 176 ? 10 : 12;
-    if (LANG === 'en' && size === 10 && tw(ln.text, 10) > 178) size = 8;
+  const rows = [];
+  for (const ln of [...B.lines].reverse()) {
+    const size = tw(ln.text, 12) <= 176 ? 12 : tw(ln.text, 10) <= 176 ? 10 : 8;
+    const segs = size === 12 ? [ln.text] : wrap(ln.text, size, 168).slice(0, 2);
+    let cursor = 0;
+    const parts = segs.map((text) => {
+      const index = ln.text.indexOf(text, cursor);
+      const start = index < 0 ? cursor : index;
+      const off = [...ln.text.slice(0, start)].length;
+      const part = { ln, size, seg: text, off, x1: Math.min(214, 30 + tw(text, size) + 8) };
+      cursor = start + text.length;
+      return part;
+    });
+    rows.push(...parts.reverse());
+    if (rows.length >= 3) break;
+  }
+  return rows.slice(0, 3).reverse().map((r, i) => {
     const y = 288 + i * 17;
-    return { ln, size, box: [30, y, 30 + tw(ln.text, size) + 8, y + 15] };
+    return { ...r, box: [30, y, r.x1, y + 15] };
   });
 }
 
@@ -406,6 +480,10 @@ function fieldAt(x, y) {
   if (e && e.handed) {
     for (const { ln, box } of lineBoxes()) {
       if (ln.who === 'E' && ln.ent === e && inBox(x, y, box)) return { key: 'say', ln, box: () => box };
+    }
+    // 窗口里旅客的脸：检查模式下可选中，和护照照片比对（照片调包）。faceBox 是全屏坐标
+    if (e.handed && entrantX(e) !== null && inBox(x, y, faceBox())) {
+      return { key: 'face', box: faceBox };
     }
   }
   if (B.xray.on && e && e.spec.xray && entrantX(e) !== null) {
@@ -465,6 +543,7 @@ function showIssue(issue) {
     }
   }
   e.found.add(issue);
+  if (!S.endless && e.spec.onInvestigated) e.spec.onInvestigated(issue, e);
 }
 
 function inspectClick(x, y) {
@@ -532,6 +611,7 @@ function exprKey(e) {
 const XRAY_ICONS = {
   cat: ['X.........X', 'XX.......XX', 'XXX.....XXX', 'XXXXXXXXXXX', 'XX.XXXXX.XX', 'XXXXXXXXXXX', 'XXXX.X.XXXX', '.XXXXXXXXX.', '..XXXXXXX..'],
   keys: ['XXXXXXXXXXXXXXX', 'X.X.X.X.X.X.X.X', 'XXXXXXXXXXXXXXX', 'XX.X.X.X.X.X.XX', 'XXXXXXXXXXXXXXX', 'XXX.........XXX', 'XXXXXXXXXXXXXXX'],
+  rice: ['...XXXX...', '..XXXXXX..', '.XXXXXXXX.', 'XXXXXXXXXX', 'X.X.X.X.X.', '.XXXXXXXX.', '..XXXXXX..'],
 };
 
 const silCache = new Map();
@@ -594,6 +674,11 @@ function drawWindow() {
       const moving = !e.instant && now < e.tEnter + 0.8;
       const bob = moving && Math.floor(now * 10) % 2 ? 1 : 0;
       spr(exprKey(e), ex - ASSETS.people[e.spec.person].fw / 2, bob);
+      if (e.spec.displayName) {
+        const name = T(e.spec.displayName);
+        rect(3, 3, Math.min(WIN_W - 4, tw(name, 8) + 13), 16, 'rgba(22,19,19,0.86)');
+        txt(8, 5, name, 8, K.WHITE);
+      }
       if (e.sweatT !== null) {
         const s = Math.min(6, Math.floor((now - e.sweatT) / 0.35));
         const sx = ex + 22, sy = 42 + s;
@@ -687,15 +772,27 @@ function drawBoothLower() {
   outline(x0, y0, x0 + 18, y0 + 16, K.METAL_L);
   for (let yy = y0 + 3; yy < y0 + 15; yy += 3) rect(x0 + 3, yy, x0 + 15, yy, K.INK);
   const cps = LANG === 'en' ? 50 : 26;
-  for (const { ln, size, box } of lineBoxes()) {
+  for (const { ln, size, seg, off, box } of lineBoxes()) {
     const n = Math.max(1, Math.floor((now - ln.t) * cps));
     const [x0, y] = box;
     rect(...box, 'rgb(30,28,26)');
     outline(...box, 'rgb(76,70,64)');
     if (ln.who === 'C') rect(x0, y, x0 + 1, y + 15, K.CLAUDE);
-    txt(35, y + (size === 12 ? 2 : size === 10 ? 3 : 4), ln.text, size, ln.who === 'C' ? K.CLAUDE_L : K.WHITE, 'la', n);
+    const vis = Math.max(0, Math.min([...seg].length, n - off));
+    txt(35, y + (size === 12 ? 2 : size === 10 ? 3 : 4), seg, size, ln.who === 'C' ? K.CLAUDE_L : K.WHITE, 'la', vis);
   }
-  txt(8, 347, `${DATES[S.day]}  ${T(WEEKDAYS[S.day])}`, 10, K.GREY);
+  if (S.endless) {
+    txt(8, 347, T('无尽 · 已处理 {0} 人', B.total), 10, K.GREY);
+    txt(236, 348, T('警告'), 8, K.GREY_D);
+    for (let i = 0; i < 3; i++) {
+      const x0 = 262 + i * 14;
+      rect(x0, 347, x0 + 9, 355, i < B.strikes ? K.RED : K.DESK_D);
+      outline(x0, 347, x0 + 9, 355, K.OUTLINE);
+    }
+    txt(314, 348, T('连对 {0}', B.streak), 8, B.streak >= 3 ? K.CLAUDE_L : K.GREY);
+  } else {
+    txt(8, 347, `${DATES[S.day]}  ${T(WEEKDAYS[S.day])}`, 10, K.GREY);
+  }
   const m = 6 * 60 + Math.floor((now - B.clock0) / 1.1);
   txt(210, 346, `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`, 12, K.LED, 'ra');
   if (S.day >= 2) {
@@ -713,6 +810,7 @@ function drawBoothLower() {
 function drawDesk() {
   G.save();
   G.beginPath(); G.rect(DESK[0], DESK[1], DESK[2] - DESK[0] + 1, DESK[3] - DESK[1] + 1); G.clip();
+  drawArchiveSlot(false);          // 底层：槽口
   for (const d of B.docs) {
     if (!d.big) continue;
     d.doc.draw(d.x, d.y);
@@ -732,6 +830,8 @@ function drawDesk() {
   }
   G.restore();
   rect(PRINT_X - 4, 128, PRINT_X + 172, 130, K.INK);
+  drawArchiveSlot(true);           // 上层：只在拖着小票时高亮提示
+  if (B.finalPhase) drawFinalNavigation();
 }
 
 function drawTray() {
@@ -746,6 +846,7 @@ function drawTray() {
     txt(hx + 3, 233, '章', 8, K.WHITE);
   }
   if (u <= 0) return;
+  if (B.evidence) { drawEvidTray(tx); return; }
   const press = {};
   for (const p of B.presses) if (now >= p.t && now < p.t + 0.22) press[p.kind] = 5;
   rect(tx + 3, TRAY_Y0 + 3, tx + TRAY_W + 3, TRAY_Y1 + 3, K.DESK_D);
@@ -767,15 +868,80 @@ function drawTray() {
 
 const STAMP_ICON = ['.XXX.', '.XXX.', '..X..', 'XXXXX', 'XXXXX'];
 
+// ———————————————— 证据处理章（保留 / 上交 / 销毁） ————————————————
+// 只在「证据处理单」摆在桌上时出现；文案可被案件改写（比如迁移协议的三个选项）
+const ARCHIVE_SLOT = [DESK[0] + 6, 320, DESK[0] + 60, 354];
+
+function evidLabels() {
+  return (B.evidence && B.evidence.labels) || ['保留', '上交', '销毁'];
+}
+
+function evidButtons(tx) {
+  const states = ['retained', 'submitted', 'destroyed'];
+  return states.map((st, i) => [[tx + 10 + i * 53, TRAY_Y0 + 8, tx + 58 + i * 53, TRAY_Y0 + 48], st]);
+}
+
+function drawEvidTray(tx) {
+  rect(tx + 3, TRAY_Y0 + 3, tx + TRAY_W + 3, TRAY_Y1 + 3, K.DESK_D);
+  rect(tx, TRAY_Y0, tx + TRAY_W, TRAY_Y1, K.METAL);
+  rect(tx, TRAY_Y0, tx + TRAY_W, TRAY_Y0 + 2, K.METAL_L);
+  const labels = evidLabels();
+  const cols = [K.GREEN, K.METAL_D, K.RED];
+  const colsD = [K.GREEN_D, K.METAL_D, K.RED_D];
+  evidButtons(tx).forEach(([box, st], i) => {
+    const [x0, y0, x1, y1] = box;
+    const hover = ptr.mouse && inBox(ptr.x, ptr.y, box);
+    rect(x0 + 2, y0 + 2, x1 + 2, y1 + 2, K.METAL_D);
+    rect(x0, y0, x1, y1, hover ? cols[i] : colsD[i]);
+    rect(x0 + 1, y0 + 1, x1 - 1, y1 - 1, colsD[i]);
+    wrap(T(labels[i]), 8, x1 - x0 - 4).slice(0, 3).forEach((line, row) => txt((x0 + x1) >> 1, y0 + 5 + row * 10, line, 8, K.WHITE, 'ma'));
+    void st;
+  });
+}
+
+// 桌面左下角的「个人档案槽」：只在小票这种可以收起来的纸上出现
+// under=true 画槽体和文字（纸的下面），under=false 只在拖拽时补一圈高亮（纸的上面）
+function drawArchiveSlot(under) {
+  if (!B.keepable || !B.keepable.inst) return;
+  const [x0, y0, x1, y1] = ARCHIVE_SLOT;
+  const hot = !under && drag && drag.d && drag.d.key === 'zticket' && slotHit(drag.d);
+  if (under) {
+    rect(x0, y0, x1, y1, hot ? 'rgb(72,54,36)' : 'rgb(46,40,36)');
+    outline(x0, y0, x1, y1, K.CLAUDE);
+    for (let x = x0 + 3; x < x1 - 2; x += 4) rect(x, y0 + 3, x, y0 + 3, K.GREY_D);
+    txt((x0 + x1) >> 1, y0 + 10, T('档案'), 10, K.CLAUDE_L, 'ma');
+    txt((x0 + x1) >> 1, y0 + 24, T('拖进来'), 8, K.GREY, 'ma');
+    return;
+  }
+  if (!hot) return;
+  outline(x0 - 1, y0 - 1, x1 + 1, y1 + 1, K.CLAUDE_L, 2);
+  txt((x0 + x1) >> 1, y0 - 12, T('松手收进档案'), 8, K.CLAUDE_L, 'ma');
+}
+
+// 纸和槽口只要「有重叠」就算丢进去了 —— 比让玩家对准 54x34 的小格子友好得多
+function slotHit(d) {
+  if (!d) return false;
+  const b = [d.x, d.y, d.x + d.doc.w, d.y + d.doc.h];
+  const [x0, y0, x1, y1] = ARCHIVE_SLOT;
+  const ox = Math.min(b[2], x1) - Math.max(b[0], x0);
+  const oy = Math.min(b[3], y1) - Math.max(b[1], y0);
+  return ox > 4 && oy > 4;              // 至少压住一小块，避免擦边误判
+}
+
 function hintText() {
   if (B.flash && now < B.flash.t + 3.2) return B.flash.text;
   const e = B.ent, here = e && e.phase === 'here' && e.handed && !B.event, T = S.tut;
+  if (S.endless) {
+    if (!S.tut.iplog && e && e.handed) return '小票上的登录地，和设备卡的归属地对得上吗？';
+    if (!S.tut.sniper && B.idx >= 6) return '后面还会出现波次事件：黑话快剪、蒸馏大军，注意警报';
+    return '';
+  }
   if (S.day === 1) {
     if (!T.called) return '点左下角闪烁的喇叭，叫下一位';
     if (!here) return '';
     const onDesk = B.docs.some((d) => d.owner === 'ent' && d.big);
     if (!T.dragged && !onDesk) return '把柜台上的证件（左下小图标）拖到右边桌上';
-    if (!T.rules) return '点右下角的『宪法』，看今天的入境规则';
+    if (!T.rules) return '点击桌上的宪法书，查看今天的入境规则';
     if (!T.tray) return '点右侧的把手“<”，拉出印章栏';
     if (!T.stamped) return '把证件挪到印章正下方，按“准予”或“拒绝”';
     if (!T.returned && e.decided) return '把盖好章的证件拖回左边窗口，还给旅客';
@@ -783,7 +949,8 @@ function hintText() {
     return '';
   }
   if (!here) return '';
-  if (S.day <= 5 && !B.ruleOpened) return '今天有新规：点右下角『宪法』看看（标着 NEW）';
+  if (e.spec.signature && !e.decided) return '请在待决文书上盖准予或拒绝章，再归还文书';
+  if (S.day <= 5 && !B.ruleOpened) return '今天有新规：点击桌上的宪法书查看（新条款标着 NEW）';
   if (S.day === 2) {
     if (!T.inspect) return '右下『?』检查模式：点两处矛盾的信息（如国籍和时区）';
     if (!T.tell && !e.suspect && B.idx >= 3) return '证件都对得上？用『检查』点 Ta 说的话，找马脚';
@@ -799,7 +966,8 @@ function drawHint() {
   if (!s || B.insp.on) return;
   const size = tw(s, 10) > 396 ? 8 : 10;
   const w = tw(s, size) + 12;
-  const x = Math.max(DESK[0] + 4, W - 6 - w), y = 134;
+  // 贴在最外面上方：桌面留给证件，别压在纸的标题栏上
+  const x = Math.max(6, W - 6 - w), y = 110;
   rect(x, y, x + w, y + 15, 'rgba(22,19,19,0.92)');
   outline(x, y, x + w, y + 15, K.CLAUDE);
   txt(x + 6, y + (size === 10 ? 3 : 4), s, size, K.CLAUDE_L);
@@ -818,7 +986,6 @@ function drawBooth() {
 }
 
 function drawButtons() {
-  button(RULE_BTN, '§', '宪法', !!B.ruleInst);
   if (S.day >= 4) button(XRAY_BTN, 'X', 'X光', B.xray.on);
   button(INSPECT_BTN, '?', '检查', B.insp.on);
 }
@@ -836,6 +1003,7 @@ function composeInspect(g) {
   }
   if (B.xray.on) lighten([WIN[0], WIN[1], WIN[2] + 1, WIN[3] + 1]);
   if (B.ent && B.ent.handed) lighten([28, 286, 220, 339]);   // 对话框也亮着，方便点旅客说的话
+  if (B.ent && B.ent.handed && entrantX(B.ent) !== null) lighten(faceBox());   // 旅客的脸也亮着，方便和护照照片比对
   let boxes = I.sel.map((s) => s.box());
   if (I.all && B.ent) {
     boxes = [];
@@ -856,7 +1024,7 @@ function composeInspect(g) {
     const [x0, y0] = BANNER_BOX;
     rect(...BANNER_BOX, K.INK); outline(...BANNER_BOX, bn.bad ? K.RED : K.GREY_D);
     txt(x0 + 8, y0 + 5, bn.title, 12, bn.bad ? K.RED_L : K.GREY);
-    const room = bn.ask ? 236 : LANG === 'en' ? 282 : Infinity;
+    const room = bn.ask ? 236 : LANG === 'en' || LANG === 'ja' ? 282 : Infinity;
     txt(x0 + 8, y0 + 21, bn.sub, tw(bn.sub, 10) > room ? 8 : 10, K.WHITE);
     if (bn.ask) {
       const hover = ptr.mouse && inBox(ptr.x, ptr.y, ASK_BTN);
@@ -866,6 +1034,8 @@ function composeInspect(g) {
   } else {
     const s = T(I.sel.length ? '再点一处，看看两者是否矛盾' : '检查模式：点两处信息找矛盾，或点旅客说的话找马脚');
     rect(...BANNER_BOX, 'rgba(22,19,19,0.85)'); outline(...BANNER_BOX, K.GREY_D);
-    txt(BANNER_BOX[0] + 8, BANNER_BOX[1] + 12, s, 10, K.GREY);
+    // 日文这类字数多的语言放不下一行：折成两行（横幅只有 34px 高，最多两行）
+    wrap(s, 10, BANNER_BOX[2] - BANNER_BOX[0] - 16).slice(0, 2)
+      .forEach((ln, i) => txt(BANNER_BOX[0] + 8, BANNER_BOX[1] + 8 + i * 12, ln, 10, K.GREY));
   }
 }

@@ -16,15 +16,18 @@ window.CloudSync = (function () {
     authKey: 'ip-please-auth-v1',
     metaKey: 'ip-please-sync-meta-v1',
     pkceKey: 'ip-please-pkce-v1',
-    saveKey: 'ip-please-save-v1',
+    // 与游戏共用零号档案的存档键（config.js），不读原版的 ip-please-save-v1
+    saveKey: STORAGE_KEYS.save,
     refreshAheadMs: 60 * 1000,
   };
 
-  // 原作仓库与致谢文案：登录面板里必须保留，说明本版只加了云同步。
+  // 原作仓库、零号档案 mod 与致谢文案：登录面板里必须保留，说明本版合并了哪些内容。
   const CREDIT_HTML =
     '<p class="credit">本页基于 <a href="https://github.com/ip-please/ip-please.github.io" ' +
     'target="_blank" rel="noopener noreferrer">ip-please/ip-please.github.io</a> 二次开发，' +
-    '仅新增云存档同步功能；游戏本体、剧本与美术素材版权归原作者，特此致谢。</p>';
+    '合并了茗（<a href="https://github.com/wess09/ip-please-zero" target="_blank" rel="noopener noreferrer">wess09</a>）' +
+    '的《零号档案 · File Zero》，并新增云存档同步功能；' +
+    '游戏本体、剧本与美术素材版权归原作者与 mod 作者，特此致谢。</p>';
 
   // DetailErrorResponse.detail -> 业务错误码，与 backend/src/error.rs 的登记表一一对应。
   const BUSINESS_ERROR_CODES = {
@@ -449,6 +452,17 @@ window.CloudSync = (function () {
     }
   }
 
+  // 能载入接着玩的云端存档：零号档案格式（带 plot 剧情状态）且还没打出结局。
+  // 云端可能还留着本站改成零号档案之前的旧版存档，零号档案不读旧存档。
+  function isRestorable(payload) {
+    return !!payload && typeof payload.day === 'number' && !!payload.plot &&
+      !(payload.plot.final && payload.plot.final.ending);
+  }
+
+  function unrestorableReason(payload) {
+    return payload && payload.plot ? '云端那一局已经打完了' : '云端是旧版游戏的存档，零号档案读不了';
+  }
+
   function metaFromServer(server) {
     return {
       version: server.version,
@@ -531,6 +545,10 @@ window.CloudSync = (function () {
       toast('云端存档冲突，但读取失败：' + (error.message || '网络错误'));
       return;
     }
+    if (!isRestorable(server.payload)) {
+      await forceUpload(localState, server.version);
+      return;
+    }
     const title = reason === 'ending' ? '结局存档冲突' : '云存档冲突';
     showDialog({
       title: title,
@@ -562,6 +580,12 @@ window.CloudSync = (function () {
         return;
       }
       toast('读取云端存档失败：' + (error.message || '网络错误'));
+      return;
+    }
+
+    if (!isRestorable(server.payload)) {
+      saveMeta(metaFromServer(server));
+      toast('已登录。' + unrestorableReason(server.payload) + '，日终会用本机进度覆盖', 4200);
       return;
     }
 
@@ -612,6 +636,10 @@ window.CloudSync = (function () {
       server = await fetchLatest();
     } catch (error) {
       toast(error.status === 404 ? '云端还没有存档' : '读取云端存档失败：' + (error.message || '网络错误'));
+      return;
+    }
+    if (!isRestorable(server.payload)) {
+      toast(unrestorableReason(server.payload) + '，没有可以接着玩的进度');
       return;
     }
     showDialog({

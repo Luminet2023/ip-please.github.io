@@ -6,8 +6,12 @@
 ## 项目概览
 
 本仓库是 [ip-please/ip-please.github.io](https://github.com/ip-please/ip-please.github.io) 的衍生版本：
-游戏本体、剧本与素材来自原作，本版只新增云存档同步（`cloud.js` + `backend/`）。登录面板与 README
-必须保留对原作者的致谢与来源说明，不得移除。
+游戏本体、剧本与素材来自原作，14 天剧情合并自茗（wess09）的 [ip-please-zero](https://github.com/wess09/ip-please-zero)
+（《零号档案 · File Zero》），本版只新增云存档同步（`cloud.js` + `backend/`）。登录面板与 README
+必须保留对原作者与 mod 作者的致谢与来源说明，不得移除。
+存档键沿用零号档案的 `STORAGE_KEYS`（`config.js`），`cloud.js` 的 `CFG.saveKey` 直接读它，不读原版的
+`ip-please-save-v1`。云端可能留着改版前的旧存档（没有 `plot`），`cloud.js` 不会提示载入旧存档或已打出结局的存档。
+日终同步挂在 `screens.js` 的 `summaryClick`，结局同步挂在 `plot.js` 的 `commitEnding`。
 
 | 部分 | 位置 | 技术 |
 | --- | --- | --- |

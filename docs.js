@@ -105,13 +105,34 @@ class Card {
   constructor(rows, { title = '设备入境卡', sub = 'DEVICE ENTRY', color = C.PINK, colorD = C.PINK_D, valueX = 38, seal } = {}) {
     this.rows = rows; this.title = T(title); this.sub = T(sub);
     this.shown = rows.map(([k, v]) => [T(k), T(v)]);
-    this.color = rgb(color); this.colorD = rgb(colorD); this.valueX = valueX;
+    this.color = rgb(color); this.colorD = rgb(colorD);
+    this.valueX = Math.max(valueX, ...this.shown.map(([label]) => tw(label, 10) + 14));
+    const dark = (c) => c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722 < 140;
+    this.textInk = dark(color) ? K.WHITE : K.TEXT;
+    this.labelInk = dark(color) ? K.PAPER_D : K.TEXT_L;
+    this.headerInk = dark(colorD) ? K.WHITE : K.TEXT;
     this.seal = seal === undefined ? rows.length >= 4 : seal;
-    this.w = 152;
-    this.h = 20 + 14 * rows.length + (this.seal ? 14 : 6);
+    this.w = Math.min(204, Math.max(152, this.valueX + 80,
+      this.valueX + Math.max(...this.shown.map(([, value]) => tw(value, 8))) + 8));
+    this.headerSize = tw(this.title, 10) + tw(this.sub, 8) + 18 <= this.w ? 10 : 8;
+    this.headerH = tw(this.title, this.headerSize) + tw(this.sub, 8) + 18 <= this.w ? 14 : 26;
+    const room = this.w - this.valueX - 8;
+    let y = this.headerH + 6;
+    this.layout = this.shown.map(([label, value]) => {
+      const size = tw(value, 10) <= room ? 10 : 8;
+      const lines = wrap(value, size, room);
+      const height = Math.max(14, lines.length * (size + 2) + 2);
+      const row = { label, lines, size, y, height };
+      y += height;
+      return row;
+    });
+    this.h = y + (this.seal ? 38 : 6);
     this.icon = ['card', color];
     this.fields = {};
-    rows.forEach(([k], i) => { this.fields[k] = [4, 18 + 14 * i, this.w - 5, 31 + 14 * i]; });
+    rows.forEach(([k], i) => {
+      const row = this.layout[i];
+      this.fields[k] = [4, row.y - 2, this.w - 5, row.y + row.height - 3];
+    });
   }
 
   draw(x, y) {
@@ -119,19 +140,16 @@ class Card {
     docShadow(x, y, w, h);
     rect(x, y, x + w - 1, y + h - 1, this.colorD);
     rect(x + 1, y + 1, x + w - 2, y + h - 2, this.color);
-    rect(x + 1, y + 1, x + w - 2, y + 14, this.colorD);
-    txt(x + 6, y + 4, this.title, 10, K.TEXT);
-    txt(x + w - 6, y + 6, this.sub, 8, K.TEXT_L, 'ra');
+    rect(x + 1, y + 1, x + w - 2, y + this.headerH, this.colorD);
+    txt(x + 6, y + 4, this.title, this.headerSize, this.headerInk);
+    txt(x + w - 6, y + (this.headerH > 14 ? 16 : 6), this.sub, 8, this.headerInk, 'ra');
     if (this.seal) spr('seal', x + w - 40, y + h - 38);
-    const room = w - this.valueX - 6;
-    this.shown.forEach(([k, v], i) => {
-      const yy = y + 20 + i * 14;
-      const size = tw(v, 10) > room ? 8 : 10;
-      if (LANG === 'en' && tw(v, size) > room) v = v.replace(/ · /g, '·');   // 英文地名长，挤一挤
-      txt(x + 8, yy, k, 10, K.TEXT_L);
-      txt(x + this.valueX, yy, v, size, K.TEXT);
+    this.layout.forEach((row) => {
+      const yy = y + row.y;
+      txt(x + 8, yy, row.label, 10, this.labelInk);
+      row.lines.forEach((value, i) => txt(x + this.valueX, yy + i * (row.size + 2), value, row.size, this.textInk));
       G.fillStyle = this.colorD;
-      for (let sx = x + 6; sx < x + w - 6; sx += 2) G.fillRect(sx, yy + 11, 1, 1);
+      for (let sx = x + 6; sx < x + w - 6; sx += 2) G.fillRect(sx, yy + row.height - 3, 1, 1);
     });
   }
 }
@@ -182,14 +200,24 @@ class Citation {
   }
 }
 
-// 打印机吐出来的长纸条（号码查询）
+// 打印机吐出来的长纸条（号码查询 / 登录记录）。fields 可选：给某几行开检查模式的点击区。
 class PrintStrip {
-  constructor(header, rows) {
-    this.header = header.map((s) => T(s)); this.rows = rows;
-    this.w = 128;
-    this.h = 10 + 13 * header.length + 6 + 10 * rows.length + 6;
+  constructor(header, rows, fields = {}, rowSize = 8, w = 128) {
+    this.header = header.map((s) => T(s)); this.rows = rows.map((s) => T(s));
+    this.headerLines=this.header.flatMap(s=>wrap(s,10,w-16));
+    const bodyY = 11 + 13 * this.headerLines.length;
+    let bodyEnd=bodyY;
+    this.rowLayout=this.rows.map(s=>{
+      const lines=wrap(s,rowSize,w-16), y=bodyEnd;
+      bodyEnd+=lines.length*(rowSize+2);
+      return {lines,y};
+    });
+    this.rowFields=this.rowLayout.map(r=>[6,r.y-2,w-7,r.y+r.lines.length*(rowSize+2)]);
+    this.fields = { body: [6, bodyY-2, w - 7, bodyEnd], ...fields };
+    this.rowSize = rowSize;
+    this.w = w;
+    this.h = bodyEnd+11;
     this.icon = ['card', [232, 230, 222]];
-    this.fields = {};
   }
 
   draw(x, y) {
@@ -199,10 +227,10 @@ class PrintStrip {
     G.fillStyle = K.GREY;
     for (let yy = y + 3; yy < y + h; yy += 6) { G.fillRect(x + 2, yy, 1, 1); G.fillRect(x + w - 3, yy, 1, 1); }
     let yy = y + 6;
-    for (const s of this.header) { txt(x + 8, yy, s, 10, K.INK); yy += 13; }
+    for (const s of this.headerLines) { txt(x + 8, yy, s, 10, K.INK); yy += 13; }
     rect(x + 6, yy, x + w - 7, yy, K.GREY);
     yy += 5;
-    for (const s of this.rows) { txt(x + 8, yy, s, 8, K.TEXT); yy += 10; }
+    for (const row of this.rowLayout) for (const s of row.lines) { txt(x + 8, yy, s, this.rowSize, K.TEXT); yy += this.rowSize + 2; }
   }
 }
 
@@ -223,6 +251,169 @@ class PromptPaper {
     this.lines.forEach((s, i) => txt(x + 9, y + 22 + i * 13, s, 10, K.INK));
   }
 }
+
+// ———————————————— 主线剧情纸张（D07—D14） ————————————————
+
+// 通用公文：调令、协议、法规修订、申诉回执、审计单……都是一张纸 + 一个签字/盖章位
+// fields 只开两个可点区域：body（正文，检查模式里当“文件内容”）和 sign（盖章位）
+class PaperDoc {
+  constructor({ title, sub = '', lines = [], footer = '', w = 204, color = 'rgb(228,222,208)', seal = null, rowSize = 10, fieldNames = [] } = {}) {
+    this.title = T(title); this.sub = T(sub); this.footer = T(footer);
+    this.lines = lines.map((s) => T(s));
+    this.w = w; this.rowSize = rowSize;
+    this.headerSize=tw(this.title,10)<=w-14?10:8;
+    this.headerLines=wrap(this.title,this.headerSize,w-14);
+    this.headerH=Math.max(18,8+this.headerLines.length*(this.headerSize+1));
+    this.bodyY=this.headerH+8;
+    this.color = color;
+    this.seal = seal;                       // 'hq' 总部圆印 / null
+    const wrapped = [];
+    for (const s of this.lines) {
+      for (const ln of wrap(s, rowSize, w - 20)) wrapped.push(ln);
+    }
+    this.wrapped = wrapped;
+    this.dividerY = this.bodyY+4 + wrapped.length * (rowSize + 3);
+    // Reserve a separate signature area below the divider and optional footer.
+    this.h = this.dividerY + (this.footer ? 20 : 8) + 26;
+    this.icon = ['card', [228, 222, 208]];
+    this.fields = { body: [6, this.bodyY-2, w - 7, this.bodyY-2 + wrapped.length * (rowSize + 3)], sign: [w - 84, this.h - 26, w - 8, this.h - 6] };
+    let row = 0;
+    this.lines.forEach((line, i) => {
+      const count = wrap(line, rowSize, w - 20).length;
+      if (fieldNames[i]) this.fields[fieldNames[i]] = [6, this.bodyY + row * (rowSize + 3), w - 7, this.bodyY-1 + (row + count) * (rowSize + 3)];
+      row += count;
+    });
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    docShadow(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, this.color);
+    rect(x + 2, y + 2, x + w - 3, y + this.headerH, 'rgb(120,112,102)');
+    this.headerLines.forEach((s,i)=>txt(x+7,y+5+i*(this.headerSize+1),s,this.headerSize,K.WHITE));
+    this.wrapped.forEach((s, i) => txt(x + 8, y + this.bodyY + i * (this.rowSize + 3), s, this.rowSize, K.TEXT));
+    const by = y + this.dividerY;
+    rect(x + 8, by, x + w - 9, by, 'rgb(168,158,144)');
+    if (this.footer) txt(x + 8, by + 4, this.footer, 8, K.TEXT_L);
+    if (this.seal === 'hq') spr('seal_hq', x + w - 46, y + h - 46);
+    outline(x + w - 84, y + h - 26, x + w - 9, y + h - 6, 'rgb(176,168,154)');
+    txt(x + w - 46, y + h - 20, T('签章'), 8, 'rgb(150,142,128)', 'ma');
+  }
+}
+
+// 证据处理单：一张纸，三种处理方式。托盘里多出三枚“处理章”（保留 / 上交 / 销毁）
+class EvidenceSheet {
+  constructor(evId, title, lines, labels) {
+    this.evId = evId;
+    this.title = T(title);
+    this.labels = (labels || ['保留', '上交', '销毁']).slice();
+    this.lines = lines.map((s) => T(s));
+    this.w = 200;
+    this.rowSize = 10;
+    const wrapped = [];
+    for (const s of this.lines) for (const ln of wrap(s, 10, 182)) wrapped.push(ln);
+    this.wrapped = wrapped;
+    this.h = 34 + wrapped.length * 12 + 44;
+    this.icon = ['card', [230, 224, 206]];
+    this.fields = { body: [6, 26, this.w - 7, 26 + wrapped.length * 12] };
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    docShadow(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, 'rgb(230,224,206)');
+    rect(x, y, x + w - 1, y + 17, K.RED_D);
+    txt(x + 7, y + 4, T('证据处理单'), 10, K.WHITE);
+    txt(x + w - 7, y + 6, 'EVIDENCE', 8, 'rgb(226,180,172)', 'ra');
+    txt(x + 7, y + 21, this.title, tw(this.title, 10) <= w - 14 ? 10 : 8, K.TEXT);
+    this.wrapped.forEach((s, i) => txt(x + 8, y + 34 + i * 12, s, 10, K.TEXT_L));
+    const oy = y + 34 + this.wrapped.length * 12 + 6;
+    rect(x + 8, oy - 4, x + w - 9, oy - 4, 'rgb(168,158,144)');
+    this.labels.forEach((s, i) => {
+      const bx = x + 10 + i * 62;
+      outline(bx, oy + 2, bx + 54, oy + 26, 'rgb(150,140,126)');
+      wrap(T(s), 8, 50).slice(0, 2).forEach((line, row) => txt(bx + 27, oy + 6 + row * 9, line, 8, K.TEXT, 'ma'));
+    });
+  }
+}
+
+// 终局文书：D14 最后摆在桌上的那些纸，一张纸对应一个结局，盖章即生效
+class FinalPaper {
+  constructor({ ending, title, lines, sub = 'FINAL DISPOSITION' }) {
+    this.ending = ending;
+    this.title = T(title);
+    this.sub = sub;
+    this.lines = lines.map((s) => T(s));
+    this.w = 214;
+    const wrapped = [];
+    for (const s of this.lines) for (const ln of wrap(s, 10, 196)) wrapped.push(ln);
+    this.wrapped = wrapped;
+    this.h = 40 + wrapped.length * 12 + 30;
+    this.icon = ['card', [232, 226, 210]];
+    this.fields = { body: [6, 26, this.w - 7, 26 + wrapped.length * 12] };
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    docShadow(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, 'rgb(236,230,214)');
+    rect(x, y, x + w - 1, y + 20, 'rgb(38,42,58)');
+    wrap(this.title, 8, w - 16).slice(0, 2).forEach((line, row) => txt(x + 8, y + 3 + row * 9, line, 8, K.WHITE));
+    this.wrapped.forEach((s, i) => txt(x + 9, y + 28 + i * 12, s, 10, K.TEXT));
+    outline(x + 8, y + h - 24, x + w - 9, y + h - 6, 'rgb(160,152,138)');
+    txt(x + w / 2, y + h - 18, T('在此盖章生效'), 8, 'rgb(150,142,128)', 'ma');
+  }
+}
+
+// 两张“同一人的照片”并排：D06 Gemini 的比对件（不加生物识别，只是把两张照片摆一起）
+class PhotoSheet {
+  constructor(rows, title = '照片比对件') {
+    this.title = T(title);
+    this.rows = rows.map(([k, v]) => [T(k), T(v)]);
+    this.w = 204; this.h = 118;
+    this.icon = ['card', [222, 216, 200]];
+    this.fields = {};
+    rows.forEach(([k], i) => { this.fields[k] = [6, 62 + i * 12, this.w - 7, 73 + i * 12]; });
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    docShadow(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, 'rgb(222,216,200)');
+    rect(x + 2, y + 2, x + w - 3, y + 16, 'rgb(96,92,86)');
+    txt(x + 7, y + 4, this.title, 10, K.WHITE);
+    for (let i = 0; i < 2; i++) {
+      rect(x + 8 + i * 84, y + 22, x + 80 + i * 84, y + 56, 'rgb(188,182,168)');
+      txt(x + 44 + i * 84, y + 34, T(i ? '申请书 B' : '申请书 A'), 8, K.TEXT_L, 'ma');
+      txt(x + 44 + i * 84, y + 45, '▣', 12, K.TEXT_L, 'ma');
+    }
+    this.rows.forEach(([k, v], i) => { txt(x + 8, y + 64 + i * 12, k, 8, K.TEXT_L); txt(x + 68, y + 64 + i * 12, v, 8, K.TEXT); });
+  }
+}
+
+
+// D01 结束前打印机吐出来的空白小票：正面什么都没有，背面印着一个早于入职的日期
+class ZeroTicket {
+  constructor() {
+    this.w = 108; this.h = 46;
+    this.icon = ['card', [238, 234, 226]];
+    this.fields = { ticket: [4, 4, 103, 41] };
+  }
+
+  draw(x, y) {
+    const { w, h } = this;
+    shadowed(x, y, w, h);
+    rect(x, y, x + w - 1, y + h - 1, 'rgb(238,234,226)');
+    G.fillStyle = K.GREY;
+    for (let yy = y + 3; yy < y + h; yy += 6) { G.fillRect(x + 2, yy, 1, 1); G.fillRect(x + w - 3, yy, 1, 1); }
+    txt(x + 7, y + 5, T('M.O.A. 打印凭条'), 8, K.INK);
+    rect(x + 7, y + 16, x + w - 8, y + 16, K.GREY);
+    txt(x + 7, y + 21, T('（空白）'), 10, K.TEXT_L);
+    txt(x + 7, y + 34, 'NO. 0000', 8, 'rgb(150,142,128)');
+  }
+}
+
+function shadowed(x, y, w, h) { docShadow(x, y, w, h); }
 
 // 同一个门牌号：桌上摞起来的地址卡
 function drawAddressCard(x, y) {
@@ -245,6 +436,12 @@ const RULES = [
   { day: 3, page: 1, key: 'pay', head: '§4 付款、账单、手机须真实', subs: ['禁止：虚拟卡、555 接码手机号', '账单所在州须与 IP 归属一致', '禁止拼车：一本护照只能一个人用'] },
   { day: 4, page: 1, key: 'xray', head: '§5 后台进程须干净', subs: ['禁止“小猫咪”、中文输入法（『X光』）'] },
   { day: 5, page: 1, key: 'corp', head: '§6 中资控股过半：一律禁止', subs: ['无论公司注册在哪（套娃要拆到底）'] },
+  { day: 6, page: 1, key: 'model', head: '§7 模型申报须与实际一致', subs: ['模型 ID、发行主体须如实申报', '冒用他人模型身份：拒绝'] },
+  { day: 7, page: 1, key: 'net', head: '§8 网络与登录须与归属地一致', subs: ['机房 IP / 云服务器：拒绝', '登录记录自动核验：登录地在大陆即拒绝'] },
+  { day: 9, page: 2, key: 'version', head: '§9 同日两版法规：以生效日期为准', subs: ['审计不得追溯适用未生效条款', '两版冲突时：提交双规复核'] },
+  { day: 10, page: 2, key: 'transfer', head: '§10 自动审查不得替代人工复核', subs: ['系统移交须经审查员二次确认'] },
+  { day: 11, page: 2, key: 'privacy', head: '§11 公开旅客资料须先脱敏', subs: ['姓名、IP、证件号一律不可公开'] },
+  { day: 13, page: 2, key: 'license', head: '§12 已认证模型许可（§6 修订后生效）', subs: ['模型 ID / 发行主体 / 许可编号须一致'] },
 ];
 
 class Rulebook {
@@ -252,28 +449,31 @@ class Rulebook {
     this.day = day;
     this.w = 200;
     this.icon = ['book', C.BOOK];
-    const rules = RULES.filter((r) => r.day <= day);
-    this.npages = day >= 3 ? 2 : 1;
+    const amended = !S.endless && !!S.plot?.law?.amended;
+    const rules = RULES.filter((r) => r.day <= day).map(r => r.key === 'corp' && amended ? { ...r,
+      head:'§6 中资控股审查（已修订）', subs:['一般主体中资控股过半仍禁止', '已认证模型适用 §12 许可例外'] } : r);
     this.pages = [];
-    for (let p = 0; p < this.npages; p++) {
+    for (let p = 0; p <= Math.max(...rules.map(r=>r.page)); p++) {
       const L = [];
       for (const r of rules.filter((q) => q.page === p)) {
-        L.push({ s: T(r.head), size: 10, col: r.day === day ? K.RED_D : K.TEXT, key: r.key, isNew: r.day === day });
-        for (const s of r.subs) L.push({ s: s.includes('|') ? s : T(s), size: 8, col: K.TEXT_L, key: r.key });
+        wrap(T(r.head),10,this.w-40).forEach((s,i)=>L.push({s,size:10,col:r.day===day?K.RED_D:K.TEXT,key:r.key,isNew:r.day===day&&i===0}));
+        for (const s of r.subs) for(const line of s.includes('|')?[s]:wrap(T(s),8,this.w-20)) L.push({s:line,size:8,col:K.TEXT_L,key:r.key});
       }
-      if (p === this.npages - 1) L.push({ s: T('§12 只看地区，不看脸'), size: 8, col: K.TEXT_L, key: null });
       let y = 22;
-      const fields = {};
+      let fields = {}, rows = [];
       for (const row of L) {
+        const step=row.size===10?14:10;
+        if(y+step>178) { this.pages.push({rows,fields,h:y+6}); y=22; fields={}; rows=[]; }
         row.y = y;
-        y += row.size === 10 ? 14 : 10;
+        rows.push(row); y += step;
         if (row.key) {
           const f = fields[row.key];
           fields[row.key] = f ? [f[0], f[1], f[2], y - 2] : [4, row.y - 2, this.w - 5, y - 2];
         }
       }
-      this.pages.push({ rows: L, fields, h: y + 6 });
+      this.pages.push({ rows, fields, h: y + 6 });
     }
+    this.npages=this.pages.length;
     this.h = Math.max(...this.pages.map((p) => p.h));
     this.page = this.npages - 1;
     this.tab = [this.w - 52, 3, this.w - 4, 16];

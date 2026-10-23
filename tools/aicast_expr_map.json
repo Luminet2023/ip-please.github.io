@@ -1,0 +1,13 @@
+{
+  "CLAUDE_AI": {"0": "neutral", "1": "smile", "2": "talk", "3": "shock", "4": ["nervous", "sad"], "5": "grin", "6": "angry"},
+  "GPT_AI":    {"0": "neutral", "1": "smile", "2": "talk", "3": "shock", "4": ["sad", "nervous"], "5": "grin", "6": "angry"},
+  "QWEN_AI":   {"0": "neutral", "1": "smile", "2": "talk", "3": "grin", "4": "nervous", "5": "sad", "6": "angry"},
+  "GROK_AI":   {"0": "neutral", "1": "smile", "2": "grin", "3": "talk", "4": "shock", "5": "sad", "6": "angry", "7": "nervous"},
+  "GLM_AI":    {"0": "smile", "1": ["grin", "nervous"], "2": "talk", "3": "shock", "4": "neutral", "5": "sad", "6": "angry"},
+  "KIMI_AI":   {"0": "neutral", "1": "smile", "2": "talk", "3": "shock", "4": "sad", "5": "nervous", "6": "angry"},
+  "GEMINI_AI": {"0": "neutral", "1": "smile", "2": "talk", "3": "shock", "4": "nervous", "5": "sad", "6": "angry"},
+  "MINIMAX_AI": {"0": "neutral", "1": ["smile", "grin"], "2": "talk", "3": "shock", "4": "sad", "5": "nervous", "6": "angry"},
+  "HAIKU":  {"0": "neutral", "1": "smile", "2": "grin", "3": "talk", "4": "shock", "5": "nervous", "6": "sad", "7": "angry"},
+  "SONNET": {"0": "neutral", "1": "smile", "2": "grin", "3": "talk", "4": "shock", "5": "nervous", "6": "sad", "7": "angry"},
+  "OPUS":   {"0": "neutral", "1": "smile", "2": "grin", "3": "talk", "4": "shock", "5": "nervous", "6": "sad", "7": "angry"}
+}

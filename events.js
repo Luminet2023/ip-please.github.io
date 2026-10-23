@@ -59,7 +59,8 @@ function rushEnd() {
   B.total += ev.list.length;
   say('C', T('快剪结束：判对 {0}，判错 {1}，漏掉 {2}。', ev.hits, ev.wrong, ev.missed));
   if (ev.wrong) cite([T('黑话快剪：判错 {0} 人', ev.wrong), '说中文黑话的拒绝，说人话的放行'], 0.8);
-  if (B.idx >= B.queue.length) endDaySoon();
+  if (S.endless) topUpEndless();
+  else if (B.idx >= B.queue.length) endDaySoon();
 }
 
 function drawRush() {
@@ -79,8 +80,8 @@ function drawRush() {
     txt((box[0] + box[2]) >> 1, box[1] + 14, label, 12, K.WHITE, 'ma');
     txt((box[0] + box[2]) >> 1, box[1] + 32, T(sub), LANG === 'en' ? 10 : 12, K.WHITE, 'ma');
   }
-  // 英文版：给中文黑话配一行小字注释
-  const gloss = LANG === 'en' && ev.i >= 0 && EN_GLOSS[ev.list[ev.i].line];
+  // 英文 / 日文版：给中文黑话配一行小字注释
+  const gloss = ev.i >= 0 && GLOSS_FOR(LANG)[ev.list[ev.i].line];
   if (gloss) txt(420, 278, gloss, 8, K.GREY, 'ma');
 }
 
@@ -126,7 +127,8 @@ function updateClones() {
       say('C', ev.passed ? T('……拦下 {0} 个，漏了 {1} 个。', ev.hits, ev.passed) : '……限流完毕。');
       B.bonus += ev.hits;
       if (ev.passed) cite([T('蒸馏大军冲关：{0} 人', ev.passed), '警报响起时，点击冲关的人'], 0.8);
-      if (B.idx >= B.queue.length) endDaySoon();
+      if (S.endless) topUpEndless();
+      else if (B.idx >= B.queue.length) endDaySoon();
     });
   }
 }
@@ -327,10 +329,9 @@ function afterAuthor(dec) {
   if (dec === 'approve') {
     B.allTokens = true;
     later(0.6, () => printDoc(new Citation(['放行未授权地区旅客', '（本游戏作者）', '扣除本月全部 token']), 1.4, 'cit'));
-    later(2.4, endDaySoon);
-  } else {
-    later(1.5, () => go('erased'));
   }
+  // 不在这里落幕：先把玩家手里已经成立的终局文书摊出来，由 plot.js 决定走哪个结局
+  later(1.8, () => afterAuthorPlot(dec));
 }
 
 const ERASED = [

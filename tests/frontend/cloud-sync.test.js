@@ -5,6 +5,7 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 
 const REPO = path.join(__dirname, '..', '..');
+const CONFIG_JS = fs.readFileSync(path.join(REPO, 'config.js'), 'utf8');
 const CLOUD_JS = fs.readFileSync(path.join(REPO, 'cloud.js'), 'utf8');
 const failures = [];
 let checks = 0;
@@ -57,6 +58,8 @@ function newDom(url) {
 }
 
 function load(dom) {
+  // 与 index.html 同序：config.js 先于 cloud.js（存档键来自 STORAGE_KEYS）
+  vm.runInContext(CONFIG_JS, dom.getInternalVMContext());
   vm.runInContext(CLOUD_JS, dom.getInternalVMContext());
   return dom.window;
 }
@@ -75,7 +78,8 @@ async function testLoginPanelAndCredit() {
   await wait(20);
   check('点击云同步打开登录面板', panel.hidden === false, panel.hidden);
   check('面板含原作仓库链接', panel.innerHTML.indexOf('github.com/ip-please/ip-please.github.io') >= 0);
-  check('面板说明仅新增云同步', panel.textContent.indexOf('仅新增云存档同步') >= 0, panel.textContent);
+  check('面板含零号档案 mod 链接', panel.innerHTML.indexOf('github.com/wess09/ip-please-zero') >= 0);
+  check('面板说明新增云同步', panel.textContent.indexOf('新增云存档同步') >= 0, panel.textContent);
   check('面板含致谢', panel.textContent.indexOf('致谢') >= 0);
   check('面板有登录按钮', Array.from(panel.querySelectorAll('button')).some((button) => button.textContent === '登录'));
 
@@ -157,7 +161,7 @@ async function testConflict() {
       if (body.base_version === 1) return makeRes(409, { detail: 'The cloud save has a newer version than the client base version.' });
       return makeRes(200, { user_id: 'user_abcdefghijklmnopqrstuv', save_id: 'save_b', version: body.base_version + 1, day: body.day, updated_at: '2026-10-19T04:00:00.000Z' });
     }
-    return makeRes(200, { user_id: 'user_abcdefghijklmnopqrstuv', save_id: 'save_c', version: 5, day: 4, updated_at: '2026-10-19T04:30:00.000Z', payload: { day: 4 } });
+    return makeRes(200, { user_id: 'user_abcdefghijklmnopqrstuv', save_id: 'save_c', version: 5, day: 4, updated_at: '2026-10-19T04:30:00.000Z', payload: { day: 4, plot: { final: {} } } });
   };
   load(dom);
   await wait(40);
@@ -190,7 +194,7 @@ async function testRefreshAndRevoke() {
     }
     saveCalls += 1;
     if (saveCalls === 1) return makeRes(401, { error: { message: 'expired', code: 'invalid_token' }, status: 401 });
-    return makeRes(200, { user_id: 'user_abcdefghijklmnopqrstuv', save_id: 'save_e', version: 3, day: 2, updated_at: '2026-10-19T06:00:00.000Z', payload: { day: 2 } });
+    return makeRes(200, { user_id: 'user_abcdefghijklmnopqrstuv', save_id: 'save_e', version: 3, day: 2, updated_at: '2026-10-19T06:00:00.000Z', payload: { day: 2, plot: { final: {} } } });
   };
   load(dom);
   await wait(40);
@@ -214,11 +218,73 @@ async function testRefreshAndRevoke() {
   check('revoked 后未登录', win2.CloudSync.isLoggedIn() === false);
 }
 
+async function testFileZeroSaves() {
+  console.log('→ 零号档案存档：旧版 / 已完结的云端存档不载入');
+  const loggedIn = (win) => win.localStorage.setItem('ip-please-auth-v1', JSON.stringify({
+    access_token: fakeJwt('subject-1'), refresh_token: 'rt-1', expires_at: Date.now() + 600000, subject: 'subject-1',
+  }));
+  const latest = (payload) => makeRes(200, {
+    user_id: 'user_abcdefghijklmnopqrstuv', save_id: 'save_l', version: 7, day: payload.day,
+    updated_at: '2026-10-19T07:00:00.000Z', payload,
+  });
+
+  // 旧版 6 天存档（没有 plot）：手动恢复只提示，不弹载入框
+  const dom = newDom('https://www.fuckanthropic.dev/');
+  const win = dom.window;
+  loggedIn(win);
+  win.fetch = async () => latest({ day: 4, savings: 3 });
+  load(dom);
+  await wait(40);
+  await win.CloudSync.restore();
+  await wait(40);
+  check('旧版云端存档不弹载入框', win.document.getElementById('cloud-overlay').hidden === true);
+  check('提示旧版存档读不了', win.document.getElementById('toast').textContent.indexOf('旧版') >= 0,
+    win.document.getElementById('toast').textContent);
+
+  // 日终冲突时云端是旧版存档：直接用本机进度覆盖，不让玩家选旧存档
+  win.localStorage.setItem('ip-please-sync-meta-v1:subject-1', JSON.stringify({ version: 1, day: 2 }));
+  const uploads = [];
+  win.fetch = async (url, options) => {
+    if (String(url).endsWith('/sync/save') && options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      uploads.push(body.base_version);
+      if (body.base_version === 1) return makeRes(409, { detail: 'The cloud save has a newer version than the client base version.' });
+      return makeRes(200, { user_id: 'user_abcdefghijklmnopqrstuv', save_id: 'save_m', version: 8, day: body.day, updated_at: '2026-10-19T07:10:00.000Z' });
+    }
+    return latest({ day: 4, savings: 3 });
+  };
+  await win.CloudSync.onDayEnd({ day: 3, savings: 7, plot: { final: {} } });
+  await wait(80);
+  check('旧版冲突不弹窗', win.document.getElementById('cloud-overlay').hidden === true);
+  check('旧版冲突直接覆盖云端', uploads.length === 2 && uploads[1] === 7, uploads);
+
+  // 已打出结局的零号档案存档：同样没有可接着玩的进度
+  win.fetch = async () => latest({ day: 9, plot: { final: { ending: 'E23' } } });
+  await win.CloudSync.restore();
+  await wait(40);
+  check('已完结存档不弹载入框', win.document.getElementById('cloud-overlay').hidden === true);
+  check('提示那一局已打完', win.document.getElementById('toast').textContent.indexOf('打完') >= 0,
+    win.document.getElementById('toast').textContent);
+
+  // 可接着玩的存档：载入写进零号档案的存档键
+  win.fetch = async () => latest({ day: 5, plot: { final: {} } });
+  await win.CloudSync.restore();
+  await wait(40);
+  const load5 = Array.from(win.document.querySelectorAll('#cloud-overlay button')).find((button) => button.textContent === '载入云端');
+  check('零号档案存档可载入', !!load5);
+  if (load5) load5.click();
+  await wait(20);
+  const saved = JSON.parse(win.localStorage.getItem('ip-please-file-zero-save-v1') || 'null');
+  check('写入零号档案存档键', !!saved && saved.day === 5, saved);
+  check('不写原版存档键', win.localStorage.getItem('ip-please-save-v1') === null);
+}
+
 (async function main() {
   await testLoginPanelAndCredit();
   await testCallbackAndDayEnd();
   await testConflict();
   await testRefreshAndRevoke();
+  await testFileZeroSaves();
   console.log('');
   if (failures.length) {
     console.log('FAILED ' + failures.length + '/' + checks + ': ' + failures.join(', '));

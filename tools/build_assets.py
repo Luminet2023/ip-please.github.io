@@ -19,14 +19,15 @@ from pathlib import Path
 from PIL import Image, ImageChops
 
 TOOLS = Path(__file__).resolve().parent
+LANGS = ("zh", "zh-hant", "ja", "en")   # 网页版支持的四种语言（简体是原文）
 SITE = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
 
 from pp import cast  # noqa: E402
-from pp.base import FONTS, GOLD, GREEN, RED, SEAL, draw, spark, txt  # noqa: E402
+from pp.base import FONTS, GOLD, GREEN, OUTLINE, RED, SEAL, draw, spark, txt  # noqa: E402
 from pp.booth import static_layer, window_bg  # noqa: E402
 from pp.docs import CrayonPassport, stamp_mark  # noqa: E402
-from pp.people import Person, photo  # noqa: E402
+from pp.people import Person, photo, shade  # noqa: E402
 from pp.screens import _icon  # noqa: E402
 
 # ———————————————————— 字体 ————————————————————
@@ -106,6 +107,8 @@ SCRIPTED = {
     "TOM": cast.TOM, "ALEX": cast.ALEX, "CAT_GIRL": cast.CAT_GIRL, "V50": cast.V50, "HOOD": cast.HOOD,
     "SG_MAN": cast.SG_MAN, "RELAY": cast.RELAY, "MIKE": cast.MIKE, "GRANDMA": cast.GRANDMA,
     "JORJI_SUIT": cast.JORJI_SUIT, "AUTHOR": cast.AUTHOR,
+    "AUDITOR": cast.AUDITOR, "CLERK": cast.CLERK,
+    "APPELLANT_A": cast.APPELLANT_A, "APPELLANT_B": cast.APPELLANT_B, "APPELLANT_C": cast.APPELLANT_C,
     **{f"SLANG{i}": p for i, p in enumerate(cast.SLANG)},
 }
 GROUP_EXPRS = ["smile", "talk", "neutral", "shock", "sad", "nervous"]
@@ -180,12 +183,26 @@ class Packer:
         return sheet, pos
 
 
+SEAL_TEXT = {"zh": "对齐部", "zh-hant": "對齊部", "ja": "整列省", "en": "ALIGN"}
+
+
 def seal_sprite(lang="zh"):
     im = Image.new("RGBA", (34, 34), (0, 0, 0, 0))
     d = draw(im)
     d.ellipse([0, 0, 33, 33], outline=SEAL, width=2)
     txt(d, (17, 8), "M.O.A.", 8, SEAL, anchor="ma")
-    txt(d, (17, 19), "ALIGN" if lang == "en" else "对齐部", 8, SEAL, anchor="ma")
+    txt(d, (17, 19), SEAL_TEXT.get(lang, SEAL_TEXT["zh"]), 8, SEAL, anchor="ma")
+    return im
+
+
+def hq_seal_sprite():
+    """总部圆印：纸质公文上盖的那种。"""
+    im = Image.new("RGBA", (36, 36), (0, 0, 0, 0))
+    d = draw(im)
+    d.ellipse([0, 0, 35, 35], outline=SEAL, width=2)
+    d.ellipse([5, 5, 30, 30], outline=SEAL, width=1)
+    txt(d, (18, 9), "M.O.A.", 8, SEAL, anchor="ma")
+    txt(d, (18, 19), "总部", 8, SEAL, anchor="ma")
     return im
 
 
@@ -253,7 +270,12 @@ def bg_patches(zh, en):
 
 def png_b64(im):
     buf = io.BytesIO()
-    im.save(buf, "PNG", optimize=True)
+    if im.mode == "RGBA" and im.width * im.height > 400_000:
+        # 图集很大：调色板化（含透明索引）后再压，体积能小一半以上，像素画本来就没几个颜色
+        im = im.quantize(colors=256, method=Image.FASTOCTREE)
+        im.save(buf, "PNG", optimize=True)
+    else:
+        im.save(buf, "PNG", optimize=True)
     return base64.b64encode(buf.getvalue()).decode(), len(buf.getvalue())
 
 
@@ -271,7 +293,64 @@ def main():
                 pk.add(f"{key}:{e}:slip", p.sprite(e, slip=True))
         pk.add(f"photo:{key}", photo(p.sprite()), crop=False)
         coat, top = p.walker
-        people[key] = {"expr": p.expr, "walker": [list(coat), list(top)], "scripted": key in SCRIPTED, "fw": 180}
+        female = key in {"EMILY", "CAT_GIRL", "GRANDMA", "APPELLANT_A", "APPELLANT_C"}
+        if key not in SCRIPTED:
+            female = p.hair in {"long", "bun"} and p.beard is None
+        people[key] = {"expr": p.expr, "walker": [list(coat), list(top)], "scripted": key in SCRIPTED, "fw": 180, "sex": "F" if female else "M"}
+    FISH_DIR = TOOLS / "assets" / "DAFEIYU"
+    if FISH_DIR.exists():
+        for e in EXPRS:
+            f = FISH_DIR / "booth" / f"DAFEIYU_{e}_180x128.png"
+            if f.exists():
+                pk.add(f"FISH:{e}", Image.open(f).convert("RGBA"))
+        f = FISH_DIR / "passport" / "DAFEIYU_photo_40x50.png"
+        if f.exists():
+            pk.add("photo:FISH", Image.open(f).convert("RGB"), crop=False)
+        people["FISH"] = {"expr": "neutral", "walker": [[40, 52, 92], [70, 118, 198]], "scripted": True, "fw": 180}
+
+    # 九位 AI 娘（外部生成 → tools/import_aicast.py 处理成 180x128 / 40x50）
+    # 素材来源：「Ai 资源」；只有立绘裁切和量化在本地做，没有重绘
+    AI_CAST = {
+        "CLAUDE_AI": ([232, 222, 204], [226, 112, 52]),
+        "GPT_AI": ([206, 204, 214], [232, 230, 238]),
+        "QWEN_AI": ([56, 64, 110], [92, 120, 220]),
+        "GROK_AI": ([60, 32, 40], [222, 186, 110]),
+        "GLM_AI": ([64, 64, 72], [40, 36, 44]),
+        "KIMI_AI": ([70, 78, 120], [212, 216, 232]),
+        "GEMINI_AI": ([70, 52, 96], [140, 150, 235]),
+        "MINIMAX_AI": ([232, 226, 214], [228, 118, 60]),
+        # 家属三人：ImageGen 按 Claude 的设计血统生成的 6 岁 / 13 岁 / 17 岁版本
+        "HAIKU": ([154, 120, 100], [214, 120, 66]),
+        "SONNET": ([82, 112, 154], [222, 126, 70]),
+        "OPUS": ([114, 82, 126], [230, 120, 58]),
+    }
+    for key, (coat, hair) in AI_CAST.items():
+        d = TOOLS / "assets" / "AICAST" / key
+        if not d.exists():
+            continue
+        for e in EXPRS:
+            f = d / "booth" / f"{key}_{e}_180x128.png"
+            if f.exists():
+                pk.add(f"{key}:{e}", Image.open(f).convert("RGBA"))
+        f = d / "passport" / f"{key}_photo_40x50.png"
+        if f.exists():
+            pk.add(f"photo:{key}", Image.open(f).convert("RGB"), crop=False)
+        sex = "M" if key == "SONNET" else "F"
+        people[key] = {"expr": "neutral", "walker": [coat, hair], "scripted": True, "fw": 180, "sex": sex}
+
+    # 极简蓝鲸 Logo「证件照」（没有眼睛，极简主义）
+    whale = Image.new("RGBA", (180, 128), (206, 200, 190, 255))
+    dw = draw(whale)
+    wb = (52, 118, 188)
+    dw.ellipse([36, 40, 148, 96], fill=OUTLINE)
+    dw.ellipse([38, 42, 146, 94], fill=wb)
+    dw.polygon([(44, 64), (14, 44), (24, 66), (14, 90)], fill=OUTLINE)
+    dw.polygon([(46, 64), (20, 50), (28, 66), (20, 84)], fill=shade(wb, 0.75))
+    dw.polygon([(84, 44), (100, 24), (112, 46)], fill=OUTLINE)
+    dw.polygon([(87, 44), (99, 29), (108, 45)], fill=shade(wb, 0.8))
+    dw.arc([58, 70, 92, 90], 20, 160, fill=(24, 52, 86), width=3)
+    pk.add("photo:FISH_WHALE", photo(whale), crop=False)
+
     # 拼车团：六个人挤一个窗口
     grp = cast.CARPOOL
     for e in GROUP_EXPRS:
@@ -279,20 +358,23 @@ def main():
     pk.add("photo:CARPOOL", group_photo(grp), crop=False)
     people["CARPOOL"] = {"expr": grp.expr, "walker": [list(c) for c in grp.walker], "scripted": True, "fw": 300,
                          "extra": [[list(c) for c in q.walker] for q in grp.people[1:4]]}
-    pk.add("seal", seal_sprite(), crop=False)
-    pk.add("seal:en", seal_sprite("en"), crop=False)
+    for lang in LANGS:
+        pk.add("seal" if lang == "zh" else "seal:" + lang, seal_sprite(lang), crop=False)
     pk.add("emblem", emblem_sprite(), crop=False)
     pk.add("title_emblem", title_emblem(), crop=False)
     for kind in ("deny", "approve"):
-        pk.add(f"stamp:{kind}", stamp_sprite(kind), crop=False)
-        pk.add(f"stamp:{kind}:en", stamp_sprite(kind, "en"), crop=False)
+        for lang in LANGS:
+            pk.add(f"stamp:{kind}" if lang == "zh" else f"stamp:{kind}:{lang}", stamp_sprite(kind, lang), crop=False)
     pk.add("crayon", CrayonPassport().image(), crop=False)
     for k in ("gate", "clock", "plane", "drumstick", "medal"):
         pk.add(f"news:{k}", news_icon(k), crop=False)
     pk.add("news:jorji", news_icon_jorji(), crop=False)
     bg = static_layer().copy()
-    for i, im in enumerate(bg_patches(bg, static_layer("en"))):
-        pk.add(f"bg:en:{i}", im)
+    for lang in LANGS:
+        if lang == "zh":
+            continue
+        for i, im in enumerate(bg_patches(bg, static_layer(lang))):
+            pk.add(f"bg:{lang}:{i}", im)
     sheet, pos = pk.build()
 
     wbg = window_bg().copy()
@@ -303,6 +385,7 @@ def main():
         blobs[name], sizes[name] = png_b64(im)
 
     data = {
+        "version": "2026.10.21.9",
         "font": {str(k): v for k, v in font_meta.items()},
         "sprites": pos,
         "people": people,

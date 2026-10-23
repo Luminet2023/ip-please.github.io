@@ -182,14 +182,23 @@ function bigText(x, y, s, size, k, col, shadow = null, align = 'center') {
   return [w, size * k];
 }
 
-// 逐字折行（英文按单词折）
+// 逐字折行（拉丁字母按单词折；中日文逐字折，并做最简行首禁则，NO_LINE_START 在 i18n.js 里）
 function wrap(s, size, width) {
   if (LANG === 'en') return s.split('\n').flatMap((p) => wrapWords(p, size, width));
   const lines = [];
   let cur = '';
   for (const ch of s) {
     if (ch === '\n') { lines.push(cur); cur = ''; continue; }
-    if (cur && tw(cur + ch, size) > width) { lines.push(cur); cur = ch.trim(); } else cur += ch;
+    if (cur && tw(cur + ch, size) > width) {
+      let line = cur, next = ch;
+      const arr = [...cur];
+      if (NO_LINE_START.includes(ch) && arr.length > 1) {   // 标点不能顶行首：拉上一个字一起换行
+        next = arr.pop() + ch;
+        line = arr.join('');
+      }
+      lines.push(line);
+      cur = next.trim();
+    } else cur += ch;
   }
   if (cur) lines.push(cur);
   return lines;
@@ -200,7 +209,13 @@ function wrapWords(s, size, width) {
   let cur = '';
   for (const wd of s.split(' ')) {
     const cand = (cur + ' ' + wd).trim();
-    if (tw(cand, size) > width && cur) { lines.push(cur); cur = wd; } else cur = cand;
+    if (tw(cand, size) > width && cur) { lines.push(cur); cur = ''; }
+    if (tw(wd, size) > width) {
+      for (const ch of wd) {
+        if(cur && tw(cur+ch,size)>width) { lines.push(cur); cur=''; }
+        cur+=ch;
+      }
+    } else cur = (cur + ' ' + wd).trim();
   }
   if (cur) lines.push(cur);
   return lines;
@@ -209,8 +224,8 @@ function wrapWords(s, size, width) {
 // —— 精灵 ——
 const SPR = window.ASSETS.sprites;
 
-// 英文模式下有 `key:en` 的（印章、对齐部圆印）自动换成英文版
-const sprite = (key) => (LANG === 'en' && SPR[key + ':en']) || SPR[key];
+// 非简体中文模式：有 `key:<lang>` 的（印章、对齐部圆印）自动换成对应语言版
+const sprite = (key) => (LANG !== 'zh' && SPR[key + ':' + LANG]) || SPR[key];
 
 function spr(key, x, y) {
   const s = sprite(key);
@@ -219,10 +234,10 @@ function spr(key, x, y) {
   return true;
 }
 
-// 整屏背景；英文版再贴上横幅、路牌、宪法书的英文补丁
+// 整屏背景；非简体中文版再贴上横幅、路牌、宪法书的对应语言补丁
 function drawBg() {
   G.drawImage(BG_IMG, 0, 0);
-  if (LANG === 'en') for (let i = 0; SPR['bg:en:' + i]; i++) spr('bg:en:' + i, 0, 0);
+  if (LANG !== 'zh') for (let i = 0; SPR['bg:' + LANG + ':' + i]; i++) spr('bg:' + LANG + ':' + i, 0, 0);
 }
 
 // 把一块区域往某个颜色压暗（等同 pp.base.darken）

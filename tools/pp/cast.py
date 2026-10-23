@@ -52,3 +52,14 @@ GUARD2 = GUARD.but(skin="light", face="long")
 AUTHOR = Person(skin="mid", hair="short", hat="hood", hat_color=(60, 60, 64), top="hoodie",
                 top_color=(60, 60, 64), shadow=True)
 CLONE = Person(skin="mid", hair="short", top="jacket", top_color=(100, 100, 100))
+
+# Named story NPCs never reuse the random traveller pool.
+AUDITOR = BROWN.but(hair_color=(138, 138, 144), top="uniform", top_color=(60, 66, 82), expr="neutral")
+HAIKU = EMILY.but(hair="long", hair_color=(92, 52, 36), top="cardigan", top_color=(154, 120, 100), expr="smile")
+SONNET = Person(skin="light", face="round", hair="short", hair_color=(92, 52, 36), top="hoodie", top_color=(82, 112, 154))
+OPUS = GRANDMA.but(top_color=(114, 82, 126))
+MINIMAX = EMILY.but(hair="long", hair_color=(40, 34, 44), acc="headphones", top_color=(112, 70, 100), expr="smile")
+CLERK = BROWN.but(hair_color=(74, 62, 54), eyes="glasses", top_color=(172, 184, 172))
+APPELLANT_A = EMILY.but(top_color=(116, 102, 142))
+APPELLANT_B = ALEX.but(top_color=(96, 116, 110))
+APPELLANT_C = EMILY.but(hair="long", hair_color=(150, 108, 64), top_color=(98, 112, 140))

@@ -13,3 +13,10 @@ deploy/.env
 
 # Wrangler / Pages 本地状态
 .wrangler/
+
+# 零号档案 mod 的调试产物
+.dialog.png
+node_modules/
+tools/test-results/
+# ImageGen 生成的家属立绘原图（体积大，只保留处理好的 tools/assets/AICAST）
+tools/assets/_gen/

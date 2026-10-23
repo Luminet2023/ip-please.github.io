@@ -9,7 +9,9 @@ function go(name) {
   if (name === 'daycard') SFX.play('day_hit');
   if (name === 'news') { SFX.play('whoosh'); SFX.paper(31); }
   if (name === 'summary') { SFX.play('sad', 0.9); initSummary(); }
+  if (name === 'eover') SFX.play('sad', 0.9);
   if (name === 'end') SFX.play('end', 0.8);
+  if (name === 'ending') SFX.play('end', 0.9);
   if (name === 'booth') startDay();
 }
 
@@ -44,7 +46,6 @@ function onUp(ev) {
 
 function boothInput(x, y) {
   if (B.cut) { if (now - B.cut.t0 > CHAT.mail + 1) chatDone(); return; }
-  if (inBox(x, y, RULE_BTN) && !B.event && !B.closeup) { toggleRules(); return; }
   if (B.closeup) { if (now - B.closeup.t0 > 1.2) closeupDone(); return; }
   if (B.event && B.event.type === 'clones') { if (y < 124) shootAt(x, y); return; }
   if (B.event && B.event.type === 'rush') {
@@ -56,6 +57,7 @@ function boothInput(x, y) {
 }
 
 function boothDown(x, y) {
+  if (inBox(x, y, BOOK_BOX) && !B.docs.some(d => d.big && inBox(x, y, docBox(d)))) return toggleRules();
   if (B.insp.on) {
     if (inBox(x, y, INSPECT_BTN)) return setInspect(false);
     if (S.day >= 4 && inBox(x, y, XRAY_BTN)) return setXray(!B.xray.on);
@@ -64,9 +66,14 @@ function boothDown(x, y) {
   const tx = trayX(), u = trayU();
   if (inBox(x, y, [tx - 14, 204, tx - 1, 244])) return setTray(!B.tray.open);
   if (u > 0.6) {
+    if (B.evidence) {
+      for (const [box, state] of evidButtons(tx)) if (inBox(x, y, box)) return evidChoose(state);
+      if (inBox(x, y, [tx, TRAY_Y0, W - 1, TRAY_Y1])) return;
+    }
     for (const kind of ['approve', 'deny']) if (inBox(x, y, stampBtnBox(kind, tx))) return stamp(kind);
     if (inBox(x, y, [tx, TRAY_Y0, W - 1, TRAY_Y1])) return;
   }
+  if (B.finalPhase && finalPageClick(x, y)) return;
   if (inBox(x, y, INSPECT_BTN)) return setInspect(true);
   if (S.day >= 4 && inBox(x, y, XRAY_BTN)) return setXray(!B.xray.on);
   if (inBox(x, y, SPEAKER)) return callNext();
@@ -77,7 +84,6 @@ function boothDown(x, y) {
     if (d.big && !inBox(x, y, DESK)) continue;
     if (inBox(x, y, box)) return dragStart(d, x, y);
   }
-  if (inBox(x, y, BOOK_BOX)) return toggleRules();
 }
 
 function dragStart(d, x, y) {
@@ -104,22 +110,34 @@ function dragEnd(x, y) {
     if (d.big && ruleTabHit(d, x, y)) { d.doc.flip(); SFX.paper(2); }
     return;
   }
+  // 证据处理单 / 终局文书 / 空白小票：这三种纸有自己的归宿，不能当普通证件处理
+  if (d.key === 'zticket') {
+    if (slotHit(d)) { resolveKeepable('keep'); return; }                   // 压在档案槽上 → 收进个人档案
+    if (!d.big || x < DESK[0] - 8) { resolveKeepable('throw'); return; }   // 拖回窗口一侧 → 扔掉
+    return;                                                                // 放回桌上：什么都不发生
+  }
+  if (d.key === 'evsheet' || d.key === 'final') {
+    if (!d.big) Object.assign(d, prev);
+    else [d.x, d.y] = clampDesk(d.x, d.y, d.doc);
+    return;
+  }
   if (d.big) {
     if (d.owner === 'ent' && d.key === 'pp') SFX.play('thud', 0.6); else SFX.paper(x);
     if (d.owner === 'ent') { S.tut.dragged = true; onFirstPlace(d); }
     return;
   }
   // 拖回了窗口那一侧
-  if (['cit', 'strip'].includes(d.key)) { B.docs = B.docs.filter((o) => o !== d); SFX.paper(3); return; }
+  if (['cit', 'strip', 'log'].includes(d.key)) { B.docs = B.docs.filter((o) => o !== d); SFX.paper(3); return; }
   if (d.key === 'note') {
     B.docs = B.docs.filter((o) => o !== d);
     SFX.paper(3);
     S.flags.shredded = true;
+    if (!S.endless) PLOT().network.contact = 'rejected';
     B.harmlessT = now;
     flash('纸条扔掉了。HARMLESS。');
     return;
   }
-  if (d.key === 'rule') { d.x = prev.x; d.y = prev.y; d.big = true; toggleRules(); return; }
+  if (d.key === 'rule' && d.owner !== 'ent') { d.x = prev.x; d.y = prev.y; d.big = true; toggleRules(); return; }
   const e = B.ent;
   const bounce = () => { Object.assign(d, prev); if (!prev.big && d.slot) { d.x = d.slot[0]; d.y = d.slot[1]; } };
   if (!e || (e.phase !== 'here' && e.phase !== 'waiting')) { bounce(); return; }
@@ -137,13 +155,21 @@ function dragEnd(x, y) {
 }
 
 function sceneClick(x, y) {
+  const creditAt = { title: 1.6, end: 2.4, ending: 3.0 }[scene];
+  if (creditAt !== undefined && st() > creditAt && inBox(x, y, MOD_CREDIT_LINK)) {
+    window.open(MOD.originalUrl, '_blank', 'noopener,noreferrer');
+    return;
+  }
   if (scene === 'boot') { langClick(x, y); return; }
   if (scene === 'intro') { go('title'); return; }
   if (scene === 'title') { titleClick(x, y); return; }
   if (scene === 'news' && st() > 0.6) { go('booth'); return; }
   if (scene === 'summary') { summaryClick(x, y); return; }
   if (scene === 'erased' && st() > 1) { go('end'); return; }
+  if (scene === 'ending' && st() > 3 && inBox(x, y, RESTART_BTN)) { clearSave(); newGame(); go('title'); return; }
+  if (scene === 'gallery' && st() > 0.3 && (inBox(x, y, GALLERY_CLOSE) || x < 20)) { go('title'); return; }
   if ((scene === 'end' || scene === 'over') && st() > 1.5 && inBox(x, y, RESTART_BTN)) { clearSave(); newGame(); go('daycard'); }
+  if (scene === 'eover' && st() > 1.5 && inBox(x, y, RESTART_BTN)) { newGame(); go('title'); }
 }
 
 // ———————————————————— 主循环 ————————————————————
@@ -153,13 +179,13 @@ function update() {
     runTimers();
     if (B.cut) updateChat();
     if (B.event && B.event.type === 'clones') updateClones();
-    const idle = !B.ent && !B.event && !B.cut && !B.closeup && !B.ending;
+    const idle = !B.ent && !B.event && !B.cut && !B.closeup && !B.ending && !B.evidence && !(B.evidenceQueue || []).length && !B.finalPhase;
     if (idle && isEvent(nextItem()) && now > B.lastFinish + 1.6) startEvent(B.queue[B.idx++]);
   }
   if (scene === 'boot') updateLangPick();
   if (scene === 'intro') { typedSounds(INTRO_LINES); if (st() > INTRO_LINES.end) go('title'); }
   if (scene === 'erased') { typedSounds(ERASED_LINES); if (st() > ERASED_LINES.end + 1) go('end'); }
-  if (scene === 'daycard' && st() > 1.9) go('news');
+  if (scene === 'daycard' && st() > 1.9) go(S.endless ? 'booth' : 'news');
 }
 
 function render() {
@@ -175,6 +201,9 @@ function render() {
   else if (scene === 'summary') drawSummary(t);
   else if (scene === 'end') drawEnd(t);
   else if (scene === 'over') drawOver(t);
+  else if (scene === 'eover') drawEover(t);
+  else if (scene === 'ending') drawEndingScene(t);
+  else if (scene === 'gallery') drawGallery(t);
 
   const g = canvasEl.getContext('2d');
   g.imageSmoothingEnabled = false;

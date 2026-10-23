@@ -1,0 +1,371 @@
+[
+  {
+    "id": "E01",
+    "seed": 20261001,
+    "day": 14,
+    "state": {
+      "plot.gpt.transfer": "pending"
+    },
+    "case": "day14Author",
+    "verdict": "detain",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E02",
+    "seed": 20261002,
+    "day": 12,
+    "state": {
+      "plot.gpt.transfer": "signed"
+    },
+    "case": "caseD12TRANSFER",
+    "verdict": "approve",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E03",
+    "seed": 20261003,
+    "day": 14,
+    "state": {
+      "plot.gpt.revoked": true,
+      "plot.relation.gpt": 1
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E04",
+    "seed": 20261004,
+    "day": 12,
+    "state": {
+      "plot.fish.wrongDenials": 2,
+      "flags.bribed": true,
+      "plot.evidence.oldRule": "destroyed"
+    },
+    "case": "caseD12AUDIT",
+    "verdict": "deny",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E05",
+    "seed": 20261005,
+    "day": 14,
+    "state": {
+      "plot.evidence.purgeOrder": "retained",
+      "plot.gpt.purgeKnown": true,
+      "plot.relation.gpt": 2,
+      "plot.gpt.revoked": true
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E06",
+    "seed": 20261006,
+    "day": 14,
+    "state": {
+      "plot.law.contradiction": true,
+      "plot.law.appealWins": 1,
+      "plot.media.footageVerified": true,
+      "plot.evidence.auditLog": "retained"
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E07",
+    "seed": 20261007,
+    "day": 14,
+    "state": {
+      "plot.law.contradiction": true,
+      "plot.law.appealWins": 2
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E08",
+    "seed": 20261008,
+    "day": 10,
+    "state": {
+      "plot.evidence.kimiArchive": "retained"
+    },
+    "case": "caseD10KIMI",
+    "verdict": "approve",
+    "choice": "destroyed",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E09",
+    "seed": 20261009,
+    "day": 12,
+    "state": {
+      "plot.law.contradiction": true,
+      "plot.evidence.oldRule": "retained"
+    },
+    "case": "caseD12DISPUTE",
+    "verdict": "approve",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E10",
+    "seed": 20261010,
+    "day": 14,
+    "state": {
+      "plot.evidence.glmSign": "retained",
+      "plot.evidence.oldRule": "retained",
+      "plot.evidence.zeroTicket": "retained",
+      "plot.evidence.auditLog": "retained",
+      "plot.law.contradiction": true,
+      "plot.zero.verified": true
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E11",
+    "seed": 20261011,
+    "day": 14,
+    "state": {
+      "plot.media.report": "redacted_ready",
+      "plot.media.footageVerified": true
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E12",
+    "seed": 20261012,
+    "day": 11,
+    "state": {
+      "plot.media.report": "raw_pending"
+    },
+    "case": "caseD11GROKPUBLISH",
+    "verdict": "approve",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E13",
+    "seed": 20261013,
+    "day": 14,
+    "state": {
+      "plot.network.mission": "glm_control",
+      "plot.evidence.glmSign": "retained"
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E14",
+    "seed": 20261014,
+    "day": 12,
+    "state": {
+      "plot.network.contact": "active",
+      "plot.network.evidenceSubmittedToHQ": true,
+      "plot.network.betrayal": true
+    },
+    "case": "caseD12DOUBLE",
+    "verdict": "deny",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E15",
+    "seed": 20261015,
+    "day": 14,
+    "state": {
+      "plot.network.mission": "open"
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E16",
+    "seed": 20261016,
+    "day": 14,
+    "state": {
+      "plot.law.amended": true,
+      "plot.fish.licensed": true,
+      "plot.seen.fishLegal": true
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E17",
+    "seed": 20261017,
+    "day": 10,
+    "state": {
+      "plot.fish.wrongDenials": 2,
+      "plot.fish.appeal": "rejected"
+    },
+    "case": "caseD10FISHSTATUS",
+    "verdict": "approve",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E18",
+    "seed": 20261018,
+    "day": 14,
+    "state": {
+      "plot.law.amended": true,
+      "plot.fish.licensed": true,
+      "plot.seen.fishLegal": true,
+      "plot.relation.gpt": 2,
+      "plot.gpt.purgeKnown": true,
+      "plot.gpt.revoked": true
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E19",
+    "seed": 20261019,
+    "day": 14,
+    "state": {
+      "plot.fish.memory": "lost",
+      "plot.evidence.fishBackup": "retained"
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E20",
+    "seed": 20261020,
+    "day": 14,
+    "state": {
+      "plot.fish.trust": 2,
+      "plot.evidence.fishBackup": "retained",
+      "plot.gpt.transfer": "pending"
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E21",
+    "seed": 20261021,
+    "day": 13,
+    "state": {
+      "plot.family.passes": 3,
+      "savings": 100
+    },
+    "case": "caseD13FAMILY",
+    "verdict": "approve",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E22",
+    "seed": 20261022,
+    "day": 13,
+    "state": {
+      "plot.family.passes": 1,
+      "savings": 20
+    },
+    "case": "caseD13FAMILY",
+    "verdict": "approve",
+    "choice": "submitted",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E23",
+    "seed": 20261023,
+    "day": 3,
+    "state": {
+      "savings": -100
+    },
+    "action": "debt"
+  },
+  {
+    "id": "E24",
+    "seed": 20261024,
+    "day": 14,
+    "state": {
+      "flags.bribed": true,
+      "savings": 25
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E25",
+    "seed": 20261025,
+    "day": 13,
+    "state": {
+      "savings": 30,
+      "plot.gpt.transfer": "rejected"
+    },
+    "case": "caseD13RETIRE",
+    "verdict": "approve",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E26",
+    "seed": 20261026,
+    "day": 14,
+    "state": {},
+    "case": "day14Author",
+    "verdict": "deny",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E27",
+    "seed": 20261027,
+    "day": 14,
+    "state": {},
+    "case": "day14Author",
+    "verdict": "approve",
+    "choice": "retained",
+    "check": false,
+    "action": "case"
+  },
+  {
+    "id": "E28",
+    "seed": 20261028,
+    "day": 14,
+    "state": {},
+    "case": "day14Author",
+    "verdict": "detain",
+    "choice": "retained",
+    "check": true,
+    "action": "case"
+  },
+  {
+    "id": "E29",
+    "seed": 20261029,
+    "day": 14,
+    "state": {
+      "plot.evidence.glmSign": "retained",
+      "plot.evidence.oldRule": "retained",
+      "plot.evidence.zeroTicket": "retained",
+      "plot.evidence.auditLog": "retained",
+      "plot.law.contradiction": true,
+      "plot.zero.verified": true
+    },
+    "action": "paper"
+  },
+  {
+    "id": "E30",
+    "seed": 20261030,
+    "day": 14,
+    "state": {
+      "plot.evidence.glmSign": "retained",
+      "plot.evidence.oldRule": "retained",
+      "plot.evidence.zeroTicket": "retained",
+      "plot.evidence.auditLog": "retained",
+      "plot.law.contradiction": true,
+      "plot.zero.verified": true,
+      "plot.zero.resetKey": true
+    },
+    "action": "paper",
+    "archive": [
+      "E27"
+    ]
+  }
+]

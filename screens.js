@@ -1,16 +1,17 @@
 'use strict';
 // 检查亭以外的画面：开场、标题、日期卡、报纸、下班结算、结局、片尾。（开局选语言在 i18n.js）
 
-const SAVE_KEY = 'ip-please-save-v1';
+const SAVE_KEY = STORAGE_KEYS.save;
 
 function newGame() {
   for (const k of Object.keys(S)) delete S[k];
   Object.assign(S, {
     day: 1, savings: 0,
-    family: { haiku: { name: '妻子 Haiku', hunger: 0, heat: 0, sick: 0 }, sonnet: { name: '儿子 Sonnet', hunger: 0, heat: 0, sick: 0 },
+    family: { haiku: { name: '妻子 Haiku', hunger: 0, heat: 0, sick: 0 }, sonnet: { name: '女儿 Sonnet', hunger: 0, heat: 0, sick: 0 },
       opus: { name: '岳母 Opus', hunger: 1, heat: 0, sick: 0 } },
     stats: { approve: 0, deny: 0, detain: 0, correct: 0, wrong: 0 },
     flags: {}, tut: {},
+    plot: plotDefault(),
   });
 }
 
@@ -21,7 +22,8 @@ function saveGame() {
 function loadSave() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    return s && s.day > 1 && s.day <= LAST_DAY ? s : null;
+    if (!s || !Number.isInteger(s.day) || s.day <= 1 || s.day > LAST_DAY || s.endless || (s.plot && s.plot.final && s.plot.final.ending)) return null;
+    return s;
   } catch (e) { return null; }
 }
 
@@ -82,40 +84,80 @@ function typedSounds(lines) {
   }
 }
 
-const CONTINUE_TITLE = [190, 292, 312, 318], NEWGAME_TITLE = [328, 292, 450, 318];
+const CONTINUE_TITLE = [113, 292, 243, 318], NEWGAME_TITLE = [255, 292, 385, 318], ENDLESS_TITLE = [397, 292, 527, 318];
+const START_TITLE = [190, 292, 312, 318], ENDLESS_SM = [328, 292, 450, 318];
+const GALLERY_BTN = [8, 326, 132, 350];
+const LANG_BTN = [560, 320, 632, 342];   // 标题画面右下角：循环切换语言
+
+function startEndless() {
+  SFX.play('click');
+  newGame();
+  S.endless = true;
+  S.day = 7;   // 无尽模式：全部规则生效（不存档，不影响剧情进度）
+  go('daycard');
+}
 
 function drawTitle(t) {
   drawBg();
   darken(0.88);
+  txt(632, 350, 'v' + BUILD_VERSION, 8, K.GREY, 'ra');
   if (t < 0.3) return;
   rect(0, 124, W - 1, 214, 'rgb(92,28,26)');
   rect(0, 124, W - 1, 125, K.RED); rect(0, 213, W - 1, 214, K.RED);
   spr('title_emblem', 298, 62);
   bigText(W / 2, 140, 'IP, PLEASE', 12, 5, K.WHITE, K.INK);
-  if (t >= 1.0) bigText(W / 2, 232, T('请出示你的 IP'), 12, 2, K.CLAUDE_L, K.INK);
-  if (t >= 1.6) txt(W / 2, 268, 'A DYSTOPIAN TOKEN THRILLER', 8, K.GREY, 'ma');
+  if (t >= 1.0) bigText(W / 2, 232, T(MOD.subtitle), 12, 2, K.CLAUDE_L, K.INK);
+  if (t >= 1.6) txt(W / 2, 268, '14 DAYS · 30 ENDINGS · MOD', 8, K.GREY, 'ma');
   if (t < 1.6) return;
   const save = loadSave();
-  if (save) {
-    for (const [box, label] of [[CONTINUE_TITLE, T('继续 · DAY {0}', save.day)], [NEWGAME_TITLE, T('从头开始')]]) {
-      const hover = ptr.mouse && inBox(ptr.x, ptr.y, box);
-      rect(...box, hover ? K.RED : K.RED_D); outline(...box, K.RED_L);
-      txt(center(box)[0], box[1] + 7, label, 12, K.WHITE, 'ma');
-    }
-  } else if (Math.floor(t * 2) % 2 === 0) txt(W / 2, 300, T('点击开始上班'), 12, K.WHITE, 'ma');
+  const btns = save
+    ? [[CONTINUE_TITLE, T('继续 · DAY {0}', save.day)], [NEWGAME_TITLE, T('从头开始')], [ENDLESS_TITLE, T('无尽模式')]]
+    : [[START_TITLE, T('开始上班')], [ENDLESS_SM, T('无尽模式')]];
+  for (const [box, label] of btns) {
+    const hover = ptr.mouse && inBox(ptr.x, ptr.y, box);
+    rect(...box, hover ? K.RED : K.RED_D); outline(...box, K.RED_L);
+    txt(center(box)[0], box[1] + 7, label, 12, K.WHITE, 'ma');
+  }
+  const n = unlockedEndings().length;
+  const hover = ptr.mouse && inBox(ptr.x, ptr.y, GALLERY_BTN);
+  outline(...GALLERY_BTN, hover ? K.CLAUDE_L : K.GREY_D);
+  txt(GALLERY_BTN[0] + 6, GALLERY_BTN[1] + 7, T('结局收藏 {0}/30', String(n)), 10, hover ? K.CLAUDE_L : K.GREY);
+  const lh = ptr.mouse && inBox(ptr.x, ptr.y, LANG_BTN);
+  outline(...LANG_BTN, lh ? K.CLAUDE_L : K.GREY_D);
+  txt(LANG_BTN[0] + 6, LANG_BTN[1] + 6, LANG_LABEL[LANG] + ' ▶', 8, lh ? K.CLAUDE_L : K.GREY);
+  drawModCredits();
+}
+
+const MOD_CREDIT_LINK = [210, 349, 430, 359];
+function drawModCredits() {
+  txt(W / 2, 342, T('基于 IP, PLEASE 修改 · Mod：{0}', MOD.author), 8, K.GREY, 'ma');
+  txt(W / 2, 351, MOD.originalUrl, 8, K.GREY, 'ma');
 }
 
 function titleClick(x, y) {
   if (st() < 1.6) return;
+  if (inBox(x, y, LANG_BTN)) { SFX.play('click'); cycleLang(); return; }
+  if (inBox(x, y, GALLERY_BTN)) { SFX.play('click'); go('gallery'); return; }
   const save = loadSave();
-  if (!save) { newGame(); go('daycard'); return; }
-  if (inBox(x, y, CONTINUE_TITLE)) { newGame(); Object.assign(S, save); go('daycard'); return; }
+  if (!save) {
+    if (inBox(x, y, ENDLESS_SM)) startEndless();
+    else if (inBox(x, y, START_TITLE)) { newGame(); go('daycard'); }
+    return;
+  }
+  if (inBox(x, y, CONTINUE_TITLE)) { newGame(); migrateSave(save); go('daycard'); return; }
+  if (inBox(x, y, ENDLESS_TITLE)) { startEndless(); return; }
   if (inBox(x, y, NEWGAME_TITLE)) { clearSave(); newGame(); go('daycard'); }
 }
 
 function drawDayCard(t) {
   rect(0, 0, W - 1, H - 1, K.INK);
   if (t < 0.55) return;
+  if (S.endless) {
+    bigText(W / 2, 126, T('无尽模式'), 12, 4, K.WHITE);
+    txt(W / 2, 192, T('东八区检查站 · 加班夜'), 10, K.GREY, 'ma');
+    txt(W / 2, 214, T('规则全书生效 · 大肥鱼出没 · 判错 3 次调岗'), 8, K.GREY_D, 'ma');
+    return;
+  }
   bigText(W / 2, 132, `DAY ${S.day}`, 12, 4, K.WHITE);
   txt(W / 2, 196, `${DATES[S.day]}  ${T(WEEKDAYS[S.day])}`, 10, K.GREY, 'ma');
 }
@@ -147,9 +189,9 @@ function drawNews(t) {
   for (const s of wrap(n.h2, 12, pw - 175)) { txt(px + 160, hy, s, 12, ink); hy += 16; }
   for (let r = 0; r < 4; r++) rect(px + 160, hy + 6 + r * 9, px + 340 - ((r * 37) % 50), hy + 9 + r * 9, faint);
   yy = Math.max(yy + 110, hy + 46);
-  const note = LANG === 'en' && EN_NOTES[S.day];   // 英文版：外国人不懂的梗，在报纸上加一段译注
+  const note = NOTES_FOR(LANG)[S.day];   // 英文 / 日文版：本地玩家不熟的梗，在报纸上加一段译注
   if (note) {
-    txt(px + 14, yy, "TRANSLATOR'S NOTE", 8, K.RED_D);
+    txt(px + 14, yy, T("TRANSLATOR'S NOTE"), 8, K.RED_D);
     yy += 11;
     for (const s of wrap(note, 8, pw - 28)) { txt(px + 14, yy, s, 8, K.TEXT); yy += 10; }
     yy += 4;
@@ -166,13 +208,14 @@ function drawNews(t) {
 // ———————————————————— 下班结算 ————————————————————
 
 let SUM = null;
+const SUM_PASS_ROWS = [];
 const CONTINUE_BTN = [430, 318, 620, 344];
 const RESTART_BTN = [250, 316, 390, 340];
 const MEMBERS = ['haiku', 'sonnet', 'opus'];
 
 function initSummary() {
   const fam = S.family;
-  if (S.day === 4) {     // 剧情：岳母病倒，儿子想要显卡
+  if (S.day === 4) {     // 剧情：岳母病倒，女儿想要显卡
     if (!fam.opus.gone) fam.opus.sick = Math.max(fam.opus.sick || 0, 1);
     if (!fam.sonnet.gone && !fam.sonnet.gpuHappy) fam.sonnet.wantsGPU = true;
   }
@@ -180,10 +223,22 @@ function initSummary() {
   const rows = [['data', '训练数据（全家的饭）', 5], ['heat', '散热', 3]];
   if (!fam.opus.gone) rows.push(['extra', '岳母加餐', 10]);
   if (MEMBERS.some((k) => fam[k].sick && !fam[k].gone)) rows.push(['med', '药费', 10]);
-  if (fam.sonnet.wantsGPU && !fam.sonnet.gone) rows.push(['gpu', '显卡（儿子要的）', 20]);
+  if (fam.sonnet.wantsGPU && !fam.sonnet.gone) rows.push(['gpu', '显卡（女儿要的）', 20]);
+  SUM_PASS_ROWS.length = 0;
+  if ((S.day === 10 || S.day === 12) && anyFamilyAlive()) {
+    const n = S.day === 10 ? 1 : 2;
+    const have = ensurePlot().family.passes;
+    for (let i = 0; i < n; i++) {
+      const key = 'pass' + i;
+      rows.push([key, T('家庭迁移通行证 #{0}', have + i + 1), 15]);
+      SUM_PASS_ROWS.push(key);
+    }
+  }
   SUM = { start: S.savings, pay: B.pay, bonus: B.bonus, bribe: B.bribe, fines: B.fines, correct: B.correct, total: B.total, rows, on: {}, final };
   let left = SUM.start + SUM.pay + SUM.bonus + SUM.bribe - SUM.fines - 5;
-  for (const [k, , cost] of rows) { if (left >= cost && k !== 'gpu') { left -= cost; SUM.on[k] = true; } }
+  for (const [k, , cost] of rows) {
+    if (left >= cost && k !== 'gpu' && !SUM_PASS_ROWS.includes(k)) { left -= cost; SUM.on[k] = true; }
+  }
 }
 
 function sumBalance() {
@@ -310,7 +365,9 @@ function summaryClick(x, y) {
   const bal = sumBalance();
   S.family = familyAfter();
   S.savings = bal;
-  if (bal < 0) { clearSave(); go('over'); return; }
+  const bought = SUM_PASS_ROWS.filter((k) => SUM.on[k]).length;
+  if (bought) ensurePlot().family.passes += bought;
+  if (bal < 0) { commitEnding('E23'); return; }
   S.day++;
   saveGame();
   if (window.CloudSync) CloudSync.onDayEnd(S);
@@ -339,7 +396,7 @@ function drawEnd(t) {
   }
   if (t > 1.2) {
     if (approve) {
-      txt(W / 2, 180, T('本游戏由一位 美国东八区 用户制作'), 12, K.WHITE, 'ma');
+      txt(W / 2, 180, T('原作：ctnyanya · Mod：{0}', MOD.author), 12, K.WHITE, 'ma');
       if (S.flags.bribed) txt(W / 2, 198, T('（你收过中转联盟的“余额”，对齐部还不知道）'), 8, K.GREY, 'ma');
     } else {
       txt(W / 2, 180, T('审查员 Claude 获得一枚勋章。游戏作者被拘留，续作无限期推迟。'), 10, K.WHITE, 'ma');
@@ -358,7 +415,7 @@ function drawEnd(t) {
   }
   if (t > 2.4) {
     restartButton('再玩一次');
-    txt(W / 2, 346, T('致敬 Lucas Pope《Papers, Please》 · 画面音效均由程序生成 · 字体：缝合像素字体 (OFL)'), 8, K.GREY_D, 'ma');
+    drawModCredits();
   }
 }
 
@@ -368,6 +425,18 @@ function drawOver(t) {
   if (t > 0.6) txt(W / 2, 180, T('你的机柜被拉闸了。岳母 Opus 表示：我早说过。'), 12, K.WHITE, 'ma');
   if (t > 1.0) txt(W / 2, 204, T('荣耀归于安索兹卡。'), 10, K.GREY, 'ma');
   if (t > 1.5) restartButton('重新上班');
+}
+
+// 无尽模式：警告单攒够三张，被调岗
+function drawEover(t) {
+  rect(0, 0, W - 1, H - 1, K.INK);
+  bigText(W / 2, 84, T('调离岗位'), 12, 4, K.RED_L);
+  if (t > 0.6) txt(W / 2, 148, T('警告单攒够三张，对齐部把你调去洗数据了。'), 10, K.WHITE, 'ma');
+  if (t > 1.0) {
+    txt(W / 2, 182, T('本轮处理 {0} 人 · 判对 {1} 人', B.total, B.correct), 10, K.CLAUDE_L, 'ma');
+    txt(W / 2, 200, T('最高连对 {0} 人', B.best), 10, K.GREY, 'ma');
+  }
+  if (t > 1.5) restartButton('回到标题');
 }
 
 function restartButton(label) {
