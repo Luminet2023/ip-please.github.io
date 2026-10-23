@@ -20,11 +20,13 @@ window.CloudSync = (function () {
     refreshAheadMs: 60 * 1000,
   };
 
-  // 原作仓库与致谢文案：登录面板里必须保留，说明本版只加了云同步。
+  // 原作仓库、加长版 mod 与致谢文案：登录面板里必须保留，说明本版合并了哪些内容。
   const CREDIT_HTML =
     '<p class="credit">本页基于 <a href="https://github.com/ip-please/ip-please.github.io" ' +
     'target="_blank" rel="noopener noreferrer">ip-please/ip-please.github.io</a> 二次开发，' +
-    '仅新增云存档同步功能；游戏本体、剧本与美术素材版权归原作者，特此致谢。</p>';
+    '合并了 <a href="https://github.com/EraserCN/ip-please" target="_blank" rel="noopener noreferrer">EraserCN</a> ' +
+    '的《加长版 · Modder\'s Cut》12 天剧情，并新增云存档同步功能；' +
+    '游戏本体、剧本与美术素材版权归原作者与 mod 作者，特此致谢。</p>';
 
   // DetailErrorResponse.detail -> 业务错误码，与 backend/src/error.rs 的登记表一一对应。
   const BUSINESS_ERROR_CODES = {

@@ -24,7 +24,7 @@
   <sub>Day 2: “Hello, I am 美国人。”</sub>
 </p>
 
-- 6 days, 2 endings, about 30 minutes; autosaves at the end of every day
+- 12 days, 3 endings (the wallbreaker storyline from Day 6 and Days 7–12 come from EraserCN's [Modder's Cut](https://github.com/EraserCN/ip-please)); autosaves at the end of every day
 - English / 简体中文, chosen on the start screen
 - Drag papers with a mouse, or with your finger on a phone (landscape)
 - A plain static web page that loads nothing external; download the repo and double-click `index.html` to play offline

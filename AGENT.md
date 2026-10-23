@@ -6,8 +6,11 @@
 ## 项目概览
 
 本仓库是 [ip-please/ip-please.github.io](https://github.com/ip-please/ip-please.github.io) 的衍生版本：
-游戏本体、剧本与素材来自原作，本版只新增云存档同步（`cloud.js` + `backend/`）。登录面板与 README
-必须保留对原作者的致谢与来源说明，不得移除。
+游戏本体、剧本与素材来自原作，12 天剧情合并自 [EraserCN/ip-please](https://github.com/EraserCN/ip-please)
+（《加长版 · Modder's Cut》，只合并网页部分，不含其 iOS / Android 工程），本版只新增云存档同步
+（`cloud.js` + `backend/`）。登录面板与 README 必须保留对原作者与 mod 作者的致谢与来源说明，不得移除。
+存档键沿用 `ip-please-save-v1`（`screens.js` 的 `SAVE_KEY` 与 `cloud.js` 的 `CFG.saveKey` 必须一致），
+不要换成 mod 的 `ip-please-mod-rebel12-v1`，否则玩家已有的本机与云端进度会接不上。
 
 | 部分 | 位置 | 技术 |
 | --- | --- | --- |

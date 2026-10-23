@@ -75,7 +75,8 @@ async function testLoginPanelAndCredit() {
   await wait(20);
   check('点击云同步打开登录面板', panel.hidden === false, panel.hidden);
   check('面板含原作仓库链接', panel.innerHTML.indexOf('github.com/ip-please/ip-please.github.io') >= 0);
-  check('面板说明仅新增云同步', panel.textContent.indexOf('仅新增云存档同步') >= 0, panel.textContent);
+  check('面板含加长版 mod 链接', panel.innerHTML.indexOf('github.com/EraserCN/ip-please') >= 0);
+  check('面板说明新增云同步', panel.textContent.indexOf('新增云存档同步') >= 0, panel.textContent);
   check('面板含致谢', panel.textContent.indexOf('致谢') >= 0);
   check('面板有登录按钮', Array.from(panel.querySelectorAll('button')).some((button) => button.textContent === '登录'));
 
