@@ -462,3 +462,134 @@ async fn admin_role_and_profile() {
     .await;
     assert_auth_error(&me, StatusCode::UNAUTHORIZED, "token_revoked");
 }
+
+#[tokio::test]
+#[ignore]
+async fn announcements_lifecycle() {
+    let (issuer, idp) = start_mock_idp(CLIENT_ID).await;
+    let (state, _pool) = db_state(&issuer).await;
+    let admin = login(
+        &state,
+        &idp,
+        &unique("kc-admin"),
+        &unique("sid"),
+        &["ip-please-admin"],
+    )
+    .await;
+    let player = login(&state, &idp, &unique("kc-player"), &unique("sid"), &[]).await;
+    let title = format!("<b>维护</b> {}", random_b64url(4));
+
+    let denied = call(
+        &state,
+        "POST",
+        "/anthropic/v1/admin/announcements",
+        Some(&player.access_token),
+        Some(json!({"title": title, "body": "x"})),
+    )
+    .await;
+    assert_auth_error(&denied, StatusCode::FORBIDDEN, "insufficient_scope");
+
+    let created = call(
+        &state,
+        "POST",
+        "/anthropic/v1/admin/announcements",
+        Some(&admin.access_token),
+        Some(json!({"title": title, "body": "今晚 22:00\n停机维护", "level": "maintenance"})),
+    )
+    .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text);
+    let id = created.body["announcement_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(id.starts_with("ann_"));
+    assert_eq!(
+        created.body["title"], title,
+        "stored verbatim; the client renders text"
+    );
+
+    let public = call(&state, "GET", "/anthropic/v1/announcements", None, None).await;
+    assert_eq!(public.status, StatusCode::OK);
+    assert_eq!(
+        public.headers.get("cache-control").unwrap(),
+        "private, no-store"
+    );
+    let listed = public.body["announcements"].as_array().unwrap();
+    let found = listed
+        .iter()
+        .find(|item| item["announcement_id"] == id.as_str())
+        .expect("listed");
+    assert!(
+        found.get("created_by").is_none(),
+        "public view hides admin fields"
+    );
+
+    let bad = call(
+        &state,
+        "POST",
+        "/anthropic/v1/admin/announcements",
+        Some(&admin.access_token),
+        Some(json!({"title": "t", "body": "b", "level": "urgent"})),
+    )
+    .await;
+    assert_detail(&bad, StatusCode::BAD_REQUEST, "The request is invalid.");
+
+    let retired = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/admin/announcements/{id}/retire"),
+        Some(&admin.access_token),
+        None,
+    )
+    .await;
+    assert_eq!(retired.status, StatusCode::OK, "{}", retired.text);
+    assert!(retired.body["retired_at"].is_string());
+
+    let public = call(&state, "GET", "/anthropic/v1/announcements", None, None).await;
+    assert!(!public.body["announcements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["announcement_id"] == id.as_str()));
+
+    let admin_list = call(
+        &state,
+        "GET",
+        "/anthropic/v1/admin/announcements?include_retired=1",
+        Some(&admin.access_token),
+        None,
+    )
+    .await;
+    assert!(admin_list.body["announcements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["announcement_id"] == id.as_str()));
+
+    let missing = call(
+        &state,
+        "POST",
+        "/anthropic/v1/admin/announcements/ann_doesnotexist0000000000/retire",
+        Some(&admin.access_token),
+        None,
+    )
+    .await;
+    assert_detail(
+        &missing,
+        StatusCode::NOT_FOUND,
+        "The requested resource was not found.",
+    );
+    let malformed = call(
+        &state,
+        "POST",
+        "/anthropic/v1/admin/announcements/12345/retire",
+        Some(&admin.access_token),
+        None,
+    )
+    .await;
+    assert_detail(
+        &malformed,
+        StatusCode::NOT_FOUND,
+        "The requested resource was not found.",
+    );
+}

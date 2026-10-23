@@ -15,6 +15,10 @@ use crate::ids;
 const MIGRATIONS: &[(&str, &str)] = &[
     ("001_init", include_str!("../migrations/001_init.sql")),
     ("002_auth", include_str!("../migrations/002_auth.sql")),
+    (
+        "003_announcements",
+        include_str!("../migrations/003_announcements.sql"),
+    ),
 ];
 
 /// 启动时 MySQL 可能还没就绪（docker compose 拉起顺序不定），带重试连接。

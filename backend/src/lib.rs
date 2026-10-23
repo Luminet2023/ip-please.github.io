@@ -1,5 +1,6 @@
 //! IP, PLEASE 后端：云同步、会话鉴权（OIDC + 自有 AT/RT）、公告、服务器权威的无尽模式。
 
+pub mod announcements;
 pub mod auth;
 pub mod config;
 pub mod db;

@@ -4,7 +4,7 @@
   "private": true,
   "description": "jsdom integration tests for cloud.js (cloud save sync frontend)",
   "scripts": {
-    "test": "node cloud-sync.test.js"
+    "test": "node cloud-sync.test.js && node announce.test.js"
   },
   "devDependencies": {
     "jsdom": "^25.0.1"

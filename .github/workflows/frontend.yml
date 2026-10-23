@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'cloud.js'
+      - 'announce.js'
       - 'index.html'
       - 'screens.js'
       - 'tests/frontend/**'
@@ -12,6 +13,7 @@ on:
   pull_request:
     paths:
       - 'cloud.js'
+      - 'announce.js'
       - 'index.html'
       - 'screens.js'
       - 'tests/frontend/**'
@@ -39,5 +41,5 @@ jobs:
           cache: npm
           cache-dependency-path: tests/frontend/package-lock.json
       - run: npm ci
-      - run: node --check ../../cloud.js
+      - run: node --check ../../cloud.js && node --check ../../announce.js
       - run: npm test

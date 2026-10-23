@@ -131,7 +131,16 @@ cors_headers="$(curl -sS -X OPTIONS -o /dev/null -D - \
 check "/auth/refresh 预检允许 $GAME_ORIGIN" "$GAME_ORIGIN" \
   "$(printf '%s\n' "$cors_headers" | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')"
 
-echo "== 5. Keycloak 客户端为机密客户端 =="
+echo "== 5. 公告 =="
+status="$(curl -sS -o "$tmpdir/ann.json" -D "$tmpdir/ann.h" -w '%{http_code}' "$API_BASE/announcements" 2>/dev/null || echo 000)"
+check "GET /announcements 返回 200" 200 "$status"
+check "公告接口带 private, no-store" "private, no-store" \
+  "$(tr -d '\r' < "$tmpdir/ann.h" 2>/dev/null | awk -F': ' 'tolower($1)=="cache-control"{print $2}')"
+status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+  -d '{"title":"t","body":"b"}' "$API_BASE/admin/announcements" 2>/dev/null || echo 000)"
+check "未登录发布公告返回 401" 401 "$status"
+
+echo "== 6. Keycloak 客户端为机密客户端 =="
 kc_status="$(curl -sS -o "$tmpdir/kc.json" -w '%{http_code}' \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=authorization_code' \

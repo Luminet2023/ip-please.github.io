@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 use sqlx::mysql::MySqlRow;
 use sqlx::Row;
 
+use crate::announcements;
 use crate::auth::{self, AuthUser};
 use crate::db;
 use crate::error::{detail_error_response, no_store_json, private_json, AppError, DetailCode};
@@ -41,6 +42,18 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/anthropic/v1/admin/sessions/revoke",
             post(auth::routes::admin_revoke_sessions),
+        )
+        .route(
+            "/anthropic/v1/announcements",
+            get(announcements::list_active),
+        )
+        .route(
+            "/anthropic/v1/admin/announcements",
+            get(announcements::admin_list).post(announcements::create),
+        )
+        .route(
+            "/anthropic/v1/admin/announcements/{announcement_id}/retire",
+            post(announcements::retire),
         )
         .route("/anthropic/v1/sync/save", get(get_save).post(put_save))
         .route("/anthropic/v1/sync/snapshots", get(list_snapshots))

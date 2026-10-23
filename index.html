@@ -82,7 +82,30 @@
     font-size: 11px; line-height: 1.55; color: #8d857c; margin-top: 8px;
     padding-top: 8px; border-top: 1px solid #3a3431;
   }
-  @media (max-height: 500px) { .panel { top: 22px; } }
+  .panel textarea, .panel select {
+    font: inherit; color: #e4dfd4; background: #161313; border: 1px solid #5a514b;
+    border-radius: 4px; padding: 4px 8px;
+  }
+  .panel textarea { width: 100%; resize: vertical; }
+  .panel .admin { margin-top: 10px; padding-top: 8px; border-top: 1px solid #3a3431; }
+  .panel .ann-item { align-items: center; justify-content: space-between; }
+  .panel .ann-item span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .announce {
+    position: fixed; top: 8px; left: 8px; z-index: 4; width: min(340px, 72vw);
+    background: rgba(30, 26, 25, 0.96); border: 1px solid #5a514b; border-left: 3px solid #e89c74;
+    border-radius: 4px; color: #e4dfd4; font: 12px/1.6 system-ui, sans-serif; padding: 8px 10px;
+  }
+  .announce[hidden] { display: none; }
+  .announce.level-warning { border-left-color: #e0b84a; }
+  .announce.level-maintenance { border-left-color: #c95b4a; }
+  .announce .head { display: flex; gap: 6px; align-items: baseline; }
+  .announce .tag { font-size: 11px; color: #8d857c; }
+  .announce p { margin: 4px 0 6px; color: #b9b0a6; white-space: pre-line; overflow-wrap: anywhere; }
+  .announce button {
+    font: inherit; font-size: 11px; color: #e4dfd4; background: #2b2523; border: 1px solid #5a514b;
+    border-radius: 3px; padding: 2px 8px; cursor: pointer;
+  }
+  @media (max-height: 500px) { .panel { top: 22px; } .announce { top: 2px; left: 2px; padding: 4px 8px; } }
   @media (max-height: 500px) { .ui { top: 2px; right: 2px; opacity: 0.55; } .ui button { font-size: 10px; padding: 1px 5px; } }
   #rotate {
     display: none; position: fixed; inset: 0; z-index: 3; background: rgba(22, 19, 19, 0.92);
@@ -102,6 +125,7 @@
   <button id="full" type="button">全屏</button>
 </div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="announce" class="announce" role="status" aria-live="polite" hidden></div>
 <div id="cloud-panel" class="panel" hidden></div>
 <div id="cloud-overlay" class="overlay" hidden></div>
 <div id="rotate" class="show">
@@ -110,23 +134,24 @@
   <button type="button" onclick="this.parentNode.classList.remove('show')" style="margin-top:8px;padding:6px 14px">先竖着玩</button>
 </div>
 <noscript>这个游戏需要开启 JavaScript。</noscript>
-<script src="config.js?v=20261021-7"></script>
-<script src="assets.js?v=20261021-7"></script>
-<script src="en.js?v=20261021-7"></script>
-<script src="zh-hant.js?v=20261021-7"></script>
-<script src="ja.js?v=20261021-7"></script>
-<script src="i18n.js?v=20261021-7"></script>
-<script src="gfx.js?v=20261021-7"></script>
-<script src="sfx.js?v=20261021-7"></script>
-<script src="docs.js?v=20261021-7"></script>
-<script src="data.js?v=20261021-7"></script>
-<script src="plot.js?v=20261021-7"></script>
-<script src="endings.js?v=20261021-7"></script>
-<script src="booth.js?v=20261021-7"></script>
-<script src="events.js?v=20261021-7"></script>
-<script src="screens.js?v=20261021-7"></script>
-<script src="main.js?v=20261021-7"></script>
-<script src="cloud.js?v=20261021-7"></script>
+<script src="config.js?v=20261024-1"></script>
+<script src="assets.js?v=20261024-1"></script>
+<script src="en.js?v=20261024-1"></script>
+<script src="zh-hant.js?v=20261024-1"></script>
+<script src="ja.js?v=20261024-1"></script>
+<script src="i18n.js?v=20261024-1"></script>
+<script src="gfx.js?v=20261024-1"></script>
+<script src="sfx.js?v=20261024-1"></script>
+<script src="docs.js?v=20261024-1"></script>
+<script src="data.js?v=20261024-1"></script>
+<script src="plot.js?v=20261024-1"></script>
+<script src="endings.js?v=20261024-1"></script>
+<script src="booth.js?v=20261024-1"></script>
+<script src="events.js?v=20261024-1"></script>
+<script src="screens.js?v=20261024-1"></script>
+<script src="main.js?v=20261024-1"></script>
+<script src="cloud.js?v=20261024-1"></script>
+<script src="announce.js?v=20261024-1"></script>
 <script>
   document.getElementById('mute').addEventListener('click', () => toggleMute());
   const fullBtn = document.getElementById('full');

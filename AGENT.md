@@ -230,6 +230,20 @@ TokenResponse：
   撤销角色在下次登录（或 IdP 注销触发反向通道）后生效。
 - 排行榜与面板只显示昵称 + 4 位标签（`sha256(user_id)` 前缀），永不显示 IdP 用户名或邮箱。
 
+## 公告协议（`ann_*`）
+
+- `GET /anthropic/v1/announcements`（无需登录，按 IP 限流）→ `{ "announcements": [ { announcement_id, title,
+  body, level, starts_at, ends_at|null, created_at } ] }`：只含已开始、未结束、未下线的，最新在前，最多 10 条。
+- 管理员（会话 `is_admin`，否则 403 `insufficient_scope`）：
+  - `GET /admin/announcements?include_retired=1` → 同上，另含 `retired_at`、`created_by`；
+  - `POST /admin/announcements` `{ title ≤60 字, body ≤500 字, level: info|warning|maintenance, starts_at?, ends_at? }`
+    → 201；时间为 ISO-8601，`ends_at` 必须晚于开始与当前时间；
+  - `POST /admin/announcements/{announcement_id}/retire` → 200（重复下线幂等）。
+- 前端 `announce.js`：左上角横幅显示最新一条未关掉的公告，关掉的 ID 存 `localStorage`
+  （`ip-please-announce-dismissed-v1`，只保留仍生效的）；页面可见时每 15 分钟刷新。
+  公告与昵称**只用 DOM 的 `textContent` 显示**：canvas 像素字库没有任意文字的字形，也避免 XSS。
+- 管理员区块挂在云同步面板里（`CloudSync.addPanelSection`），权限以后端为准。
+
 ## 前端鉴权约定
 
 - 登录态存 `localStorage`（键 `ip-please-auth-v2`）：`{access_token, refresh_token, expires_at(毫秒),
@@ -245,7 +259,8 @@ TokenResponse：
 
 ```
 index.html / *.js          游戏本体（无构建）
-cloud.js                   登录与云同步前端模块
+cloud.js                   登录与云同步前端模块（也提供 api / 面板扩展给其他模块）
+announce.js                公告横幅与管理员区块
 backend/                   Rust 后端（lib + bin）
   src/lib.rs               AppState、build_app、client_ip
   src/main.rs              启动
@@ -266,13 +281,13 @@ AGENT.md                   本文件
 | --- | --- | --- |
 | 后端单元 + 路由测试 | `cd backend && cargo test --locked` | 错误码、ID 格式、AT 签发校验 / 算法混淆、RT 轮换判定、ID Token 与 Logout Token 校验、限流、不连库路径的双信封 |
 | 后端集成测试 | `docker run -d -p 127.0.0.1:33306:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=ip_please_test mysql:8.0`，然后 `TEST_DATABASE_URL=mysql://root:root@127.0.0.1:33306/ip_please_test cargo test --locked -- --ignored` | 迁移幂等、完整登录（模拟 IdP 校验 PKCE 与 client secret）、RT 轮换与重放吊销、反向通道注销、管理员与昵称 |
-| 前端集成 | `cd tests/frontend && npm ci && npm test` | jsdom 加载真实 `cloud.js`：发起登录、回调换会话、旧登录态清理、日终上传、冲突弹窗、刷新 / 并发刷新 / 吊销登出、昵称 |
+| 前端集成 | `cd tests/frontend && npm ci && npm test` | jsdom 加载真实 `cloud.js` / `announce.js`：发起登录、回调换会话、旧登录态清理、日终上传、冲突弹窗、刷新 / 并发刷新 / 吊销登出、昵称；公告横幅、关闭记忆、XSS、管理员发布 / 下线 |
 | 线上验收 | `bash deploy/verify.sh` | health、401 双信封、CORS 预检、`/auth/*` 契约、Keycloak 机密客户端 |
 
 CI 要求（main 分支必须保持绿）：
 - `backend.yml`：`cargo fmt --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked`，
   MySQL 服务容器上的 `cargo test --locked -- --ignored`，随后多架构构建推送 GHCR。
-- `frontend.yml`：`npm ci`、`node --check cloud.js`、jsdom 测试。
+- `frontend.yml`：`npm ci`、`node --check cloud.js announce.js`、jsdom 测试。
 
 ## 环境变量（backend）
 
