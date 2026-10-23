@@ -24,11 +24,10 @@
 </p>
 
 > **衍生版本说明**：本仓库是 [ip-please/ip-please.github.io](https://github.com/ip-please/ip-please.github.io)
-> 的衍生版本。游戏本体、剧本、美术与音乐素材来自原作，并合并了 [EraserCN](https://github.com/EraserCN)
-> 的 [《IP, PLEASE: Modder's Cut · 加长版》](https://github.com/EraserCN/ip-please) 12 天剧情；本版本自己只新增了
-> 云存档同步功能（前端 `cloud.js` + `backend/`）。原作与 mod 版权归各自作者所有，特此致谢。
+> 的衍生版本。游戏本体、剧本、美术与音乐素材全部来自原作，本版本只新增了云存档同步功能
+> （前端 `cloud.js` + `backend/`）。原作版权归原作者所有，特此致谢。
 
-- 12 天剧情 + 三个结局（第 6 天起的破壁者剧情线和第 7–12 天来自 EraserCN 的加长版），每天自动存档
+- 6 天剧情 + 两个结局，全程约 30 分钟，每天自动存档
 - 中文 / English 双语，开局选择（英文版里外国人看不懂的梗，在每天报纸的译注里解释）
 - 手机横屏用手指、电脑用鼠标拖证件
 - 纯静态网页，不加载任何外部资源；下载仓库后直接双击 `index.html` 也能玩
