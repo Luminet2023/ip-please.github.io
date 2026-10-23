@@ -20,6 +20,8 @@ pub struct Config {
     pub oidc_admin_role: String,
     pub session_jwt_secret: Vec<u8>,
     pub session_jwt_secret_previous: Option<Vec<u8>>,
+    /// 每日挑战种子密钥（上线后不要更换，否则当天的旅客序列会变）。
+    pub endless_seed_secret: Vec<u8>,
     pub token_issuer: String,
     pub access_token_ttl_seconds: i64,
     pub session_idle_days: i64,
@@ -84,6 +86,9 @@ impl Config {
         let session_jwt_secret = secret("SESSION_JWT_SECRET")?
             .context("SESSION_JWT_SECRET is required (generate with: openssl rand -hex 32)")?;
 
+        let endless_seed_secret = secret("ENDLESS_SEED_SECRET")?
+            .context("ENDLESS_SEED_SECRET is required (generate with: openssl rand -hex 32)")?;
+
         let redirect_uris = list(&var_or(
             "OIDC_REDIRECT_URIS",
             "https://www.fuckanthropic.dev/",
@@ -107,6 +112,7 @@ impl Config {
             oidc_admin_role: var_or("OIDC_ADMIN_ROLE", "ip-please-admin"),
             session_jwt_secret,
             session_jwt_secret_previous: secret("SESSION_JWT_SECRET_PREVIOUS")?,
+            endless_seed_secret,
             token_issuer: var_or("TOKEN_ISSUER", "https://api.luminet.cn/anthropic"),
             access_token_ttl_seconds: parsed_or("ACCESS_TOKEN_TTL_SECONDS", 600i64).clamp(60, 3600),
             session_idle_days: parsed_or("SESSION_IDLE_DAYS", 14i64).clamp(1, 90),
@@ -136,6 +142,7 @@ impl Config {
             oidc_admin_role: "ip-please-admin".to_string(),
             session_jwt_secret: b"test-session-secret-0123456789abcdef".to_vec(),
             session_jwt_secret_previous: None,
+            endless_seed_secret: b"test-endless-seed-secret-0123456789".to_vec(),
             token_issuer: "https://api.test/anthropic".to_string(),
             access_token_ttl_seconds: 600,
             session_idle_days: 14,

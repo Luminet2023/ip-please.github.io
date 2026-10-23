@@ -18,6 +18,7 @@ use sqlx::Row;
 use crate::announcements;
 use crate::auth::{self, AuthUser};
 use crate::db;
+use crate::endless::routes as endless;
 use crate::error::{detail_error_response, no_store_json, private_json, AppError, DetailCode};
 use crate::extract::{LimitedBytes, PathId, QueryParams};
 use crate::ids;
@@ -54,6 +55,38 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/anthropic/v1/admin/announcements/{announcement_id}/retire",
             post(announcements::retire),
+        )
+        .route("/anthropic/v1/endless/runs", post(endless::start))
+        .route("/anthropic/v1/endless/runs/current", get(endless::current))
+        .route("/anthropic/v1/endless/runs/{run_id}", get(endless::get_run))
+        .route(
+            "/anthropic/v1/endless/runs/{run_id}/next",
+            post(endless::next),
+        )
+        .route(
+            "/anthropic/v1/endless/runs/{run_id}/inspect",
+            post(endless::inspect),
+        )
+        .route(
+            "/anthropic/v1/endless/runs/{run_id}/quiz",
+            post(endless::quiz),
+        )
+        .route(
+            "/anthropic/v1/endless/runs/{run_id}/decision",
+            post(endless::decide),
+        )
+        .route(
+            "/anthropic/v1/endless/runs/{run_id}/waves/{wave_id}/result",
+            post(endless::wave_result),
+        )
+        .route(
+            "/anthropic/v1/endless/runs/{run_id}/abandon",
+            post(endless::abandon),
+        )
+        .route("/anthropic/v1/endless/daily", get(endless::daily))
+        .route(
+            "/anthropic/v1/endless/leaderboard",
+            get(endless::leaderboard),
         )
         .route("/anthropic/v1/sync/save", get(get_save).post(put_save))
         .route("/anthropic/v1/sync/snapshots", get(list_snapshots))

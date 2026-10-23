@@ -4,6 +4,7 @@ pub mod announcements;
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod endless;
 pub mod error;
 pub mod extract;
 pub mod ids;

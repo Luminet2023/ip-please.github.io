@@ -167,7 +167,9 @@ pub async fn db_state(issuer: &str) -> (AppState, MySqlPool) {
         .expect("connect test database");
     ip_please_sync::db::migrate(&pool).await.expect("migrate");
     let config = Config::for_tests(&url, issuer);
-    let state = AppState::new(Arc::new(config), pool.clone(), Arc::new(jwks_for(issuer)));
+    let mut state = AppState::new(Arc::new(config), pool.clone(), Arc::new(jwks_for(issuer)));
+    // 集成测试一秒内会发很多请求；限流本身由 router.rs 覆盖
+    state.limiter = Arc::new(ip_please_sync::ratelimit::RateLimiter::disabled());
     (state, pool)
 }
 

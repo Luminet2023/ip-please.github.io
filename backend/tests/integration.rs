@@ -593,3 +593,536 @@ async fn announcements_lifecycle() {
         "The requested resource was not found.",
     );
 }
+
+// ———————————————————— 无尽模式 ————————————————————
+
+/// 读服务器里的答案（只有测试能这样做）。
+async fn current_answer(pool: &sqlx::MySqlPool, run_id: &str) -> Value {
+    let text: String =
+        sqlx::query_scalar("SELECT state_json FROM ip_please_endless_runs WHERE run_id = ?")
+            .bind(run_id)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    serde_json::from_str::<Value>(&text).unwrap()["current"].clone()
+}
+
+/// 把当前项目的出现时间往前拨，跳过最短判定时间 / 波次时长。
+async fn age_current_item(pool: &sqlx::MySqlPool, run_id: &str) {
+    sqlx::query(
+        "UPDATE ip_please_endless_runs
+         SET state_json = JSON_SET(state_json, '$.current.issued_at_ms', 0) WHERE run_id = ?",
+    )
+    .bind(run_id)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn start_run(state: &AppState, token: &str, mode: &str) -> Value {
+    let reply = call(
+        state,
+        "POST",
+        "/anthropic/v1/endless/runs",
+        Some(token),
+        Some(json!({ "mode": mode })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::CREATED, "{}", reply.text);
+    reply.body
+}
+
+/// 推进一格：旅客按 `correct` 判对 / 判错，波次一个都不点。返回响应。
+async fn play_slot(
+    state: &AppState,
+    pool: &sqlx::MySqlPool,
+    token: &str,
+    run_id: &str,
+    correct: bool,
+) -> Value {
+    let next = call(
+        state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{run_id}/next"),
+        Some(token),
+        None,
+    )
+    .await;
+    assert_eq!(next.status, StatusCode::OK, "{}", next.text);
+    let item = next.body["item"].clone();
+    age_current_item(pool, run_id).await;
+    if item["item_type"] == "traveler" {
+        let text = item.to_string();
+        for leaked in ["\"secret\"", "\"ok\"", "\"liar\"", "\"issues\""] {
+            assert!(!text.contains(leaked), "{leaked} leaked: {text}");
+        }
+        let answer = current_answer(pool, run_id).await;
+        let ok = answer["secret"]["ok"][0].as_str().unwrap().to_string();
+        let decision = if correct {
+            ok
+        } else if ok == "approve" {
+            "deny".to_string()
+        } else {
+            "approve".to_string()
+        };
+        let reply = call(
+            state,
+            "POST",
+            &format!("/anthropic/v1/endless/runs/{run_id}/decision"),
+            Some(token),
+            Some(json!({ "entrant_id": item["entrant"]["entrant_id"], "decision": decision })),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::OK, "{}", reply.text);
+        assert_eq!(reply.body["correct"], correct);
+        reply.body
+    } else {
+        let wave = &item["wave"];
+        let payload = if wave["type"] == "rush" {
+            json!({ "picks": [] })
+        } else {
+            json!({ "hits": [] })
+        };
+        let reply = call(
+            state,
+            "POST",
+            &format!(
+                "/anthropic/v1/endless/runs/{run_id}/waves/{}/result",
+                wave["wave_id"].as_str().unwrap()
+            ),
+            Some(token),
+            Some(payload),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::OK, "{}", reply.text);
+        reply.body
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn endless_run_to_three_strikes_and_leaderboard() {
+    let (issuer, idp) = start_mock_idp(CLIENT_ID).await;
+    let (state, pool) = db_state(&issuer).await;
+    let player = login(&state, &idp, &unique("kc-endless"), &unique("sid"), &[]).await;
+    let token = player.access_token.clone();
+
+    let unauth = call(
+        &state,
+        "POST",
+        "/anthropic/v1/endless/runs",
+        None,
+        Some(json!({"mode": "endless"})),
+    )
+    .await;
+    assert_detail(&unauth, StatusCode::UNAUTHORIZED, "Unauthorized");
+
+    let started = start_run(&state, &token, "endless").await;
+    let run_id = started["run"]["run_id"].as_str().unwrap().to_string();
+    assert!(run_id.starts_with("run_"));
+    assert_eq!(started["run"]["status"], "active");
+    assert_eq!(started["run"]["next_kind"], "traveler");
+
+    // 同一时间只能有一局
+    let again = call(
+        &state,
+        "POST",
+        "/anthropic/v1/endless/runs",
+        Some(&token),
+        Some(json!({"mode": "endless"})),
+    )
+    .await;
+    assert_detail(
+        &again,
+        StatusCode::CONFLICT,
+        "An endless run is already in progress.",
+    );
+
+    // 刷新页面后接着玩：current 返回同一个待处理旅客
+    let next = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{run_id}/next"),
+        Some(&token),
+        None,
+    )
+    .await;
+    let entrant_id = next.body["item"]["entrant"]["entrant_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let current = call(
+        &state,
+        "GET",
+        "/anthropic/v1/endless/runs/current",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(
+        current.body["item"]["entrant"]["entrant_id"],
+        entrant_id.as_str()
+    );
+
+    // 太快判定 → 429
+    let early = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{run_id}/decision"),
+        Some(&token),
+        Some(json!({"entrant_id": entrant_id, "decision": "approve"})),
+    )
+    .await;
+    assert_detail(
+        &early,
+        StatusCode::TOO_MANY_REQUESTS,
+        "Too many requests. Please retry later.",
+    );
+    assert!(early.headers.get("retry-after").is_some());
+
+    // 判对几位，得分只增不减
+    let first = play_slot(&state, &pool, &token, &run_id, true).await;
+    assert!(first["points"].as_i64().unwrap() >= 60);
+    assert_eq!(first["run"]["streak"], 1);
+    for _ in 0..3 {
+        play_slot(&state, &pool, &token, &run_id, true).await;
+    }
+
+    // 判错三次：调离岗位
+    let mut last = Value::Null;
+    let mut strikes = 0;
+    while strikes < 3 {
+        let reply = play_slot(&state, &pool, &token, &run_id, false).await;
+        if reply.get("correct") == Some(&json!(false)) {
+            strikes += 1;
+            assert!(reply["citation"]["kind"].is_string());
+        }
+        last = reply;
+    }
+    assert_eq!(last["run"]["status"], "ended");
+    assert_eq!(last["run"]["end_reason"], "strikes");
+    let final_view = &last["final"];
+    assert!(final_view["score"].as_i64().unwrap() > 0);
+    assert_eq!(
+        final_view["ranks"]["endless"].as_i64().map(|r| r >= 1),
+        Some(true)
+    );
+
+    // 结束后不能再操作；重发最后一次判定仍返回原结果（幂等）
+    let after = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{run_id}/next"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_detail(
+        &after,
+        StatusCode::CONFLICT,
+        "The endless run state has changed. Please reload.",
+    );
+    let none = call(
+        &state,
+        "GET",
+        "/anthropic/v1/endless/runs/current",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(none.status, StatusCode::NOT_FOUND);
+
+    // 排行榜：显示昵称与标签，不显示 user_id；登录后带「我的排名」
+    let board = call(
+        &state,
+        "GET",
+        "/anthropic/v1/endless/leaderboard?board=endless",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(board.status, StatusCode::OK, "{}", board.text);
+    let mine = board.body["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["me"] == true)
+        .expect("my entry is listed")
+        .clone();
+    assert!(mine["nickname"].as_str().unwrap().starts_with("审查员"));
+    assert!(mine.get("user_id").is_none());
+    assert_eq!(board.body["me"]["score"], final_view["score"]);
+    let public = call(
+        &state,
+        "GET",
+        "/anthropic/v1/endless/leaderboard?board=weekly",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(public.status, StatusCode::OK);
+    assert_eq!(public.body["me"], Value::Null);
+    let bad = call(
+        &state,
+        "GET",
+        "/anthropic/v1/endless/leaderboard?board=daily&period=yesterday",
+        None,
+        None,
+    )
+    .await;
+    assert_detail(&bad, StatusCode::BAD_REQUEST, "The request is invalid.");
+
+    // 新开一局：上一局已结束，可以开
+    let second = start_run(&state, &token, "endless").await;
+    let second_id = second["run"]["run_id"].as_str().unwrap().to_string();
+    let abandoned = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{second_id}/abandon"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(abandoned.status, StatusCode::OK, "{}", abandoned.text);
+    assert_eq!(abandoned.body["run"]["end_reason"], "abandon");
+}
+
+#[tokio::test]
+#[ignore]
+async fn inspect_and_quiz_through_the_api() {
+    let (issuer, idp) = start_mock_idp(CLIENT_ID).await;
+    let (state, pool) = db_state(&issuer).await;
+    let player = login(&state, &idp, &unique("kc-inspect"), &unique("sid"), &[]).await;
+    let token = player.access_token.clone();
+    let started = start_run(&state, &token, "endless").await;
+    let run_id = started["run"]["run_id"].as_str().unwrap().to_string();
+
+    // 找到一位有「两个字段」破绽的旅客
+    for _ in 0..60 {
+        let next = call(
+            &state,
+            "POST",
+            &format!("/anthropic/v1/endless/runs/{run_id}/next"),
+            Some(&token),
+            None,
+        )
+        .await;
+        let item = next.body["item"].clone();
+        age_current_item(&pool, &run_id).await;
+        let answer = current_answer(&pool, &run_id).await;
+        if item["item_type"] != "traveler" {
+            let payload = if item["wave"]["type"] == "rush" {
+                json!({"picks": []})
+            } else {
+                json!({"hits": []})
+            };
+            call(
+                &state,
+                "POST",
+                &format!(
+                    "/anthropic/v1/endless/runs/{run_id}/waves/{}/result",
+                    item["wave"]["wave_id"].as_str().unwrap()
+                ),
+                Some(&token),
+                Some(payload),
+            )
+            .await;
+            continue;
+        }
+        let entrant_id = item["entrant"]["entrant_id"].as_str().unwrap().to_string();
+        let pair = answer["secret"]["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|i| i["pairs"].as_array().unwrap().clone())
+            .find(|p| p.as_array().unwrap().len() == 2);
+        let Some(pair) = pair else {
+            let ok = answer["secret"]["ok"][0].clone();
+            call(
+                &state,
+                "POST",
+                &format!("/anthropic/v1/endless/runs/{run_id}/decision"),
+                Some(&token),
+                Some(json!({"entrant_id": entrant_id, "decision": ok})),
+            )
+            .await;
+            continue;
+        };
+
+        let path = format!("/anthropic/v1/endless/runs/{run_id}/inspect");
+        let quiz_path = format!("/anthropic/v1/endless/runs/{run_id}/quiz");
+        let too_soon = call(
+            &state,
+            "POST",
+            &quiz_path,
+            Some(&token),
+            Some(json!({"entrant_id": entrant_id})),
+        )
+        .await;
+        assert_detail(
+            &too_soon,
+            StatusCode::BAD_REQUEST,
+            "The request is invalid.",
+        );
+        let miss = call(
+            &state,
+            "POST",
+            &path,
+            Some(&token),
+            Some(json!({"entrant_id": entrant_id, "fields": ["pp.DOB", "pp.EXP"]})),
+        )
+        .await;
+        assert_eq!(miss.body["match"], false, "{}", miss.text);
+        let hit = call(
+            &state,
+            "POST",
+            &path,
+            Some(&token),
+            Some(json!({"entrant_id": entrant_id, "fields": pair})),
+        )
+        .await;
+        assert_eq!(hit.body["match"], true, "{}", hit.text);
+        assert!(hit.body["issue"]["kind"].is_string());
+        let junk = call(
+            &state,
+            "POST",
+            &path,
+            Some(&token),
+            Some(json!({"entrant_id": entrant_id, "fields": ["<script>", "pp.DOB"]})),
+        )
+        .await;
+        assert_detail(&junk, StatusCode::BAD_REQUEST, "The request is invalid.");
+        let quiz = call(
+            &state,
+            "POST",
+            &quiz_path,
+            Some(&token),
+            Some(json!({"entrant_id": entrant_id})),
+        )
+        .await;
+        assert_eq!(quiz.status, StatusCode::OK, "{}", quiz.text);
+        assert_eq!(quiz.body["exposed"], answer["secret"]["liar"]);
+
+        // 指认过再拒绝：拿到指认加分
+        let decided = call(
+            &state,
+            "POST",
+            &format!("/anthropic/v1/endless/runs/{run_id}/decision"),
+            Some(&token),
+            Some(json!({"entrant_id": entrant_id, "decision": "deny"})),
+        )
+        .await;
+        assert_eq!(decided.body["correct"], true, "{}", decided.text);
+        assert_eq!(decided.body["breakdown"]["pointing"], 50);
+        // 别人的对局不能碰
+        let other = login(&state, &idp, &unique("kc-other"), &unique("sid"), &[]).await;
+        let stranger = call(
+            &state,
+            "POST",
+            &format!("/anthropic/v1/endless/runs/{run_id}/next"),
+            Some(&other.access_token),
+            None,
+        )
+        .await;
+        assert_detail(
+            &stranger,
+            StatusCode::NOT_FOUND,
+            "The requested resource was not found.",
+        );
+        return;
+    }
+    panic!("no traveler with a two-field discrepancy in 60 slots");
+}
+
+#[tokio::test]
+#[ignore]
+async fn daily_challenge_is_shared_and_once_per_day() {
+    let (issuer, idp) = start_mock_idp(CLIENT_ID).await;
+    let (state, pool) = db_state(&issuer).await;
+    let a = login(&state, &idp, &unique("kc-daily-a"), &unique("sid"), &[]).await;
+    let b = login(&state, &idp, &unique("kc-daily-b"), &unique("sid"), &[]).await;
+
+    let daily = call(
+        &state,
+        "GET",
+        "/anthropic/v1/endless/daily",
+        Some(&a.access_token),
+        None,
+    )
+    .await;
+    assert_eq!(daily.body["played"], false);
+    assert_eq!(daily.body["travelers"], 40);
+
+    let run_a = start_run(&state, &a.access_token, "daily").await["run"]["run_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let run_b = start_run(&state, &b.access_token, "daily").await["run"]["run_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let first = |token: String, run: String| {
+        let state = state.clone();
+        async move {
+            call(
+                &state,
+                "POST",
+                &format!("/anthropic/v1/endless/runs/{run}/next"),
+                Some(&token),
+                None,
+            )
+            .await
+            .body["item"]["entrant"]["docs"]
+                .clone()
+        }
+    };
+    let docs_a = first(a.access_token.clone(), run_a.clone()).await;
+    let docs_b = first(b.access_token.clone(), run_b.clone()).await;
+    assert_eq!(docs_a, docs_b, "everyone sees the same daily travelers");
+
+    let played = call(
+        &state,
+        "GET",
+        "/anthropic/v1/endless/daily",
+        Some(&a.access_token),
+        None,
+    )
+    .await;
+    assert_eq!(played.body["played"], true);
+    assert_eq!(played.body["in_progress"], true);
+
+    // 打满 40 位（全部判对）→ 下班
+    let mut last = Value::Null;
+    for _ in 0..60 {
+        last = play_slot(&state, &pool, &a.access_token, &run_a, true).await;
+        if last["run"]["status"] == "ended" {
+            break;
+        }
+    }
+    assert_eq!(last["run"]["end_reason"], "shift_done");
+    assert_eq!(last["run"]["travelers"], 40);
+    assert!(last["final"]["ranks"]["daily"].as_i64().is_some());
+
+    let replay = call(
+        &state,
+        "POST",
+        "/anthropic/v1/endless/runs",
+        Some(&a.access_token),
+        Some(json!({"mode": "daily"})),
+    )
+    .await;
+    assert_detail(
+        &replay,
+        StatusCode::CONFLICT,
+        "Today's daily challenge has already been played.",
+    );
+    let board = call(
+        &state,
+        "GET",
+        "/anthropic/v1/endless/leaderboard?board=daily",
+        None,
+        None,
+    )
+    .await;
+    assert!(!board.body["entries"].as_array().unwrap().is_empty());
+}

@@ -52,6 +52,7 @@ type Windows = HashMap<(&'static str, String), (Instant, u32)>;
 #[derive(Default)]
 pub struct RateLimiter {
     windows: Mutex<Windows>,
+    disabled: bool,
 }
 
 impl RateLimiter {
@@ -59,12 +60,20 @@ impl RateLimiter {
         Self::default()
     }
 
+    /// 测试用：不限流（集成测试在一秒内连发大量请求）。
+    pub fn disabled() -> Self {
+        Self {
+            disabled: true,
+            ..Self::default()
+        }
+    }
+
     pub fn check(&self, rule: Rule, key: &str) -> Result<(), AppError> {
         self.check_at(rule, key, Instant::now())
     }
 
     fn check_at(&self, rule: Rule, key: &str, now: Instant) -> Result<(), AppError> {
-        if rule.limit == 0 || rule.window.is_zero() {
+        if self.disabled || rule.limit == 0 || rule.window.is_zero() {
             return Ok(());
         }
         let mut windows = self.windows.lock().expect("rate limiter mutex");
