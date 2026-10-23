@@ -418,21 +418,21 @@ window.CloudSync = (function () {
     return error;
   }
 
+  // 尽量少发 CORS 预检：
+  // - JSON 按字符串 body 发、不设 Content-Type（浏览器默认 text/plain）。不带 Token 的请求因此是
+  //   「简单请求」，完全不预检；后端不看 Content-Type，照样按 JSON 解析。
+  // - 不设 fetch 的 cache 选项：cache: 'no-store' 会让 Chrome 跳过预检缓存，每次都重新预检。
+  //   接口响应自带 Cache-Control: no-store，浏览器本来就不会缓存数据。
   async function send(path, settings, token) {
     const headers = { Accept: 'application/json' };
     if (token) headers.Authorization = 'Bearer ' + token;
-    let payload;
-    if (settings.body !== undefined) {
-      headers['Content-Type'] = 'application/json';
-      payload = JSON.stringify(settings.body);
-    }
+    const payload = settings.body === undefined ? undefined : JSON.stringify(settings.body);
     let response;
     try {
       response = await fetch(CFG.apiBase + path, {
         method: settings.method || 'GET',
         headers: headers,
         body: payload,
-        cache: 'no-store',
       });
     } catch (error) {
       const networkError = new Error('网络错误，无法连接云同步服务');

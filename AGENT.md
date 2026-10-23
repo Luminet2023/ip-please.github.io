@@ -298,6 +298,12 @@ X 光物品），**正确答案、破绽、谁会接测谎题都不下发**。�
 - 回调地址：`https://www.fuckanthropic.dev/`（同页回调），必须同时登记在 Keycloak 的
   Valid redirect URI 与后端 `OIDC_REDIRECT_URIS` 中。
 - 前端只与 IdP 授权页（跳转）和 `api.luminet.cn` 通信，不经过第三方。
+- 尽量少发 CORS 预检（`cloud.js` 的 `send`）：
+  - JSON 请求体不设 `Content-Type`（浏览器默认 `text/plain`），不带 Token 的请求就是简单请求，不预检；
+    后端 `JsonBody` 不看 `Content-Type`，新接口也必须保持这一点。
+  - 不设 fetch 的 `cache` 选项：`cache: 'no-store'` 会让 Chrome 跳过预检缓存；数据不被缓存靠的是
+    响应的 `Cache-Control: no-store`。
+  - 带 `Authorization` 的请求必然预检，按完整 URL 缓存（nginx 回 `Max-Age: 86400`，Chrome 实际上限 2 小时）。
 
 ## 目录结构
 

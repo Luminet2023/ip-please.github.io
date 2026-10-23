@@ -169,6 +169,11 @@ async function testCallbackAndDayEnd() {
   const body = callback ? JSON.parse(callback.options.body) : {};
   check('回调出示 verifier', body.login_verifier === 'v'.repeat(43) && body.code === 'auth-code-1' && body.state === 'st-1', body);
   check('回调带 iss', body.iss === 'https://auth.luminet.cn/realms/prod', body.iss);
+  // 不设 Content-Type（默认 text/plain，不带 Token 的请求不触发预检），也不设 cache（否则 Chrome 不用预检缓存）
+  const sentHeaders = callback ? callback.options.headers : {};
+  check('请求不设 Content-Type', !!callback && !Object.keys(sentHeaders).some((k) => k.toLowerCase() === 'content-type'),
+    sentHeaders);
+  check('请求不设 fetch cache 选项', !!callback && callback.options.cache === undefined, callback && callback.options.cache);
 
   win.fetch = async (url, options) => {
     if (String(url).endsWith('/sync/save') && options.method === 'POST') {

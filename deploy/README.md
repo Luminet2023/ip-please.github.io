@@ -88,11 +88,29 @@ location ^~ /anthropic/ {
 
 1. 用 `root` / `alias` / `try_files` / `return 200` 提供静态页 —— 必须是 `proxy_pass` 到 `127.0.0.1:8080`。
 2. `proxy_pass` 写了路径（如 `.../anthropic/`）—— URI 被改写，后端路由匹配不到，必须不带路径。
-3. 在 location 里用 `if ($request_method = OPTIONS) { return 204; }` 吃掉预检 —— 预检必须转发给后端，否则没有 CORS 头。
-4. nginx 里又 `add_header Access-Control-Allow-Origin` —— 后端已返回，重复值会被浏览器拒绝。
+3. 用不带 CORS 头的 `if ($request_method = OPTIONS) { return 204; }` 吃掉预检 —— 浏览器会拒绝。
+   要由 nginx 应答预检，用下面「可选」里的写法。
+4. 正式请求在 nginx 里又 `add_header Access-Control-Allow-Origin`（或打开面板的「跨域」开关）——
+   后端已返回，重复值会被浏览器拒绝。
 5. location 被正则/SPA 兜底抢走 —— 用 `^~` 前缀匹配。
 
-CORS 由服务自身处理（`ALLOWED_ORIGINS`），代理不要重复添加 `Access-Control-Allow-Origin`。
+CORS 由服务自身处理（`ALLOWED_ORIGINS`），代理不要给正式请求重复添加 `Access-Control-Allow-Origin`。
+
+**可选：由 nginx 直接应答预检**（不进后端，`Max-Age` 拉长到 1 天，浏览器各自封顶：Chrome 2 小时、
+Firefox 24 小时、Safari 10 分钟）。放在上面 location 的最前面；来源正则要与 `ALLOWED_ORIGINS` 一致，
+不在名单里的来源照常转给后端拒绝：
+
+```nginx
+    set $ipp_preflight "$request_method $http_origin";
+    if ($ipp_preflight ~* "^OPTIONS (https://(www\.)?fuckanthropic\.dev|http://localhost:8000)$") {
+        add_header Access-Control-Allow-Origin $http_origin always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept" always;
+        add_header Access-Control-Max-Age 86400 always;
+        add_header Vary Origin always;
+        return 204;
+    }
+```
 
 验证：
 
