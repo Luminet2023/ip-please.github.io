@@ -106,30 +106,41 @@ nginx 中与 anthropic 相关的配置片段与公网链路结果。
 
 ## 4. Keycloak 客户端配置
 
-客户端 `app_vXmK3nB7cmKcW6q7` 必须满足：
+浏览器只跳转授权页；换码、校验 ID Token 都由后端完成，后端签发本服务自己的 AT / RT（会话 `sess_*`）。
+客户端 `app_vXmK3nB7cmKcW6q7` 按下表配置：
 
 | 项 | 值 |
 | --- | --- |
-| Client authentication | Off（公共客户端） |
+| Client authentication | **On**（机密客户端）；Credentials 页的 secret 填进 `.env` 的 `OIDC_CLIENT_SECRET` |
 | Standard flow | 开 |
-| Direct access grants | 关（不需要） |
-| Valid redirect URIs | `https://www.fuckanthropic.dev/`（如需本地调试再加 `http://localhost:8000/`） |
-| Web origins | `https://www.fuckanthropic.dev`（本地调试加 `http://localhost:8000`） |
+| Direct access grants | 关 |
+| Valid redirect URIs | `https://www.fuckanthropic.dev/`（本地调试再加 `http://localhost:8000/`）；同时写进 `OIDC_REDIRECT_URIS` |
+| Web origins | 可以清空（浏览器不再用 fetch 调 Keycloak） |
 | Advanced → Proof Key for Code Exchange Code Challenge Method | `S256` |
-| 需要的 scope | `openid profile email offline_access`（`offline_access` 才发 refresh token） |
+| Front channel logout | 关 |
+| Backchannel logout URL | `https://api.luminet.cn/anthropic/v1/auth/backchannel-logout` |
+| Backchannel logout session required | **开**（Logout Token 才带 `sid`，只注销对应会话） |
+| 需要的 scope | `openid profile`（不再需要 `offline_access` / `email`） |
 
-自检（应返回 302 或登录页，而不是 400 `invalid redirect_uri` / 403 `Invalid origin`）：
+**管理员角色**（发布公告、强制下线）：
 
-```bash
-curl -sS -o /dev/null -w '%{http_code}\n' -G \
-  --data-urlencode 'client_id=app_vXmK3nB7cmKcW6q7' \
-  --data-urlencode 'redirect_uri=https://www.fuckanthropic.dev/' \
-  --data-urlencode 'response_type=code' \
-  --data-urlencode 'scope=openid offline_access' \
-  --data-urlencode 'code_challenge_method=S256' \
-  --data-urlencode 'code_challenge=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
-  https://auth.luminet.cn/realms/prod/protocol/openid-connect/auth
-```
+1. Clients → `app_vXmK3nB7cmKcW6q7` → Roles → Create role：`ip-please-admin`。
+2. Users → 管理员账号 → Role mapping → Assign role → 选上面的客户端角色。
+3. 可选：Clients → 客户端 → Client scopes → `…-dedicated` → Add mapper → By configuration →
+   User Client Role：Client ID 选本客户端，Token Claim Name `ip_please_roles`，Multivalued 开，
+   Add to ID token 开（其余关）。不配也行：后端还会读 Keycloak Access Token 默认带的
+   `resource_access.<client>.roles`。
+4. 角色在下次登录时写入会话；撤销角色后，在 Keycloak 里对该用户 Sign out（触发反向通道注销）即可立即生效。
+
+**切换顺序**（全体玩家需要重新登录一次）：
+
+1. 部署新后端（`OIDC_CLIENT_SECRET` 先留空：公共客户端也能换码）。
+2. 紧接着部署新前端（`index.html` 的 `?v=` 一并更新）。
+3. Keycloak 打开 Client authentication、配置反向通道注销，把 secret 填进 `.env`，重新执行
+   `deploy/install.sh`，再跑 `deploy/verify.sh`（会检查客户端已是机密客户端）。
+
+自检反向通道：在 Keycloak 账号控制台（或 Admin → Sessions）注销一个已登录游戏的会话，
+游戏下一次请求应提示「登录状态已失效」。后端日志会出现 `backchannel logout processed`。
 
 ## 5. 升级与回滚
 
@@ -138,6 +149,10 @@ cd /opt/ip-please-sync
 docker compose pull
 docker compose up -d
 ```
+
+**从「前端直连 IdP」的旧版本升级**：新版本要求 `.env` 里有 `SESSION_JWT_SECRET`（和无尽模式用的
+`ENDLESS_SEED_SECRET`），缺了容器会启动失败。直接重新执行 `bash deploy/install.sh`，它会补上这两个
+密钥（已有值不覆盖），再按第 4 节调整 Keycloak。
 
 镜像 tag：`latest`、`sha-<short>`、`build-<sha>`。回滚：把 `.env` 里 `IMAGE_TAG` 改成目标
 `sha-<short>` / `build-<short>`（compose 中镜像为 `…:${IMAGE_TAG:-latest}`），再 `docker compose up -d`。
@@ -161,7 +176,10 @@ docker compose up -d
 - 健康检查：容器内 `curl -fsS http://127.0.0.1:8080/anthropic/v1/health`。
 - 数据：`ip_please_save_slots` 保存每用户当前进度，`ip_please_save_snapshots` 保留每次日终快照，
   按 `(user_id, version)` 唯一。需要清理历史快照时按 `created_at_ms` 删旧记录即可。
-- 限流：单用户上传最小间隔 `SYNC_RATE_LIMIT_SECONDS`（默认 3 秒），内存实现，多副本部署时需换成
+- 会话：`ip_please_sessions` / `ip_please_refresh_tokens`（RT 只存 SHA-256）；后台任务每 5 分钟清理过期的
+  登录尝试、RT 与结束超过 30 天的会话。
+- 限流：单用户上传最小间隔 `SYNC_RATE_LIMIT_SECONDS`（默认 3 秒），登录 / 刷新按 IP（`X-Real-IP`）限流；
+  都是内存实现，反向通道注销的 `jti` 防重放缓存也在内存里——只支持单副本，多副本部署时需换成
   Redis 等共享存储。
 
 ## 7. 排障

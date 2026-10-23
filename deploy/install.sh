@@ -24,6 +24,10 @@ if [[ ! -f .env ]]; then
   echo "==> 生成 .env 模板"
   curl -fsSL "$REPO_RAW/.env.example" -o .env
   chmod 600 .env
+  # 自动生成签名密钥（只在首次生成 .env 时执行）
+  for key in SESSION_JWT_SECRET ENDLESS_SEED_SECRET; do
+    sed -i "s|^${key}=CHANGE_ME\$|${key}=$(openssl rand -hex 32)|" .env
+  done
   cat <<'EOF'
 
 已生成 .env。请编辑并至少填写：
@@ -41,6 +45,15 @@ if ! grep -qE '^SYNC_DATABASE_URL=mysql://.+' .env || grep -q 'USER:PASSWORD' .e
   echo "示例：SYNC_DATABASE_URL=mysql://sync:password@127.0.0.1:3306/game" >&2
   exit 1
 fi
+
+# 旧版 .env（升级前生成）没有密钥：补上，不覆盖已有值
+for key in SESSION_JWT_SECRET ENDLESS_SEED_SECRET; do
+  if ! grep -qE "^${key}=.{32,}" .env || grep -qE "^${key}=CHANGE_ME" .env; then
+    echo "==> 生成 ${key}"
+    sed -i "/^${key}=/d" .env
+    echo "${key}=$(openssl rand -hex 32)" >> .env
+  fi
+done
 
 command -v docker >/dev/null 2>&1 || { echo "错误：未安装 docker。" >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "错误：需要 docker compose v2（docker compose 子命令）。" >&2; exit 1; }
@@ -60,7 +73,8 @@ for _ in $(seq 1 60); do
 下一步：
 1) 为 api.luminet.cn 增加 nginx 反代（保留 /anthropic/ 前缀，见 deploy/README.md）。
 2) 在任意机器运行 deploy/verify.sh 做线上验收。
-3) 去 Keycloak 客户端补 Web Origins: https://www.fuckanthropic.dev
+3) 按 deploy/README.md 第 4 节配置 Keycloak：机密客户端、反向通道注销 URL、管理员角色，
+   把客户端 secret 填进 .env 的 OIDC_CLIENT_SECRET 后重新执行本脚本。
 EOF
     exit 0
   fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 线上验收脚本：健康检查、鉴权双信封、CORS、Keycloak 客户端基础配置。
+# 线上验收脚本：健康检查、鉴权双信封、CORS、/auth/* 契约、Keycloak 机密客户端。
 #
 # 用法：
 #   bash deploy/verify.sh
@@ -73,36 +73,78 @@ else
   fail=$((fail + 1))
 fi
 
-echo "== 4. Keycloak 客户端配置 =="
-auth_status="$(curl -sS -o "$tmpdir/auth.html" -w '%{http_code}' -G \
-  --data-urlencode "client_id=$CLIENT_ID" \
-  --data-urlencode "redirect_uri=$GAME_ORIGIN/" \
-  --data-urlencode 'response_type=code' \
-  --data-urlencode 'scope=openid profile email offline_access' \
-  --data-urlencode 'state=verify' \
-  --data-urlencode 'code_challenge_method=S256' \
-  --data-urlencode 'code_challenge=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
-  "$AUTH_BASE/auth" 2>/dev/null || echo 000)"
-if [[ "$auth_status" == "302" || "$auth_status" == "200" ]]; then
-  echo "  ok   授权端点接受回调 $GAME_ORIGIN/（$auth_status）"
+echo "== 4. 登录接口（后端换码） =="
+challenge="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+status="$(curl -sS -o "$tmpdir/login.json" -w '%{http_code}' -X POST \
+  -H 'Content-Type: application/json' -H "Origin: $GAME_ORIGIN" \
+  -d "{\"login_challenge\":\"$challenge\",\"redirect_uri\":\"$GAME_ORIGIN/\"}" \
+  "$API_BASE/auth/login" 2>/dev/null || echo 000)"
+check "POST /auth/login 返回 200" 200 "$status"
+authorize_url="$(sed -n 's/.*"authorize_url":"\([^"]*\)".*/\1/p' "$tmpdir/login.json" 2>/dev/null)"
+if [[ "$authorize_url" == "${AUTH_BASE}/auth?"* ]] \
+  && [[ "$authorize_url" == *"code_challenge_method=S256"* ]] \
+  && [[ "$authorize_url" == *"nonce="* ]]; then
+  echo "  ok   authorize_url 指向 IdP 且带 S256 与 nonce"
   pass=$((pass + 1))
 else
-  echo "  FAIL 授权端点拒绝了回调地址（$auth_status），请在 Keycloak 配置 Valid redirect URIs"
+  echo "  FAIL authorize_url 异常：${authorize_url:-$(head -c 200 "$tmpdir/login.json")}"
+  fail=$((fail + 1))
+fi
+if [[ -n "$authorize_url" ]]; then
+  auth_status="$(curl -sS -o /dev/null -w '%{http_code}' "$authorize_url" 2>/dev/null || echo 000)"
+  if [[ "$auth_status" == "302" || "$auth_status" == "200" ]]; then
+    echo "  ok   IdP 接受该授权请求（$auth_status）"
+    pass=$((pass + 1))
+  else
+    echo "  FAIL IdP 拒绝了授权请求（$auth_status），检查 Valid redirect URIs 与 OIDC_REDIRECT_URIS"
+    fail=$((fail + 1))
+  fi
+fi
+
+status="$(curl -sS -o "$tmpdir/cb.json" -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+  -d '{"code":"x","state":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","login_verifier":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}' \
+  "$API_BASE/auth/callback" 2>/dev/null || echo 000)"
+check "伪造回调返回 400" 400 "$status"
+check "伪造回调为 Detail 信封" '{"detail":"The login attempt is invalid or has expired."}' "$(tr -d '\n' < "$tmpdir/cb.json" 2>/dev/null)"
+
+status="$(curl -sS -o "$tmpdir/refresh.json" -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+  -d '{"refresh_token":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}' "$API_BASE/auth/refresh" 2>/dev/null || echo 000)"
+check "未知 RT 刷新返回 401" 401 "$status"
+if grep -q '"code":"token_revoked"' "$tmpdir/refresh.json" 2>/dev/null; then
+  echo "  ok   未知 RT 返回 token_revoked"
+  pass=$((pass + 1))
+else
+  echo "  FAIL 未知 RT 未返回 token_revoked：$(head -c 200 "$tmpdir/refresh.json" 2>/dev/null)"
   fail=$((fail + 1))
 fi
 
-origin_status="$(curl -sS -o "$tmpdir/token.json" -w '%{http_code}' \
-  -H "Origin: $GAME_ORIGIN" -H 'Content-Type: application/x-www-form-urlencoded' \
-  --data-urlencode 'grant_type=refresh_token' \
+status="$(curl -sS -o "$tmpdir/bcl.json" -w '%{http_code}' -X POST \
+  -H 'Content-Type: application/x-www-form-urlencoded' --data 'logout_token=not.a.jwt' \
+  "$API_BASE/auth/backchannel-logout" 2>/dev/null || echo 000)"
+check "反向通道注销拒绝伪造 Token（400）" 400 "$status"
+check "反向通道注销返回 JSON 信封" '{"detail":"The request is invalid."}' "$(tr -d '\n' < "$tmpdir/bcl.json" 2>/dev/null)"
+
+cors_headers="$(curl -sS -X OPTIONS -o /dev/null -D - \
+  -H "Origin: $GAME_ORIGIN" -H "Access-Control-Request-Method: POST" \
+  -H 'Access-Control-Request-Headers: content-type' \
+  "$API_BASE/auth/refresh" 2>/dev/null | tr -d '\r')"
+check "/auth/refresh 预检允许 $GAME_ORIGIN" "$GAME_ORIGIN" \
+  "$(printf '%s\n' "$cors_headers" | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')"
+
+echo "== 5. Keycloak 客户端为机密客户端 =="
+kc_status="$(curl -sS -o "$tmpdir/kc.json" -w '%{http_code}' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=authorization_code' \
   --data-urlencode "client_id=$CLIENT_ID" \
-  --data-urlencode 'refresh_token=bogus' \
+  --data-urlencode 'code=bogus' \
+  --data-urlencode "redirect_uri=$GAME_ORIGIN/" \
   "$AUTH_BASE/token" 2>/dev/null || echo 000)"
-if grep -q 'Invalid origin' "$tmpdir/token.json" 2>/dev/null; then
-  echo "  FAIL token 端点拒绝 Origin，请在 Keycloak 客户端补 Web Origins: $GAME_ORIGIN"
-  fail=$((fail + 1))
-else
-  echo "  ok   token 端点接受 Origin（$origin_status）"
+if grep -qE '"error":"(unauthorized_client|invalid_client)"' "$tmpdir/kc.json" 2>/dev/null; then
+  echo "  ok   只带 client_id 无法换码（机密客户端，$kc_status）"
   pass=$((pass + 1))
+else
+  echo "  WARN 只带 client_id 的换码没有被当作未认证客户端拒绝：$(head -c 160 "$tmpdir/kc.json" 2>/dev/null)"
+  echo "       客户端可能仍是公共客户端（切换期可接受；完成第 4 节后应变为 ok）"
 fi
 
 echo

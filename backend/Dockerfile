@@ -7,12 +7,14 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir -p src \
     && printf 'fn main() {}\n' > src/main.rs \
+    && touch src/lib.rs \
     && cargo build --release --locked \
-    && rm -rf src target/release/ip-please-sync.d
+    && rm -rf src target/release/ip-please-sync.d \
+       target/release/deps/ip_please_sync-* target/release/deps/libip_please_sync-*
 
 COPY src ./src
 COPY migrations ./migrations
-RUN touch src/main.rs && cargo build --release --locked
+RUN touch src/main.rs src/lib.rs && cargo build --release --locked
 
 FROM debian:bookworm-slim
 

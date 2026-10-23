@@ -107,8 +107,9 @@ node tools/check_en.js
 
 右上角「云同步」登录后可把每日结算的存档备份到云端，换设备也能接着玩；不登录仍可纯本地游玩。
 
-- 前端 `cloud.js`：Keycloak OIDC 授权码 + PKCE(S256)，Access Token 600 秒自动刷新，刷新令牌保存在
-  `localStorage`；每天结算后自动上传并提示，版本冲突时弹窗选择「用云端存档」或「保留本机」。
+- 登录：浏览器跳转 Keycloak 授权页，回跳后由后端换码并签发本服务自己的会话（AT 600 秒自动刷新，
+  RT 每次轮换）；Keycloak 注销会通过反向通道立即让游戏会话失效。
+- 前端 `cloud.js`：每天结算后自动上传并提示，版本冲突时弹窗选择「用云端存档」或「保留本机」。
 - 后端 `backend/`：Rust（axum + sqlx + MySQL），对外地址 `https://api.luminet.cn/anthropic/v1`。
 - 部署、反向代理与 Keycloak 客户端配置见 [`deploy/README.md`](deploy/README.md)；
   接口与错误规范见 [`AGENT.md`](AGENT.md)。

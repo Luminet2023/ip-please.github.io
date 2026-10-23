@@ -26,17 +26,52 @@ pub enum DetailCode {
     RequestTooLarge,
     SyncPayloadTooLarge,
     Unauthorized,
+    LoginAttemptInvalid,
+    RateLimited,
+    NicknameInvalid,
+    EndlessRunActive,
+    EndlessStateConflict,
+    DailyAlreadyPlayed,
+}
+
+impl DetailCode {
+    /// 全部已登记的错误码（测试与文档核对用）。
+    pub const ALL: [DetailCode; 18] = [
+        DetailCode::NotFound,
+        DetailCode::ValidationError,
+        DetailCode::MethodNotAllowed,
+        DetailCode::SyncConflict,
+        DetailCode::SyncSnapshotExpired,
+        DetailCode::SyncRateLimited,
+        DetailCode::SyncUnavailable,
+        DetailCode::BackendUnavailable,
+        DetailCode::InternalError,
+        DetailCode::RequestTooLarge,
+        DetailCode::SyncPayloadTooLarge,
+        DetailCode::Unauthorized,
+        DetailCode::LoginAttemptInvalid,
+        DetailCode::RateLimited,
+        DetailCode::NicknameInvalid,
+        DetailCode::EndlessRunActive,
+        DetailCode::EndlessStateConflict,
+        DetailCode::DailyAlreadyPlayed,
+    ];
 }
 
 impl DetailCode {
     pub fn status(self) -> StatusCode {
         match self {
             DetailCode::NotFound => StatusCode::NOT_FOUND,
-            DetailCode::ValidationError => StatusCode::BAD_REQUEST,
+            DetailCode::ValidationError
+            | DetailCode::LoginAttemptInvalid
+            | DetailCode::NicknameInvalid => StatusCode::BAD_REQUEST,
             DetailCode::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
-            DetailCode::SyncConflict => StatusCode::CONFLICT,
+            DetailCode::SyncConflict
+            | DetailCode::EndlessRunActive
+            | DetailCode::EndlessStateConflict
+            | DetailCode::DailyAlreadyPlayed => StatusCode::CONFLICT,
             DetailCode::SyncSnapshotExpired => StatusCode::GONE,
-            DetailCode::SyncRateLimited => StatusCode::TOO_MANY_REQUESTS,
+            DetailCode::SyncRateLimited | DetailCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             DetailCode::SyncUnavailable | DetailCode::BackendUnavailable => {
                 StatusCode::SERVICE_UNAVAILABLE
             }
@@ -66,6 +101,12 @@ impl DetailCode {
             DetailCode::RequestTooLarge => "The request body is too large.",
             DetailCode::SyncPayloadTooLarge => "The save payload exceeds the size limit.",
             DetailCode::Unauthorized => "Unauthorized",
+            DetailCode::LoginAttemptInvalid => "The login attempt is invalid or has expired.",
+            DetailCode::RateLimited => "Too many requests. Please retry later.",
+            DetailCode::NicknameInvalid => "The nickname is not allowed.",
+            DetailCode::EndlessRunActive => "An endless run is already in progress.",
+            DetailCode::EndlessStateConflict => "The endless run state has changed. Please reload.",
+            DetailCode::DailyAlreadyPlayed => "Today's daily challenge has already been played.",
         }
     }
 }
@@ -233,6 +274,26 @@ mod tests {
             DetailCode::SyncPayloadTooLarge.status(),
             StatusCode::PAYLOAD_TOO_LARGE
         );
+    }
+
+    #[test]
+    fn detail_messages_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for code in DetailCode::ALL {
+            assert!(
+                seen.insert(code.message()),
+                "duplicate message for {code:?}"
+            );
+        }
+        assert_eq!(
+            DetailCode::RateLimited.status(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        assert_eq!(
+            DetailCode::LoginAttemptInvalid.status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(DetailCode::EndlessRunActive.status(), StatusCode::CONFLICT);
     }
 
     #[test]

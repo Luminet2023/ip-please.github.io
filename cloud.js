@@ -1,21 +1,23 @@
 'use strict';
-// 云同步：Keycloak OIDC（Authorization Code + PKCE / S256）登录、Access Token 自动刷新、
-// 每日结算后把存档同步到 https://api.luminet.cn/anthropic/v1。
+// 云同步与登录：每日结算后把存档同步到 https://api.luminet.cn/anthropic/v1。
 //
-// 约定：
-// - 前端只跟 IdP 换 Token（公共客户端，无 client_secret），刷新令牌存在 localStorage。
-// - Access Token 有效期 600 秒，提前 60 秒刷新；401 invalid_token 时强制刷新并重试一次。
+// 约定（AGENT.md「前端鉴权约定」）：
+// - 浏览器只跳转 IdP 授权页，不再直接向 IdP 换 Token。回跳后把 code 交给后端
+//   `/auth/callback`，由后端换码并签发本服务自己的 AT / RT（会话 sess_*）。
+// - 登录时浏览器生成 login_verifier，只把它的 SHA-256 交给 `/auth/login`；回调时再出示原文，
+//   这样即使 code+state 泄露，别人也兑换不了。
+// - AT 有效期 600 秒，提前 60 秒刷新；401 invalid_token 时刷新并重试一次；
+//   401 token_revoked（会话被吊销，包括 IdP 反向通道注销）时清理凭据并登出。
 // - 与后端的错误约定见 backend/src/error.rs：DetailErrorResponse / AuthErrorResponse 双信封。
 
 window.CloudSync = (function () {
   const CFG = {
-    issuer: 'https://auth.luminet.cn/realms/prod',
-    clientId: 'app_vXmK3nB7cmKcW6q7',
     apiBase: 'https://api.luminet.cn/anthropic/v1',
-    scope: 'openid profile email offline_access',
-    authKey: 'ip-please-auth-v1',
+    idpOrigin: 'https://auth.luminet.cn',
+    authKey: 'ip-please-auth-v2',
+    legacyAuthKey: 'ip-please-auth-v1',
+    loginKey: 'ip-please-login-v2',
     metaKey: 'ip-please-sync-meta-v1',
-    pkceKey: 'ip-please-pkce-v1',
     // 与游戏共用零号档案的存档键（config.js），不读原版的 ip-please-save-v1
     saveKey: STORAGE_KEYS.save,
     refreshAheadMs: 60 * 1000,
@@ -43,6 +45,12 @@ window.CloudSync = (function () {
     'The request body is too large.': 'request_too_large',
     'The save payload exceeds the size limit.': 'sync_payload_too_large',
     Unauthorized: 'unauthorized',
+    'The login attempt is invalid or has expired.': 'login_attempt_invalid',
+    'Too many requests. Please retry later.': 'rate_limited',
+    'The nickname is not allowed.': 'nickname_invalid',
+    'An endless run is already in progress.': 'endless_run_active',
+    'The endless run state has changed. Please reload.': 'endless_state_conflict',
+    "Today's daily challenge has already been played.": 'daily_already_played',
   };
 
   const BUSINESS_ERROR_TEXT = {
@@ -58,12 +66,18 @@ window.CloudSync = (function () {
     request_too_large: '请求体过大',
     sync_payload_too_large: '存档超过大小上限',
     unauthorized: '请先登录',
+    login_attempt_invalid: '登录校验失败，请重新登录',
+    rate_limited: '操作太频繁，请稍后再试',
+    nickname_invalid: '昵称不合规：2–16 个字，不能含网址或「官方」「管理」等字样',
+    endless_run_active: '已有一局无尽模式在进行中',
+    endless_state_conflict: '对局状态已变化，正在重新同步',
+    daily_already_played: '今天的每日挑战已经玩过了',
   };
 
   const AUTH_ERROR_TEXT = {
     invalid_token: '登录已过期，正在重新登录',
     token_revoked: '登录状态已失效，请重新登录',
-    insufficient_scope: '账号缺少云同步权限',
+    insufficient_scope: '账号缺少所需权限',
     session_validation_failed: '鉴权服务暂时不可用',
   };
 
@@ -71,6 +85,8 @@ window.CloudSync = (function () {
   let refreshInFlight = null;
   let busy = false;
   let loginHintShown = false;
+  const authListeners = [];
+  const panelSections = [];
 
   // ———————————————————— 小工具 ————————————————————
 
@@ -122,33 +138,31 @@ window.CloudSync = (function () {
     return base64Url(buffer);
   }
 
-  async function pkceChallenge(verifier) {
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  async function sha256b64url(text) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return base64Url(digest);
-  }
-
-  function decodeJwtPayload(jwt) {
-    try {
-      const part = String(jwt).split('.')[1] || '';
-      const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
-      const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
-      const binary = atob(padded);
-      const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
-      return JSON.parse(new TextDecoder().decode(bytes));
-    } catch (error) {
-      return null;
-    }
   }
 
   // ———————————————————— 登录态存取 ————————————————————
 
-  function loadAuth() {
+  function readStoredAuth() {
     try {
       const stored = JSON.parse(localStorage.getItem(CFG.authKey) || 'null');
-      return stored && stored.refresh_token ? stored : null;
+      return stored && stored.refresh_token && stored.user && stored.user.user_id ? stored : null;
     } catch (error) {
       return null;
     }
+  }
+
+  function notifyAuthChange() {
+    const snapshot = publicUser();
+    authListeners.forEach((listener) => {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        /* 监听方的错误不影响登录流程 */
+      }
+    });
   }
 
   function storeAuth(next) {
@@ -158,6 +172,7 @@ window.CloudSync = (function () {
     } catch (error) {
       /* 隐私模式下存不了也不影响本次使用 */
     }
+    notifyAuthChange();
   }
 
   function clearAuth() {
@@ -167,50 +182,39 @@ window.CloudSync = (function () {
     } catch (error) {
       /* ignore */
     }
+    notifyAuthChange();
   }
 
-  function applyToken(token) {
-    const expiresIn = Number(token.expires_in) > 0 ? Number(token.expires_in) : 600;
-    const claims = decodeJwtPayload(token.access_token) || {};
+  // 后端 TokenResponse → 本地登录态（expires_at 秒 → 毫秒）
+  function applySession(token) {
     storeAuth({
       access_token: token.access_token,
-      refresh_token: token.refresh_token || (auth && auth.refresh_token) || null,
-      expires_at: Date.now() + expiresIn * 1000,
-      subject: claims.sub || (auth && auth.subject) || null,
-      name: claims.preferred_username || claims.email || (auth && auth.name) || null,
+      refresh_token: token.refresh_token,
+      expires_at: Number(token.expires_at) * 1000,
+      session_id: token.session_id,
+      user: token.user,
     });
   }
 
-  // ———————————————————— Token 端点 ————————————————————
+  function publicUser() {
+    return auth && auth.user ? Object.assign({}, auth.user) : null;
+  }
 
-  async function tokenRequest(params) {
-    const response = await fetch(CFG.issuer + '/protocol/openid-connect/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      },
-      body: new URLSearchParams(params).toString(),
-      cache: 'no-store',
-    });
-    const text = await response.text();
-    let body = null;
+  // 旧版（前端直连 IdP）的登录态不再可用：清掉并提示重新登录一次。
+  function dropLegacyAuth() {
     try {
-      body = JSON.parse(text);
+      if (localStorage.getItem(CFG.legacyAuthKey) === null) return false;
+      localStorage.removeItem(CFG.legacyAuthKey);
+      return true;
     } catch (error) {
-      body = null;
+      return false;
     }
-    if (!response.ok) {
-      const error = new Error((body && (body.error_description || body.error)) || 'HTTP ' + response.status);
-      error.status = response.status;
-      error.code = body && body.error;
-      throw error;
-    }
-    return body;
   }
+
+  // ———————————————————— 登录 ————————————————————
 
   function redirectUri() {
-    // Keycloak 中登记的回调地址是 https://www.fuckanthropic.dev/（同页回调）。
+    // 后端 OIDC_REDIRECT_URIS 里登记的回调地址：https://www.fuckanthropic.dev/（同页回调）。
     return location.origin + '/';
   }
 
@@ -219,25 +223,34 @@ window.CloudSync = (function () {
       toast('当前环境不支持安全登录（需要 HTTPS）');
       return;
     }
-    const verifier = randomToken(48);
-    const state = randomToken(32);
-    const challenge = await pkceChallenge(verifier);
+    const verifier = randomToken(32);
+    let started;
     try {
-      sessionStorage.setItem(CFG.pkceKey, JSON.stringify({ verifier: verifier, state: state }));
+      started = await publicFetch('/auth/login', {
+        method: 'POST',
+        body: { login_challenge: await sha256b64url(verifier), redirect_uri: redirectUri() },
+      });
+    } catch (error) {
+      toast('无法发起登录：' + (error.message || '网络错误'), 4200);
+      return;
+    }
+    let target;
+    try {
+      target = new URL(started.authorize_url);
+    } catch (error) {
+      target = null;
+    }
+    if (!target || target.origin !== CFG.idpOrigin) {
+      toast('登录地址异常，已中止');
+      return;
+    }
+    try {
+      sessionStorage.setItem(CFG.loginKey, JSON.stringify({ verifier: verifier, state: started.state }));
     } catch (error) {
       toast('浏览器禁止了会话存储，无法登录');
       return;
     }
-    const params = new URLSearchParams({
-      client_id: CFG.clientId,
-      redirect_uri: redirectUri(),
-      response_type: 'code',
-      scope: CFG.scope,
-      state: state,
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
-    });
-    location.href = CFG.issuer + '/protocol/openid-connect/auth?' + params.toString();
+    location.href = target.href;
   }
 
   async function handleRedirectBack() {
@@ -249,6 +262,7 @@ window.CloudSync = (function () {
     }
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
+    const iss = url.searchParams.get('iss');
     const oauthError = url.searchParams.get('error');
     if (!code && !oauthError) return false;
 
@@ -265,8 +279,8 @@ window.CloudSync = (function () {
 
     let stored = null;
     try {
-      stored = JSON.parse(sessionStorage.getItem(CFG.pkceKey) || 'null');
-      sessionStorage.removeItem(CFG.pkceKey);
+      stored = JSON.parse(sessionStorage.getItem(CFG.loginKey) || 'null');
+      sessionStorage.removeItem(CFG.loginKey);
     } catch (error) {
       stored = null;
     }
@@ -276,14 +290,10 @@ window.CloudSync = (function () {
     }
 
     try {
-      const token = await tokenRequest({
-        grant_type: 'authorization_code',
-        client_id: CFG.clientId,
-        code: code,
-        redirect_uri: redirectUri(),
-        code_verifier: stored.verifier,
-      });
-      applyToken(token);
+      const body = { code: code, state: state, login_verifier: stored.verifier };
+      if (iss) body.iss = iss;
+      const token = await publicFetch('/auth/callback', { method: 'POST', body: body });
+      applySession(token);
       render();
       toast('登录成功');
       await afterLogin();
@@ -293,26 +303,60 @@ window.CloudSync = (function () {
     return true;
   }
 
+  function tokenIsFresh(candidate) {
+    return !!candidate && !!candidate.access_token && candidate.expires_at - Date.now() > CFG.refreshAheadMs;
+  }
+
+  // 刷新一次：多标签页通过 navigator.locks 串行化；锁内先看别的标签页是否已经换过 RT。
+  async function refreshOnce() {
+    const current = readStoredAuth() || auth;
+    if (!current) throw sessionGone();
+    if (auth && current.refresh_token !== auth.refresh_token && tokenIsFresh(current)) {
+      auth = current;
+      return current.access_token;
+    }
+    let token;
+    try {
+      token = await publicFetch('/auth/refresh', {
+        method: 'POST',
+        body: { refresh_token: current.refresh_token },
+      });
+    } catch (error) {
+      if (error.authCode === 'invalid_token') {
+        // 刚被另一个标签页轮换：重读存储，拿到新 RT 就用它的结果
+        const latest = readStoredAuth();
+        if (latest && latest.refresh_token !== current.refresh_token) {
+          auth = latest;
+          if (tokenIsFresh(latest)) return latest.access_token;
+        }
+      }
+      if (error.authCode) {
+        clearAuth();
+        render();
+        toast('登录状态已失效，请重新登录');
+      }
+      throw error;
+    }
+    applySession(token);
+    render();
+    return auth.access_token;
+  }
+
+  function sessionGone() {
+    const error = new Error('未登录');
+    error.code = 'not_logged_in';
+    return error;
+  }
+
   async function refreshAccessToken() {
-    if (!auth || !auth.refresh_token) throw new Error('未登录');
+    if (!auth) throw sessionGone();
     if (refreshInFlight) return refreshInFlight;
     refreshInFlight = (async function () {
       try {
-        const token = await tokenRequest({
-          grant_type: 'refresh_token',
-          client_id: CFG.clientId,
-          refresh_token: auth.refresh_token,
-        });
-        applyToken(token);
-        render();
-        return auth.access_token;
-      } catch (error) {
-        if (error.status === 400 || error.status === 401) {
-          clearAuth();
-          render();
-          toast('登录已过期，请重新登录');
+        if (navigator.locks && navigator.locks.request) {
+          return await navigator.locks.request('ip-please-auth-refresh', refreshOnce);
         }
-        throw error;
+        return await refreshOnce();
       } finally {
         refreshInFlight = null;
       }
@@ -321,8 +365,8 @@ window.CloudSync = (function () {
   }
 
   async function accessToken() {
-    if (!auth) throw new Error('未登录');
-    if (auth.access_token && auth.expires_at - Date.now() > CFG.refreshAheadMs) return auth.access_token;
+    if (!auth) throw sessionGone();
+    if (tokenIsFresh(auth)) return auth.access_token;
     return refreshAccessToken();
   }
 
@@ -350,52 +394,70 @@ window.CloudSync = (function () {
     return error;
   }
 
-  async function apiFetch(path, options) {
-    const settings = options || {};
-    const send = async function (token) {
-      const headers = { Accept: 'application/json' };
-      if (token) headers.Authorization = 'Bearer ' + token;
-      let payload;
-      if (settings.body !== undefined) {
-        headers['Content-Type'] = 'application/json';
-        payload = JSON.stringify(settings.body);
-      }
-      const response = await fetch(CFG.apiBase + path, {
+  async function send(path, settings, token) {
+    const headers = { Accept: 'application/json' };
+    if (token) headers.Authorization = 'Bearer ' + token;
+    let payload;
+    if (settings.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      payload = JSON.stringify(settings.body);
+    }
+    let response;
+    try {
+      response = await fetch(CFG.apiBase + path, {
         method: settings.method || 'GET',
         headers: headers,
         body: payload,
         cache: 'no-store',
       });
-      const text = await response.text();
-      let body = null;
-      if (text) {
-        try {
-          body = JSON.parse(text);
-        } catch (error) {
-          body = null;
-        }
-      }
-      return { response: response, body: body };
-    };
-
-    let token = await accessToken();
-    let result;
-    try {
-      result = await send(token);
     } catch (error) {
       const networkError = new Error('网络错误，无法连接云同步服务');
       networkError.network = true;
       throw networkError;
     }
+    const text = await response.text();
+    let body = null;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch (error) {
+        body = null;
+      }
+    }
+    return { response: response, body: body };
+  }
+
+  // 不带 Token 的接口（登录、刷新、公告、排行榜）
+  async function publicFetch(path, options) {
+    const result = await send(path, options || {}, null);
+    if (!result.response.ok) throw apiError(result.response, result.body);
+    return result.body;
+  }
+
+  // 公开接口但登录后带上身份（排行榜里的「我的排名」）
+  async function optionalAuthFetch(path, options) {
+    return auth ? apiFetch(path, options) : publicFetch(path, options);
+  }
+
+  async function apiFetch(path, options) {
+    const settings = options || {};
+    let token = await accessToken();
+    let result = await send(path, settings, token);
 
     if (result.response.status === 401 && result.body && result.body.error) {
       const code = result.body.error.code;
       if (code === 'invalid_token') {
         try {
           token = await refreshAccessToken();
-          result = await send(token);
         } catch (error) {
           throw apiError(result.response, result.body);
+        }
+        result = await send(path, settings, token);
+        if (result.response.status === 401 && result.body && result.body.error &&
+            result.body.error.code === 'token_revoked') {
+          clearAuth();
+          render();
+          toast('登录状态已失效，请重新登录');
         }
       } else if (code === 'token_revoked') {
         clearAuth();
@@ -423,7 +485,7 @@ window.CloudSync = (function () {
   // ———————————————————— 本地元数据 ————————————————————
 
   function metaStorageKey() {
-    return CFG.metaKey + ':' + ((auth && auth.subject) || 'anonymous');
+    return CFG.metaKey + ':' + ((auth && auth.user && auth.user.user_id) || 'anonymous');
   }
 
   function loadMeta() {
@@ -656,10 +718,30 @@ window.CloudSync = (function () {
   }
 
   function logout() {
+    const refreshToken = auth && auth.refresh_token;
     clearAuth();
     togglePanel(false);
     render();
-    toast('已退出云同步登录');
+    toast('已退出登录');
+    // 尽力通知后端吊销会话；失败也不影响本地已登出
+    if (refreshToken) {
+      publicFetch('/auth/logout', { method: 'POST', body: { refresh_token: refreshToken } }).catch(() => {});
+    }
+  }
+
+  async function updateNickname(nickname) {
+    try {
+      const me = await apiFetch('/me/profile', { method: 'POST', body: { nickname: nickname } });
+      if (auth) {
+        storeAuth(Object.assign({}, auth, {
+          user: Object.assign({}, auth.user, { nickname: me.nickname, nickname_set: me.nickname_set }),
+        }));
+      }
+      render();
+      toast('昵称已更新为「' + me.nickname + '」');
+    } catch (error) {
+      toast(error.retryAfter ? '改得太频繁了，请 ' + error.retryAfter + ' 秒后再试' : error.message || '修改失败');
+    }
   }
 
   // ———————————————————— 界面 ————————————————————
@@ -679,7 +761,7 @@ window.CloudSync = (function () {
       } else {
         const meta = loadMeta();
         button.textContent = meta ? '云同步 · 第' + meta.day + '天' : '云同步 · 已登录';
-        button.title = auth.name ? '已登录：' + auth.name : '已登录';
+        button.title = '已登录：' + auth.user.nickname;
       }
     }
     renderPanel();
@@ -696,9 +778,20 @@ window.CloudSync = (function () {
       rows.push(CREDIT_HTML);
       rows.push('<div class="row"><button class="primary" data-action="login">登录</button><button data-action="close">关闭</button></div>');
     } else {
-      rows.push('<p>账号：' + escapeHtml(auth.name || auth.subject || '已登录') + '</p>');
-      rows.push('<p>状态：' + (meta ? '第 ' + meta.day + ' 天 · ' + formatTime(meta.synced_at) + ' 已同步' : '尚未同步过') + '</p>');
+      rows.push('<p>昵称：' + escapeHtml(auth.user.nickname) + ' <span class="tag">#' +
+        escapeHtml(auth.user.tag || '') + '</span>' + (auth.user.is_admin ? '（管理员）' : '') + '</p>');
+      rows.push('<div class="row"><input id="cloud-nickname" maxlength="16" placeholder="新昵称（2–16 字）" value="' +
+        escapeHtml(auth.user.nickname_set ? auth.user.nickname : '') + '"><button data-action="nickname">改昵称</button></div>');
+      rows.push('<p>存档：' + (meta ? '第 ' + meta.day + ' 天 · ' + formatTime(meta.synced_at) + ' 已同步' : '尚未同步过') + '</p>');
       rows.push('<div class="row"><button class="primary" data-action="sync">立即同步</button><button data-action="restore">从云端恢复</button></div>');
+      panelSections.forEach((section) => {
+        try {
+          const html = section.render(publicUser());
+          if (html) rows.push(html);
+        } catch (error) {
+          /* 扩展区块出错不影响面板 */
+        }
+      });
       rows.push('<div class="row"><button data-action="logout">退出登录</button><button data-action="close">关闭</button></div>');
       rows.push(CREDIT_HTML);
     }
@@ -746,7 +839,15 @@ window.CloudSync = (function () {
     overlay.innerHTML = '';
   }
 
-  function handleAction(action) {
+  function handleAction(action, target) {
+    if (action === 'nickname') {
+      const input = el('cloud-nickname');
+      updateNickname(input ? input.value : '');
+      return;
+    }
+    for (const section of panelSections) {
+      if (section.onAction && section.onAction(action, target)) return;
+    }
     if (action === 'login') {
       togglePanel(false);
       login();
@@ -762,7 +863,16 @@ window.CloudSync = (function () {
   }
 
   function init() {
-    auth = loadAuth();
+    const hadLegacy = dropLegacyAuth();
+    auth = readStoredAuth();
+    if (hadLegacy && !auth) toast('云同步登录已升级，请重新登录一次', 4200);
+    // 其他标签页登录 / 刷新 / 登出时同步本页状态
+    window.addEventListener('storage', function (event) {
+      if (event.key !== CFG.authKey) return;
+      auth = readStoredAuth();
+      render();
+      notifyAuthChange();
+    });
     const button = el('cloud');
     if (button) {
       // 先打开面板（含原作致谢与登录说明），再由面板里的「登录」跳转 IdP。
@@ -774,7 +884,7 @@ window.CloudSync = (function () {
     if (panel) {
       panel.addEventListener('click', function (event) {
         const target = event.target.closest('button[data-action]');
-        if (target) handleAction(target.dataset.action);
+        if (target) handleAction(target.dataset.action, target);
       });
     }
     render();
@@ -796,5 +906,19 @@ window.CloudSync = (function () {
     syncNow: manualSync,
     restore: manualRestore,
     isLoggedIn: function () { return !!auth; },
+    user: publicUser,
+    // 供无尽模式 / 公告等模块复用的接口与界面
+    api: apiFetch,
+    publicApi: publicFetch,
+    optionalAuthApi: optionalAuthFetch,
+    onAuthChange: function (listener) { authListeners.push(listener); },
+    addPanelSection: function (section) { panelSections.push(section); render(); },
+    openPanel: function () { togglePanel(true); },
+    refreshPanel: renderPanel,
+    promptLogin: function (reason) {
+      if (reason) toast(reason, 4200);
+      togglePanel(true);
+    },
+    ui: { toast: toast, showDialog: showDialog, closeDialog: closeDialog, escapeHtml: escapeHtml },
   };
 })();

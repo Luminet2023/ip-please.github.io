@@ -3,29 +3,45 @@
 //! 规范差异说明：AGENT.md 模板要求所有后端路径以 `/backend-api/` 开头，本项目按部署
 //! 约定改挂在 `/anthropic/v1/` 下（API BASE = https://api.luminet.cn/anthropic/v1）。
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
+use axum::extract::State;
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::Response;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
-use chrono::{SecondsFormat, TimeZone, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::mysql::MySqlRow;
 use sqlx::Row;
 
-use crate::auth::AuthUser;
+use crate::auth::{self, AuthUser};
 use crate::db;
 use crate::error::{detail_error_response, no_store_json, private_json, AppError, DetailCode};
+use crate::extract::{LimitedBytes, PathId, QueryParams};
 use crate::ids;
+use crate::profile;
+use crate::ratelimit::Rule;
+use crate::util::{iso_from_ms, now_ms};
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/anthropic/v1/health", get(health))
+        .route("/anthropic/v1/auth/login", post(auth::routes::login))
+        .route("/anthropic/v1/auth/callback", post(auth::routes::callback))
+        .route("/anthropic/v1/auth/refresh", post(auth::routes::refresh))
+        .route("/anthropic/v1/auth/logout", post(auth::routes::logout))
+        .route(
+            "/anthropic/v1/auth/backchannel-logout",
+            post(auth::routes::backchannel_logout),
+        )
+        .route("/anthropic/v1/me", get(profile::get_me))
+        .route("/anthropic/v1/me/profile", post(profile::update_me))
+        .route(
+            "/anthropic/v1/admin/sessions/revoke",
+            post(auth::routes::admin_revoke_sessions),
+        )
         .route("/anthropic/v1/sync/save", get(get_save).post(put_save))
         .route("/anthropic/v1/sync/snapshots", get(list_snapshots))
         .route("/anthropic/v1/sync/snapshots/{save_id}", get(get_snapshot))
@@ -95,15 +111,8 @@ fn row_to_save(row: &MySqlRow) -> Result<SaveRow, AppError> {
     })
 }
 
-fn iso_from_ms(ms: i64) -> String {
-    Utc.timestamp_millis_opt(ms)
-        .single()
-        .map(|moment| moment.to_rfc3339_opts(SecondsFormat::Millis, true))
-        .unwrap_or_else(|| "1970-01-01T00:00:00.000Z".to_string())
-}
-
 async fn get_save(State(state): State<AppState>, user: AuthUser) -> Result<Response, AppError> {
-    let user_id = db::resolve_user_id(&state.pool, &user.subject).await?;
+    let user_id = user.user_id;
     let row = sqlx::query(
         "SELECT save_id, version, day, payload, updated_at_ms
          FROM ip_please_save_slots WHERE user_id = ?",
@@ -144,7 +153,7 @@ struct SaveUpload {
 async fn put_save(
     State(state): State<AppState>,
     user: AuthUser,
-    body: Bytes,
+    LimitedBytes(body): LimitedBytes,
 ) -> Result<Response, AppError> {
     if body.len() > state.config.max_payload_bytes.saturating_mul(4) {
         return Err(AppError::Detail(DetailCode::RequestTooLarge));
@@ -154,11 +163,11 @@ async fn put_save(
 
     validate_upload(&upload, state.config.max_payload_bytes)?;
 
-    let user_id = db::resolve_user_id(&state.pool, &user.subject).await?;
-    check_rate_limit(&state, &user_id).await?;
+    let user_id = user.user_id;
+    state.limiter.check(sync_upload_rule(&state), &user_id)?;
 
     let payload_text = serde_json::to_string(&upload.payload)?;
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = now_ms();
 
     let mut tx = state.pool.begin().await.map_err(AppError::db)?;
     let current: Option<i64> =
@@ -227,7 +236,7 @@ async fn put_save(
     tx.commit().await.map_err(AppError::db)?;
     tracing::info!(
         user_id = %user_id,
-        actor = user.display_name().unwrap_or(&user.subject),
+        session_id = %user.session_id,
         day = upload.day,
         version,
         "cloud save stored"
@@ -264,25 +273,14 @@ fn validate_upload(upload: &SaveUpload, max_payload_bytes: usize) -> Result<(), 
     Ok(())
 }
 
-async fn check_rate_limit(state: &AppState, user_id: &str) -> Result<(), AppError> {
-    let limit = state.config.rate_limit_seconds;
-    if limit == 0 {
-        return Ok(());
+/// 日终上传：每个用户 `SYNC_RATE_LIMIT_SECONDS` 秒内最多一次（0 关闭）。
+fn sync_upload_rule(state: &AppState) -> Rule {
+    Rule {
+        bucket: "sync_upload",
+        limit: u32::from(state.config.rate_limit_seconds > 0),
+        window: Duration::from_secs(state.config.rate_limit_seconds),
+        code: DetailCode::SyncRateLimited,
     }
-    let mut guard = state.rate.lock().await;
-    let now = Instant::now();
-    guard.retain(|_, at| now.duration_since(*at) < Duration::from_secs(3600));
-    if let Some(at) = guard.get(user_id) {
-        let elapsed = now.duration_since(*at).as_secs();
-        if elapsed < limit {
-            return Err(AppError::DetailRetryAfter(
-                DetailCode::SyncRateLimited,
-                limit - elapsed,
-            ));
-        }
-    }
-    guard.insert(user_id.to_string(), now);
-    Ok(())
 }
 
 // ———————————————————— 快照列表 / 详情 ————————————————————
@@ -296,10 +294,10 @@ struct SnapshotQuery {
 async fn list_snapshots(
     State(state): State<AppState>,
     user: AuthUser,
-    Query(query): Query<SnapshotQuery>,
+    QueryParams(query): QueryParams<SnapshotQuery>,
 ) -> Result<Response, AppError> {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
-    let user_id = db::resolve_user_id(&state.pool, &user.subject).await?;
+    let user_id = user.user_id;
 
     let rows = sqlx::query(
         "SELECT save_id, version, day, created_at_ms
@@ -345,10 +343,10 @@ async fn list_snapshots(
 async fn get_snapshot(
     State(state): State<AppState>,
     user: AuthUser,
-    Path(save_id): Path<String>,
+    PathId(save_id): PathId,
 ) -> Result<Response, AppError> {
     ids::require(&save_id, ids::PREFIX_SAVE)?;
-    let user_id = db::resolve_user_id(&state.pool, &user.subject).await?;
+    let user_id = user.user_id;
 
     let row = sqlx::query(
         "SELECT save_id, version, day, payload, created_at_ms AS updated_at_ms

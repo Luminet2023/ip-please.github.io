@@ -5,21 +5,38 @@ edition = "2021"
 rust-version = "1.85"
 description = "IP, PLEASE cloud save sync backend"
 
+[lib]
+name = "ip_please_sync"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ip-please-sync"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1"
 axum = "0.8"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+hex = "0.4"
+hmac = "0.12"
 jsonwebtoken = "9"
 rand = "0.8"
+rand_chacha = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_urlencoded = "0.7"
+sha2 = "0.10"
+subtle = "2"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "mysql", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time", "net"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 lto = "thin"

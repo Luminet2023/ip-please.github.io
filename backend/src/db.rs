@@ -10,7 +10,12 @@ use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 use crate::error::{AppError, DetailCode};
 use crate::ids;
 
-const MIGRATION_SQL: &str = include_str!("../migrations/001_init.sql");
+/// 按顺序执行的建表脚本。只新增表、不 ALTER 已有表（没有版本表，每次启动全部重跑）；
+/// 注释里不能出现分号（按分号切分语句）。
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("001_init", include_str!("../migrations/001_init.sql")),
+    ("002_auth", include_str!("../migrations/002_auth.sql")),
+];
 
 /// 启动时 MySQL 可能还没就绪（docker compose 拉起顺序不定），带重试连接。
 pub async fn connect_with_retry(url: &str) -> anyhow::Result<MySqlPool> {
@@ -37,19 +42,29 @@ pub async fn connect_with_retry(url: &str) -> anyhow::Result<MySqlPool> {
     Err(anyhow::Error::new(err).context("could not connect to MySQL after retries"))
 }
 
-/// 幂等建表。SQL 文件按分号切分，行注释先剥离。
-pub async fn migrate(pool: &MySqlPool) -> anyhow::Result<()> {
-    let cleaned = MIGRATION_SQL
+/// 把一个 SQL 文件拆成语句：先剥离整行注释，再按分号切分。
+fn statements(sql: &str) -> Vec<String> {
+    let cleaned = sql
         .lines()
         .filter(|line| !line.trim_start().starts_with("--"))
         .collect::<Vec<_>>()
         .join("\n");
-    for statement in cleaned.split(';') {
-        let statement = statement.trim();
-        if statement.is_empty() {
-            continue;
+    cleaned
+        .split(';')
+        .map(str::trim)
+        .filter(|statement| !statement.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// 幂等建表（`CREATE TABLE IF NOT EXISTS`），每次启动执行。
+pub async fn migrate(pool: &MySqlPool) -> anyhow::Result<()> {
+    for (name, sql) in MIGRATIONS {
+        for statement in statements(sql) {
+            sqlx::query(&statement).execute(pool).await.map_err(|err| {
+                anyhow::Error::new(err).context(format!("migration {name} failed"))
+            })?;
         }
-        sqlx::query(statement).execute(pool).await?;
     }
     tracing::info!("database schema is up to date");
     Ok(())
@@ -90,4 +105,23 @@ pub async fn resolve_user_id(pool: &MySqlPool, subject: &str) -> Result<String, 
 
 pub fn payload_too_large() -> AppError {
     AppError::Detail(DetailCode::SyncPayloadTooLarge)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrations_split_into_create_statements() {
+        for (name, sql) in MIGRATIONS {
+            let parts = statements(sql);
+            assert!(!parts.is_empty(), "{name} is empty");
+            for statement in parts {
+                assert!(
+                    statement.starts_with("CREATE TABLE IF NOT EXISTS"),
+                    "{name}: only idempotent CREATE TABLE is allowed, got: {statement}"
+                );
+            }
+        }
+    }
 }

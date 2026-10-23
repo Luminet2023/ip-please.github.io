@@ -10,6 +10,11 @@ use crate::error::{AppError, DetailCode};
 
 pub const PREFIX_USER: &str = "user";
 pub const PREFIX_SAVE: &str = "save";
+pub const PREFIX_SESSION: &str = "sess";
+pub const PREFIX_ANNOUNCEMENT: &str = "ann";
+pub const PREFIX_RUN: &str = "run";
+pub const PREFIX_ENTRANT: &str = "ent";
+pub const PREFIX_WAVE: &str = "wave";
 
 const SUFFIX_LEN: usize = 22;
 
@@ -49,12 +54,20 @@ mod tests {
 
     #[test]
     fn generated_ids_match_registry_format() {
-        for prefix in [PREFIX_USER, PREFIX_SAVE] {
+        for prefix in [
+            PREFIX_USER,
+            PREFIX_SAVE,
+            PREFIX_SESSION,
+            PREFIX_ANNOUNCEMENT,
+            PREFIX_RUN,
+            PREFIX_ENTRANT,
+            PREFIX_WAVE,
+        ] {
             let id = generate(prefix);
             assert!(is_valid(&id, prefix), "{id} should be valid");
             assert_eq!(id.split('_').count(), 2);
             assert!(!is_valid(&id, "USE"));
-            assert!(!is_valid(&id, "user_"));
+            assert!(!is_valid(&id, &format!("{prefix}_")));
         }
     }
 
