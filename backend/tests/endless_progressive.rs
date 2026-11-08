@@ -243,3 +243,23 @@ fn v3_golden_and_full_daily_keep_40_travelers_with_wave_progress_separate() {
     assert_eq!(v3::slot(23), Slot::Wave(0));
     assert_eq!(v3::slot(24), Slot::Traveler(23));
 }
+
+#[test]
+fn all_new_visible_constitution_fields_accept_incorrect_comparisons() {
+    use ip_please_sync::endless::state::Claim;
+    let mut s = RunState::new(Mode::Endless, &[13; 32], None);
+    s.slot = 37;
+    s.travelers = 35;
+    s.next(0, &mut |_| "ent_test".into()).unwrap();
+    for key in ["rule.photo", "rule.wanted", "rule.bulletin"] {
+        let response = s.inspect(
+            "ent_test",
+            Claim::Fields(vec![key.into(), "pp.name".into()]),
+        );
+        assert!(
+            response.is_ok(),
+            "visible constitution field {key}: {response:?}"
+        );
+        assert_eq!(response.unwrap()["match"], false);
+    }
+}

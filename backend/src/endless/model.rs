@@ -173,7 +173,7 @@ pub struct Secret {
 
 /// 检查模式可以点选的字段（输入白名单）。
 pub fn is_known_field(key: &str) -> bool {
-    const FIELDS: [&str; 47] = [
+    const FIELDS: [&str; 50] = [
         "ep.holder",
         "ep.purpose",
         "ep.exp",
@@ -208,6 +208,9 @@ pub fn is_known_field(key: &str) -> bool {
         "xr.rice",
         "xr.lunch",
         "rule.region",
+        "rule.photo",
+        "rule.wanted",
+        "rule.bulletin",
         "rule.tz",
         "rule.quiz",
         "rule.pay",

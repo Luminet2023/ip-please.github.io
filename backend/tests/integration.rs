@@ -1200,8 +1200,25 @@ async fn progressive_api_unlocks_after_settlement_and_resumes_frozen_v2_wave() {
             assert_eq!(settled["run"]["progression"]["new_rules"], json!(["tz"]));
         }
     }
+    // Position an explicit v3 stage fixture and send every newly visible book field through HTTP.
+    sqlx::query("UPDATE ip_please_endless_runs SET state_json=JSON_SET(state_json,'$.slot',37,'$.travelers',35) WHERE run_id=?")
+        .bind(run_id).execute(&pool).await.unwrap();
+    let next = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{run_id}/next"),
+        Some(&player.access_token),
+        None,
+    )
+    .await;
+    assert_eq!(next.body["run"]["progression"]["stage"], 7);
+    for field in ["rule.photo", "rule.wanted", "rule.bulletin"] {
+        let compared=call(&state,"POST",&format!("/anthropic/v1/endless/runs/{run_id}/inspect"),Some(&player.access_token),Some(json!({"entrant_id":next.body["item"]["entrant"]["entrant_id"],"fields":[field,"pp.name"]}))).await;
+        assert_eq!(compared.status, StatusCode::OK, "{}", compared.text);
+        assert_eq!(compared.body["match"], false);
+    }
     // This is an explicitly persisted legacy fixture: new clients must resume v2.
-    sqlx::query("UPDATE ip_please_endless_runs SET generator_version=2,state_json=JSON_SET(state_json,'$.generator_version',2,'$.slot',8) WHERE run_id=?")
+    sqlx::query("UPDATE ip_please_endless_runs SET generator_version=2,state_json=JSON_SET(state_json,'$.generator_version',2,'$.slot',8,'$.current',null) WHERE run_id=?")
         .bind(run_id).execute(&pool).await.unwrap();
     let legacy = call(
         &state,
