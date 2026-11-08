@@ -22,7 +22,7 @@ const out=process.env.BROWSER_ARTIFACTS||'/tmp/ip-please-task3-browser';fs.mkdir
   await frame.locator('#cloud-panel').getByRole('button',{name:'Close',exact:true}).click();
   await frame.locator('#full').click();await frame.locator('#mute').click();await page.waitForTimeout(400);
   await click(390,304);await frame.locator('#cloud-overlay').getByRole('button',{name:'Leaderboard',exact:true}).click();
-  await frame.locator('.board li').first().waitFor();assert.match(await frame.locator('.dialog h2').innerText(),/LINUX DO sandbox/);await frame.locator('.board img').waitFor();
+  await frame.locator('.board li').first().waitFor();assert.match(await frame.locator('.dialog h2').innerText(),/LINUX DO.*Shared leaderboard/);await frame.locator('.board img').waitFor();
   await frame.getByRole('button',{name:'This week',exact:true}).click();await frame.locator('.board li').first().waitFor();
   await page.screenshot({path:path.join(out,name+'-leaderboard.png')});
   await frame.locator('#cloud-overlay').getByRole('button',{name:'Close',exact:true}).click();await page.waitForTimeout(350);await click(390,304);

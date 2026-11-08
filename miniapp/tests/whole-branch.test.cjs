@@ -116,13 +116,13 @@ test('two actual hosts replay one request with its journal delayed past the othe
  const retryB=b.retryPending();await turn();assert.equal(typeof releaseB,'function');await a.retryPending();assert.equal((await createMiniAppHost(p.sdk)).pending().length,0);
  releaseB();await retryB;assert.deepEqual(ids,[id,id]);const c=await createMiniAppHost(p.sdk);assert.equal(c.pending().length,0);assert.equal(JSON.parse(c.storage.getItem('ip-please-sync-meta-v1:'+user.user_id)).version,5);
 });
-test('exported records isolate exact account and channel prefixes',async()=>{
+test('exported records share channel prefixes while isolating accounts',async()=>{
  const p=platform(),a=await createMiniAppHost(p.sdk);a.storage.setItem(saveKey,'{"day":7}');await a.flush();
  const original=p.sdk.http.request;p.sdk.http.request=async(n,o)=>n==='bootstrap'?{status:200,body:{channel:'production',user}}:original(n,o);
- const production=await createMiniAppHost(p.sdk);assert.equal(production.storage.getItem(saveKey),null);production.storage.setItem('ip-please-lang','ja');await production.flush();
+ const production=await createMiniAppHost(p.sdk);assert.equal(production.storage.getItem(saveKey),'{"day":7}');production.storage.setItem('ip-please-lang','ja');await production.flush();
  const other={...user,user_id:user.user_id+'x'};p.sdk.http.request=async(n,o)=>n==='bootstrap'?{status:200,body:{channel:'sandbox',user:other}}:n==='profile'?{status:200,body:other}:original(n,o);
  const account=await createMiniAppHost(p.sdk);assert.equal(account.storage.getItem(saveKey),null);assert.equal(account.storage.getItem('ip-please-lang'),null);
- p.sdk.http.request=original;const reopened=await createMiniAppHost(p.sdk);assert.equal(reopened.storage.getItem(saveKey),'{"day":7}');assert.equal(reopened.storage.getItem('ip-please-lang'),null);
+ p.sdk.http.request=original;const reopened=await createMiniAppHost(p.sdk);assert.equal(reopened.storage.getItem(saveKey),'{"day":7}');assert.equal(reopened.storage.getItem('ip-please-lang'),'ja');
 });
 for(const status of [200,409])test('keep-local network failure invalidates old cloud choice and recovers replacement '+status,async t=>{
  const p=platform(),local={day:2,plot:{}},remote={day:7,plot:{}},calls=[];
