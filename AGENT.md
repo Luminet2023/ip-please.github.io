@@ -390,7 +390,7 @@ CI 要求（main 分支必须保持绿）：
 - `MAPP_APP_ID` 默认 `01a1baa6-abbf-7ed6-afac-bfa495a47dd3`。Issuer 固定 `https://linux.do`，
   audience 固定 `https://api.luminet.cn`，公钥只从 `https://linux.do/mini-app-api/jwks` 获取；
   不读取请求里的 Host、转发头、JWKS URL 或 channel 来配置验签。CORS 允许 `https://linux.do`。
-- `bootstrap` 返回 `{user, announcements:[], daily, active_run}`；`profile` 只接受
+- `bootstrap` 返回 `{channel, user, announcements:[], daily, active_run}`，`channel` 只取已验签 Principal 的 `sandbox|production`；`profile` 只接受
   `{id: string, username: string, name?: string|null}`，`id` 必须等于已验签 `sub`，直接返回 user 对象。
   User 包含 `user_id, linuxdo_id: string, display_name, avatar_url: null, tag`，无管理员、会话、AT/RT。
 - `query` 的 `op` 白名单：`save / snapshots / snapshot / run_current / run / daily / leaderboard / announcements`；

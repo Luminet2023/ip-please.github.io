@@ -17,3 +17,5 @@ const STORAGE_KEYS = Object.freeze({
 });
 
 if (typeof module !== 'undefined' && module.exports) module.exports = { MOD, STORAGE_KEYS };
+
+const gameStorage = globalThis.GameHost ? globalThis.GameHost.storage : globalThis.localStorage;

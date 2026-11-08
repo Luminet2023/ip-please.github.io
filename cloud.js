@@ -24,12 +24,30 @@ window.CloudSync = (function () {
   };
 
   // 原作仓库、零号档案 mod 与致谢文案：登录面板里必须保留，说明本版合并了哪些内容。
-  const CREDIT_HTML =
-    '<p class="credit">本页基于 <a href="https://github.com/ip-please/ip-please.github.io" ' +
-    'target="_blank" rel="noopener noreferrer">ip-please/ip-please.github.io</a> 二次开发，' +
-    '合并了茗（<a href="https://github.com/wess09/ip-please-zero" target="_blank" rel="noopener noreferrer">wess09</a>）' +
-    '的《零号档案 · File Zero》，并新增云存档同步功能；' +
-    '游戏本体、剧本与美术素材版权归原作者与 mod 作者，特此致谢。</p>';
+  const platform = !!(window.GameHost && GameHost.isMiniApp);
+  const tr = (text, ...args) => typeof T === 'function' ? T(text, ...args) : String(text).replace(/\{(\d)\}/g, (_, i) => args[i]);
+  function node(tag, text, cls) {
+    const n = document.createElement(tag);
+    if (text !== undefined) n.textContent = tr(text);
+    if (cls) n.className = cls;
+    return n;
+  }
+  function actionButton(label, action, primary) {
+    const b = node('button', label, primary ? 'primary' : '');
+    b.type = 'button'; b.dataset.action = action; return b;
+  }
+  function credits() {
+    const p = node('p', undefined, 'credit');
+    p.append(document.createTextNode(tr('本页基于 ')));
+    for (const [i, title, url] of [[0, 'ip-please/ip-please.github.io', 'https://github.com/ip-please/ip-please.github.io'], [1, 'wess09', 'https://github.com/wess09/ip-please-zero']]) {
+      if (i) p.append(document.createTextNode(tr(' 二次开发，合并了茗（')));
+      const a = node('a', title); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      if (platform) a.addEventListener('click', e => { e.preventDefault(); GameHost.openLink(url).catch(e => toast(e.message)); });
+      p.append(a);
+    }
+    p.append(document.createTextNode(tr('）的《零号档案 · File Zero》，并新增云存档同步功能；游戏本体、剧本与美术素材版权归原作者与 mod 作者，特此致谢。')));
+    return p;
+  }
 
   // DetailErrorResponse.detail -> 业务错误码，与 backend/src/error.rs 的登记表一一对应。
   const BUSINESS_ERROR_CODES = {
@@ -97,7 +115,7 @@ window.CloudSync = (function () {
 
   // 名字来自 IdP；升级前存下的登录态还没有 display_name，下次刷新 Token 后补上。
   function displayName(user) {
-    return (user && user.display_name) || '审查员';
+    return (user && user.display_name) || tr('审查员');
   }
 
   const AVATAR_COLORS = ['#7a3b2a', '#3b5a7a', '#4a6b3a', '#6b4a7a', '#7a6a2a', '#2a6b6b'];
@@ -109,6 +127,21 @@ window.CloudSync = (function () {
     fallback.setAttribute('aria-hidden', 'true');
     fallback.textContent = Array.from(displayName(user))[0].toUpperCase();
     fallback.style.background = AVATAR_COLORS[(parseInt(user && user.tag, 16) || 0) % AVATAR_COLORS.length];
+    if (platform) {
+      const slot = node('span', undefined, 'avatar-slot'); slot.append(fallback);
+      const load = async () => {
+        const url = await GameHost.avatar(user && user.linuxdo_id);
+        if (!url || !slot.isConnected) return;
+        const img = node('img', undefined, 'avatar'); img.alt = '';
+        img.addEventListener('error', () => img.replaceWith(fallback), { once: true }); img.src = url;
+        slot.replaceChildren(img);
+      };
+      if (typeof IntersectionObserver === 'function') {
+        const observer = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) { observer.disconnect(); load(); } });
+        observer.observe(slot);
+      } else { setTimeout(load, 0); }
+      return slot;
+    }
     const url = user && user.avatar_url;
     if (typeof url !== 'string' || !/^https:\/\//i.test(url)) return fallback;
     const img = document.createElement('img');
@@ -146,7 +179,7 @@ window.CloudSync = (function () {
   function toast(message, durationMs) {
     const node = el('toast');
     if (!node) return;
-    node.textContent = message;
+    node.textContent = tr(message);
     node.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => node.classList.remove('show'), durationMs || 3200);
@@ -174,7 +207,7 @@ window.CloudSync = (function () {
 
   function readStoredAuth() {
     try {
-      const stored = JSON.parse(localStorage.getItem(CFG.authKey) || 'null');
+      const stored = JSON.parse(gameStorage.getItem(CFG.authKey) || 'null');
       return stored && stored.refresh_token && stored.user && stored.user.user_id ? stored : null;
     } catch (error) {
       return null;
@@ -195,7 +228,7 @@ window.CloudSync = (function () {
   function storeAuth(next) {
     auth = next;
     try {
-      localStorage.setItem(CFG.authKey, JSON.stringify(next));
+      gameStorage.setItem(CFG.authKey, JSON.stringify(next));
     } catch (error) {
       /* 隐私模式下存不了也不影响本次使用 */
     }
@@ -205,7 +238,7 @@ window.CloudSync = (function () {
   function clearAuth() {
     auth = null;
     try {
-      localStorage.removeItem(CFG.authKey);
+      gameStorage.removeItem(CFG.authKey);
     } catch (error) {
       /* ignore */
     }
@@ -230,8 +263,8 @@ window.CloudSync = (function () {
   // 旧版（前端直连 IdP）的登录态不再可用：清掉并提示重新登录一次。
   function dropLegacyAuth() {
     try {
-      if (localStorage.getItem(CFG.legacyAuthKey) === null) return false;
-      localStorage.removeItem(CFG.legacyAuthKey);
+      if (gameStorage.getItem(CFG.legacyAuthKey) === null) return false;
+      gameStorage.removeItem(CFG.legacyAuthKey);
       return true;
     } catch (error) {
       return false;
@@ -246,6 +279,7 @@ window.CloudSync = (function () {
   }
 
   async function login() {
+    if (platform) { togglePanel(true); return; }
     if (!window.crypto || !crypto.subtle) {
       toast('当前环境不支持安全登录（需要 HTTPS）');
       return;
@@ -258,7 +292,7 @@ window.CloudSync = (function () {
         body: { login_challenge: await sha256b64url(verifier), redirect_uri: redirectUri() },
       });
     } catch (error) {
-      toast('无法发起登录：' + (error.message || '网络错误'), 4200);
+      toast(tr('无法发起登录：') + (error.message || '网络错误'), 4200);
       return;
     }
     let target;
@@ -300,7 +334,7 @@ window.CloudSync = (function () {
     history.replaceState(null, '', url.pathname + (url.search || '') + url.hash);
 
     if (oauthError) {
-      toast('登录未完成：' + (description || oauthError), 4200);
+      toast(tr('登录未完成：') + (description || oauthError), 4200);
       return true;
     }
 
@@ -325,7 +359,7 @@ window.CloudSync = (function () {
       toast('登录成功');
       await afterLogin();
     } catch (error) {
-      toast('登录失败：' + (error.message || '网络错误'), 4200);
+      toast(tr('登录失败：') + (error.message || '网络错误'), 4200);
     }
     return true;
   }
@@ -408,13 +442,13 @@ window.CloudSync = (function () {
     error.status = response.status;
     if (body && body.error && body.error.code) {
       error.authCode = body.error.code;
-      error.message = AUTH_ERROR_TEXT[error.authCode] || body.error.message || error.message;
+      error.message = tr(AUTH_ERROR_TEXT[error.authCode] || body.error.message || error.message);
     } else if (body && typeof body.detail === 'string') {
       error.code = businessErrorCodeFromDetail(body.detail);
-      error.message = BUSINESS_ERROR_TEXT[error.code] || body.detail;
+      error.message = tr(BUSINESS_ERROR_TEXT[error.code] || body.detail);
     } else {
       error.code = 'gateway_error';
-      error.message = '云同步服务暂时不可用（HTTP ' + response.status + '）';
+      error.message = tr('云同步服务暂时不可用（HTTP {0}）', response.status);
     }
     const retryAfter = Number(response.headers.get('Retry-After'));
     if (retryAfter > 0) error.retryAfter = retryAfter;
@@ -427,6 +461,7 @@ window.CloudSync = (function () {
   // - 不设 fetch 的 cache 选项：cache: 'no-store' 会让 Chrome 跳过预检缓存，每次都重新预检。
   //   接口响应自带 Cache-Control: no-store，浏览器本来就不会缓存数据。
   async function send(path, settings, token) {
+    if (platform) return GameHost.request(path, settings);
     const headers = { Accept: 'application/json' };
     if (token) headers.Authorization = 'Bearer ' + token;
     const payload = settings.body === undefined ? undefined : JSON.stringify(settings.body);
@@ -468,6 +503,11 @@ window.CloudSync = (function () {
 
   async function apiFetch(path, options) {
     const settings = options || {};
+    if (platform) {
+      const result = await GameHost.request(path, settings);
+      if (!result.response.ok) throw apiError(result.response, result.body);
+      return result.body;
+    }
     let token = await accessToken();
     let result = await send(path, settings, token);
 
@@ -517,7 +557,7 @@ window.CloudSync = (function () {
 
   function loadMeta() {
     try {
-      const meta = JSON.parse(localStorage.getItem(metaStorageKey()) || 'null');
+      const meta = JSON.parse(gameStorage.getItem(metaStorageKey()) || 'null');
       return meta && typeof meta.version === 'number' ? meta : null;
     } catch (error) {
       return null;
@@ -526,7 +566,7 @@ window.CloudSync = (function () {
 
   function saveMeta(meta) {
     try {
-      localStorage.setItem(metaStorageKey(), JSON.stringify(meta));
+      gameStorage.setItem(metaStorageKey(), JSON.stringify(meta));
     } catch (error) {
       /* ignore */
     }
@@ -534,7 +574,7 @@ window.CloudSync = (function () {
 
   function loadLocalSave() {
     try {
-      const saved = JSON.parse(localStorage.getItem(CFG.saveKey) || 'null');
+      const saved = JSON.parse(gameStorage.getItem(CFG.saveKey) || 'null');
       return saved && typeof saved.day === 'number' ? saved : null;
     } catch (error) {
       return null;
@@ -563,14 +603,15 @@ window.CloudSync = (function () {
 
   function applyCloudSave(server) {
     try {
-      localStorage.setItem(CFG.saveKey, JSON.stringify(server.payload));
+      gameStorage.setItem(CFG.saveKey, JSON.stringify(server.payload));
     } catch (error) {
       toast('本机无法写入存档（隐私模式？）');
       return;
     }
     saveMeta(metaFromServer(server));
     toast('已载入云端存档，正在重新载入…');
-    setTimeout(() => location.reload(), 450);
+    if (platform) GameHost.transition(() => GameHost.reload());
+    else setTimeout(() => location.reload(), 450);
   }
 
   // ———————————————————— 同步主流程 ————————————————————
@@ -589,22 +630,22 @@ window.CloudSync = (function () {
       const result = await uploadSave(snapshot, baseVersion);
       saveMeta(metaFromServer(result));
       render();
-      const label = reason === 'ending' ? '结局存档' : '第 ' + result.day + ' 天存档';
-      toast(label + '已同步到云端');
+      const label = reason === 'ending' ? '结局存档' : tr('第 {0} 天存档', result.day);
+      toast(tr('{0}已同步到云端', label));
     } catch (error) {
       if (error.status === 409) {
         await handleConflict(state, reason);
         return;
       }
       if (error.code === 'sync_rate_limited') {
-        toast('同步太频繁了，请 ' + (error.retryAfter || 3) + ' 秒后再试');
+        toast(tr('同步太频繁了，请 {0} 秒后再试', error.retryAfter || 3));
         return;
       }
       if (error.authCode) {
         toast(error.message || '登录状态异常');
         return;
       }
-      toast('云同步失败：' + (error.message || '网络错误'), 4200);
+      toast(tr('云同步失败：') + (error.message || '网络错误'), 4200);
     } finally {
       busy = false;
     }
@@ -616,13 +657,13 @@ window.CloudSync = (function () {
       const result = await uploadSave(snapshot, serverVersion);
       saveMeta(metaFromServer(result));
       render();
-      toast('已用本机存档覆盖云端（第 ' + result.day + ' 天）');
+      toast(tr('已用本机存档覆盖云端（第 {0} 天）', result.day));
     } catch (error) {
       if (error.status === 409) {
         toast('云端又更新了，请再试一次');
         return;
       }
-      toast('覆盖失败：' + (error.message || '网络错误'));
+      toast(tr('覆盖失败：') + (error.message || '网络错误'));
     }
   }
 
@@ -631,7 +672,7 @@ window.CloudSync = (function () {
     try {
       server = await fetchLatest();
     } catch (error) {
-      toast('云端存档冲突，但读取失败：' + (error.message || '网络错误'));
+      toast(tr('云端存档冲突，但读取失败：') + (error.message || '网络错误'));
       return;
     }
     if (!isRestorable(server.payload)) {
@@ -642,8 +683,8 @@ window.CloudSync = (function () {
     showDialog({
       title: title,
       paragraphs: [
-        '云端已有一份更新的存档：第 ' + server.day + ' 天（' + formatTime(server.updated_at) + '）。',
-        '本机刚结束的是第 ' + localState.day + ' 天。要保留哪一份？',
+        tr('云端已有一份更新的存档：第 {0} 天（{1}）。', server.day, formatTime(server.updated_at)),
+        tr('本机刚结束的是第 {0} 天。要保留哪一份？', localState.day),
         '选「用云端存档」会覆盖本机进度并重新载入；选「保留本机」会把本机进度上传并覆盖云端。',
       ],
       buttons: [
@@ -665,16 +706,16 @@ window.CloudSync = (function () {
     } catch (error) {
       if (error.status === 404) {
         const local = loadLocalSave();
-        toast(local ? '已登录，日终会自动同步第 ' + local.day + ' 天存档' : '已登录，下一局日终会自动同步');
+        toast(local ? tr('已登录，日终会自动同步第 {0} 天存档', local.day) : '已登录，下一局日终会自动同步');
         return;
       }
-      toast('读取云端存档失败：' + (error.message || '网络错误'));
+      toast(tr('读取云端存档失败：') + (error.message || '网络错误'));
       return;
     }
 
     if (!isRestorable(server.payload)) {
       saveMeta(metaFromServer(server));
-      toast('已登录。' + unrestorableReason(server.payload) + '，日终会用本机进度覆盖', 4200);
+      toast(tr('已登录。{0}，日终会用本机进度覆盖', unrestorableReason(server.payload)), 4200);
       return;
     }
 
@@ -689,7 +730,7 @@ window.CloudSync = (function () {
     showDialog({
       title: '发现云端存档',
       paragraphs: [
-        '云端存档在第 ' + server.day + ' 天（' + formatTime(server.updated_at) + '），本机进度是第 ' + localDay + ' 天。',
+        tr('云端存档在第 {0} 天（{1}），本机进度是第 {2} 天。', server.day, formatTime(server.updated_at), localDay),
         '要载入云端存档继续玩吗？',
       ],
       buttons: [
@@ -700,6 +741,42 @@ window.CloudSync = (function () {
         },
       ],
     });
+  }
+
+  async function retryPending() {
+    try {
+      const results = await GameHost.retryPending();
+      render();
+      const failed = results.find(r => !r.response.ok);
+      if (failed) {
+        if (failed.response.status === 409 && failed.operation?.op === 'save') { await handleConflict(failed.operation.args.payload, 'manual'); return; }
+        if ([404,409].includes(failed.response.status) && failed.operation?.op.startsWith('run_')) { if (window.Endless) Endless.resume(); return; }
+        throw apiError(failed.response, failed.body);
+      }
+      if (results.some(r => r.operation?.op.startsWith('run_') || r.operation?.op === 'wave_result') && window.Endless) Endless.resume();
+      toast('待确认操作已恢复');
+    } catch (error) { toast(error.message || '网络错误'); }
+  }
+
+  async function showSnapshots() {
+    try {
+      const result = await apiFetch('/sync/snapshots?limit=50');
+      showDialog({ title: '历史快照', paragraphs: [], buttons: [{label:'关闭', onClick:closeDialog}] });
+      const dialog = el('cloud-overlay').querySelector('.dialog');
+      const list = node('div', undefined, 'snapshots');
+      for (const snap of result.snapshots || []) {
+        const b = node('button', tr('第 {0} 天 · {1}', snap.day, formatTime(snap.created_at))); b.type = 'button';
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          try {
+            const saved = await apiFetch('/sync/snapshots/' + encodeURIComponent(snap.save_id));
+            if (!isRestorable(saved.payload)) { toast(unrestorableReason(saved.payload)); return; }
+            showDialog({title:'从云端恢复', paragraphs:['载入后本机当前进度会被覆盖。'], buttons:[{label:'载入云端',onClick:()=>{closeDialog();applyCloudSave(saved);}}, {label:'取消',onClick:closeDialog}]});
+          } catch(error) {toast(error.message);} finally {b.disabled=false;}
+        }); list.append(b);
+      }
+      dialog.insertBefore(list, dialog.lastChild);
+    } catch(error) { toast(error.message || '网络错误'); }
   }
 
   function onDayEnd(state) {
@@ -724,17 +801,17 @@ window.CloudSync = (function () {
     try {
       server = await fetchLatest();
     } catch (error) {
-      toast(error.status === 404 ? '云端还没有存档' : '读取云端存档失败：' + (error.message || '网络错误'));
+      toast(error.status === 404 ? '云端还没有存档' : tr('读取云端存档失败：') + (error.message || '网络错误'));
       return;
     }
     if (!isRestorable(server.payload)) {
-      toast(unrestorableReason(server.payload) + '，没有可以接着玩的进度');
+      toast(tr('{0}，没有可以接着玩的进度', unrestorableReason(server.payload)));
       return;
     }
     showDialog({
       title: '从云端恢复',
       paragraphs: [
-        '云端存档在第 ' + server.day + ' 天（' + formatTime(server.updated_at) + '）。',
+        tr('云端存档在第 {0} 天（{1}）。', server.day, formatTime(server.updated_at)),
         '载入后本机当前进度会被覆盖。',
       ],
       buttons: [
@@ -745,6 +822,7 @@ window.CloudSync = (function () {
   }
 
   function logout() {
+    if (platform) { togglePanel(false); return; }
     const refreshToken = auth && auth.refresh_token;
     clearAuth();
     togglePanel(false);
@@ -768,12 +846,12 @@ window.CloudSync = (function () {
     const button = el('cloud');
     if (button) {
       if (!auth) {
-        button.textContent = '云同步';
+        button.textContent = tr('云同步');
         button.title = '';
       } else {
         const meta = loadMeta();
-        button.textContent = meta ? '云同步 · 第' + meta.day + '天' : '云同步 · 已登录';
-        button.title = '已登录：' + displayName(auth.user);
+        button.textContent = meta ? tr('云同步 · 第 {0} 天', meta.day) : tr('云同步 · 已登录');
+        button.title = tr('已登录：{0}', displayName(auth.user));
       }
     }
     renderPanel();
@@ -783,31 +861,24 @@ window.CloudSync = (function () {
     const panel = el('cloud-panel');
     if (!panel || panel.hidden) return;
     const meta = loadMeta();
-    const rows = [];
-    rows.push('<h2>云同步</h2>');
+    panel.replaceChildren(node('h2', platform ? 'LINUX DO · 云同步' : '云同步'));
+    const row = (...buttons) => { const r = node('div', undefined, 'row'); r.append(...buttons); panel.append(r); };
     if (!auth) {
-      rows.push('<p>登录后可把每日存档备份到云端，换设备也能接着玩。</p>');
-      rows.push(CREDIT_HTML);
-      rows.push('<div class="row"><button class="primary" data-action="login">登录</button><button data-action="close">关闭</button></div>');
+      panel.append(node('p', '登录后可把每日存档备份到云端，换设备也能接着玩。'), credits());
+      row(actionButton('登录', 'login', true), actionButton('关闭', 'close'));
     } else {
-      rows.push('<div class="who"><span class="avatar-slot"></span><span class="name">' +
-        escapeHtml(displayName(auth.user)) + '</span>' + (auth.user.is_admin ? '<span class="tag">管理员</span>' : '') + '</div>');
-      rows.push('<p>存档：' + (meta ? '第 ' + meta.day + ' 天 · ' + formatTime(meta.synced_at) + ' 已同步' : '尚未同步过') + '</p>');
-      rows.push('<div class="row"><button class="primary" data-action="sync">立即同步</button><button data-action="restore">从云端恢复</button></div>');
-      panelSections.forEach((section) => {
-        try {
-          const html = section.render(publicUser());
-          if (html) rows.push(html);
-        } catch (error) {
-          /* 扩展区块出错不影响面板 */
-        }
-      });
-      rows.push('<div class="row"><button data-action="logout">退出登录</button><button data-action="close">关闭</button></div>');
-      rows.push(CREDIT_HTML);
+      const who = node('div', undefined, 'who'); who.append(avatar(auth.user), node('span', displayName(auth.user), 'name'));
+      if (auth.user.is_admin) who.append(node('span', '管理员', 'tag'));
+      panel.append(who, node('p', tr('存档：{0}', meta ? tr('第 {0} 天 · {1} 已同步', meta.day, formatTime(meta.synced_at)) : tr('尚未同步过'))));
+      row(actionButton('立即同步', 'sync', true), actionButton('从云端恢复', 'restore'), actionButton('历史快照', 'snapshots'));
+      if (platform) {
+        panel.append(node('p', GameHost.bootstrap.channel === 'sandbox' ? 'LINUX DO 测试环境 · 独立排行榜' : 'LINUX DO 正式环境 · 独立排行榜'));
+        row(actionButton('重试待确认操作', 'retry-pending'));
+      }
+      panelSections.forEach(section => { try { const content = section.render(publicUser()); if (content) panel.append(content); } catch (_) {} });
+      row(...(platform ? [] : [actionButton('退出登录', 'logout')]), actionButton('关闭', 'close'));
+      panel.append(credits());
     }
-    panel.innerHTML = rows.join('');
-    const slot = panel.querySelector('.avatar-slot');
-    if (slot) slot.replaceWith(avatar(auth.user));
   }
 
   function togglePanel(force) {
@@ -818,43 +889,49 @@ window.CloudSync = (function () {
     if (show) renderPanel();
   }
 
+  const overlayPointers = new WeakMap();
+  function overlayDismiss(overlay, onContentClick) {
+    let startedOnBackdrop = false;
+    if (overlayPointers.has(overlay)) overlay.removeEventListener('pointerdown', overlayPointers.get(overlay));
+    const pointer = event => { startedOnBackdrop = event.target === overlay; };
+    overlayPointers.set(overlay, pointer); overlay.addEventListener('pointerdown', pointer);
+    overlay.onclick = event => {
+      if (event.target === overlay) { if (startedOnBackdrop) closeDialog(); startedOnBackdrop = false; return; }
+      if (onContentClick) onContentClick(event);
+    };
+  }
+
   function showDialog(config) {
     const overlay = el('cloud-overlay');
     if (!overlay) return;
-    const buttons = config.buttons
-      .map((button, index) =>
-        '<button data-index="' + index + '"' + (button.primary ? ' class="primary"' : '') + '>' +
-        escapeHtml(button.label) + '</button>')
-      .join('');
-    overlay.innerHTML =
-      '<div class="dialog" role="dialog" aria-modal="true">' +
-      '<h2>' + escapeHtml(config.title) + '</h2>' +
-      config.paragraphs.map((text) => '<p>' + escapeHtml(text) + '</p>').join('') +
-      '<div class="row">' + buttons + '</div></div>';
+    const dialog = node('div', undefined, 'dialog'); dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true');
+    dialog.append(node('h2', config.title));
+    config.paragraphs.forEach(text => dialog.append(node('p', text)));
+    const row = node('div', undefined, 'row');
+    config.buttons.forEach((button, index) => { const b = node('button', button.label, button.primary ? 'primary' : ''); b.type = 'button'; b.dataset.index = index; row.append(b); });
+    dialog.append(row); overlay.replaceChildren(dialog);
     overlay.hidden = false;
-    overlay.onclick = function (event) {
-      if (event.target === overlay) {
-        closeDialog();
-        return;
-      }
+    overlayDismiss(overlay, function (event) {
       const target = event.target.closest('button[data-index]');
       if (!target) return;
       const chosen = config.buttons[Number(target.dataset.index)];
       if (chosen && chosen.onClick) chosen.onClick();
-    };
+    });
   }
 
   function closeDialog() {
     const overlay = el('cloud-overlay');
     if (!overlay) return;
     overlay.hidden = true;
-    overlay.innerHTML = '';
+    overlay.replaceChildren();
   }
 
   function handleAction(action, target) {
     for (const section of panelSections) {
       if (section.onAction && section.onAction(action, target)) return;
     }
+    if (action === 'snapshots') { showSnapshots(); return; }
+    if (action === 'retry-pending') { retryPending(); return; }
     if (action === 'login') {
       togglePanel(false);
       login();
@@ -870,12 +947,12 @@ window.CloudSync = (function () {
   }
 
   function init() {
-    const hadLegacy = dropLegacyAuth();
-    auth = readStoredAuth();
+    const hadLegacy = platform ? false : dropLegacyAuth();
+    auth = platform ? { user: GameHost.user } : readStoredAuth();
     if (hadLegacy && !auth) toast('云同步登录已升级，请重新登录一次', 4200);
     // 其他标签页登录 / 刷新 / 登出时同步本页状态
     window.addEventListener('storage', function (event) {
-      if (event.key !== CFG.authKey) return;
+      if (platform || event.key !== CFG.authKey) return;
       auth = readStoredAuth();
       render();
       notifyAuthChange();
@@ -896,7 +973,8 @@ window.CloudSync = (function () {
     }
     render();
     // 处理 OAuth 回调（登录后返回本页时清理 URL 并换取 Token）
-    handleRedirectBack();
+    if (platform) { notifyAuthChange(); if (!GameHost.pending().length) afterLogin(); }
+    else handleRedirectBack();
   }
 
   if (document.readyState === 'loading') {
@@ -906,6 +984,7 @@ window.CloudSync = (function () {
   }
 
   return {
+    retryPending: retryPending,
     onDayEnd: onDayEnd,
     onGameEnd: onGameEnd,
     login: login,
@@ -926,6 +1005,6 @@ window.CloudSync = (function () {
       if (reason) toast(reason, 4200);
       togglePanel(true);
     },
-    ui: { toast: toast, showDialog: showDialog, closeDialog: closeDialog, escapeHtml: escapeHtml, avatar: avatar, displayName: displayName },
+    ui: { overlayDismiss: overlayDismiss, toast: toast, showDialog: showDialog, closeDialog: closeDialog, escapeHtml: escapeHtml, avatar: avatar, displayName: displayName },
   };
 })();

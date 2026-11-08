@@ -35,10 +35,10 @@ const produced = new Set();
 
 function initialLang() {
   try {
-    const l = localStorage.getItem(LANG_KEY);
+    const l = gameStorage.getItem(LANG_KEY);
     if (LANGS.includes(l)) return l;
   } catch (e) { /* 隐私模式等 */ }
-  const nav = navigator.language || 'zh';
+  const nav = (window.GameHost && GameHost.locale || navigator.language || 'zh').replace('_', '-');
   if (/^ja/i.test(nav)) return 'ja';
   if (/^zh/i.test(nav)) return /(hant|tw|hk|mo)/i.test(nav) ? 'zh-hant' : 'zh';
   return 'en';
@@ -76,7 +76,7 @@ function setLang(l) {
   LANG = LANGS.includes(l) ? l : 'zh';
   produced.clear();
   untranslated.clear();
-  try { localStorage.setItem(LANG_KEY, LANG); } catch (e) { /* 同上 */ }
+  try { gameStorage.setItem(LANG_KEY, LANG); } catch (e) { /* 同上 */ }
   applyDomLang();
 }
 

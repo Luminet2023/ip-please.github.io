@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/linux-do/mapp-developer-guide",
+  "source_archive": "https://codeload.github.com/linux-do/mapp-developer-guide/tar.gz/0b2a037e3b18d1ebd97bb2e3b734eb97ab0358fc",
+  "commit": "0b2a037e3b18d1ebd97bb2e3b734eb97ab0358fc",
+  "package": "@discourse-mini-app/sdk",
+  "version": "0.3.0",
+  "files": {
+    "README.md": "3795533fd4c0141c9dd2fd93298d8465e0484f35e3e49852c04004366d7358eb",
+    "capture-constraints.d.ts": "78b972a001340b24cd89a980bce4d4d7ea502dae68f84c0b6f813340b6708f55",
+    "code-policy.d.ts": "d322de1cae4a9b917e0114fd7322fb8bdf63249bd428b16f55f9df3f876cb2af",
+    "device-client.d.ts": "d841a3d89667d2473226c632efa9dd1486fa3a0dca4d53c307297cbc8dfa0969",
+    "device-policy.d.ts": "7ff9903c92b028b250f4f7a0a6961948ce49a1b232998c0c15c80a3d3395e646",
+    "index.d.ts": "bd31d8d8e02907e1fe0201cf3a47c2397a5515fa97a1e75c0c1e9fb2a2085b0c",
+    "index.mjs": "8d8ecaa0b85e67c0b41ea4f48bbaf1958de39486cb715d21d08ca377eee36091",
+    "media-playlist.d.ts": "a3eecf0a73f1d8bafa9ea6e88bf302d6e77a0a2afa0fad437a640ad90e5b429e",
+    "media-playlist.mjs": "b40ab16a2b0674428a51c24b792175ea8cc59b5b596e68474db5302af4aa6d6f",
+    "media-program.d.ts": "e27723090365fc1a123cbf3e7dd50b84163fe580ec6d182eb68f473fed413cd0",
+    "media-timeline.d.ts": "036dd1d0b4e85d2c72762f9b38cf42806ac40be6bb693e038523dc2ac1c1422d",
+    "media-timeline.mjs": "a714775a4e532813a02286d6f94eb486272ed881e6f17e1091e9783c7fc6fb93",
+    "module-bundle.d.ts": "8627425ab20dd5d2a3ae4ef8610a4cb0af928e791328d55a449993a4fd348f84",
+    "network-tools.d.ts": "089336f9869e4af2a29d26d839d7bcfa873f16d476a4c791d42b870d6da1b57a",
+    "network-tools.mjs": "85028414d1edac64b337767a64116b25d0c349a34c0cf48bb263daa4ffafcd17",
+    "pack.d.ts": "f0fd54327269c2294917b0a6a0b9ef0f0c4bf08502fa77c0bbb62d3592094e75",
+    "pack.mjs": "b890b99e69029330102a73470453844226abc74a1bb320eb867fe78f4719fac0",
+    "package.json": "7fa3cc91a69822983701ab77f4768c342e8ac9cac676321847870a45f1336776",
+    "server.d.ts": "fd8e2ded4324f0d5bfde93285cf2b6d24084ffb1f54de77036a6810946ae8b16",
+    "server.mjs": "747b71d76402aef5dc50c2006bd85575064cd6e2444cd823cc38004fc7430cca",
+    "types.d.ts": "0f096abf978fb43543694a188f435192408e52d18c001eaf18296101d27a9c54"
+  }
+}

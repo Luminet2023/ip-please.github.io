@@ -174,7 +174,7 @@ function commitEnding(id) {
   p.final.ending = id;
   p.final.resolution = id;
   archiveEnding(id);
-  try { localStorage.setItem(STORAGE_KEYS.lastEnding, JSON.stringify(S)); } catch (e) { /* 隐私模式 */ }
+  try { gameStorage.setItem(STORAGE_KEYS.lastEnding, JSON.stringify(S)); } catch (e) { /* 隐私模式 */ }
   if (window.CloudSync) CloudSync.onGameEnd(S);
   clearSave();
   SFX.play('bell');

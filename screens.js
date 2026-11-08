@@ -16,18 +16,18 @@ function newGame() {
 }
 
 function saveGame() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* 隐私模式等：存不了就算了 */ }
+  try { gameStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* 隐私模式等：存不了就算了 */ }
 }
 
 function loadSave() {
   try {
-    const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    const s = JSON.parse(gameStorage.getItem(SAVE_KEY) || 'null');
     if (!s || !Number.isInteger(s.day) || s.day <= 1 || s.day > LAST_DAY || s.endless || (s.plot && s.plot.final && s.plot.final.ending)) return null;
     return s;
   } catch (e) { return null; }
 }
 
-function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 同上 */ } }
+function clearSave() { try { gameStorage.removeItem(SAVE_KEY); } catch (e) { /* 同上 */ } }
 
 // ———————————————————— 开场 ————————————————————
 
@@ -349,6 +349,7 @@ function drawSummary(t) {
 }
 
 function summaryClick(x, y) {
+  if (window.GameHost && GameHost.transitionPending) return;
   if (st() < 1.2) return;
   for (const [key, , cost] of SUM.rows) {
     const b = SUM.boxes && SUM.boxes[key];

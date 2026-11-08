@@ -1,0 +1,59 @@
+{
+  "format": 1,
+  "id": "01a1baa6-abbf-7ed6-afac-bfa495a47dd3",
+  "name": "IP, PLEASE · File Zero",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "script": "app.js",
+  "style": "app.css",
+  "permissions": [
+    "user.read",
+    "user.lookup",
+    "network.request",
+    "storage.read",
+    "storage.write",
+    "theme.read",
+    "audio.webAudio",
+    "fullscreen",
+    "links.open"
+  ],
+  "assets": [
+    "assets/font.png",
+    "assets/atlas.png",
+    "assets/bg.png",
+    "assets/win.png",
+    "assets/LICENSE.txt",
+    "assets/OFL-fusion-pixel.txt"
+  ],
+  "media": {},
+  "endpoints": {
+    "bootstrap": {
+      "url": "https://api.luminet.cn/anthropic/v1/mapp/bootstrap",
+      "method": "GET",
+      "auth": "platform"
+    },
+    "profile": {
+      "url": "https://api.luminet.cn/anthropic/v1/mapp/profile",
+      "method": "POST",
+      "auth": "platform"
+    },
+    "query": {
+      "url": "https://api.luminet.cn/anthropic/v1/mapp/query",
+      "method": "GET",
+      "auth": "platform",
+      "query": [
+        "op",
+        "save_id",
+        "run_id",
+        "board",
+        "period",
+        "limit"
+      ]
+    },
+    "action": {
+      "url": "https://api.luminet.cn/anthropic/v1/mapp/action",
+      "method": "POST",
+      "auth": "platform"
+    }
+  }
+}

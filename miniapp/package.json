@@ -1,0 +1,12 @@
+{
+  "name": "ip-please-linuxdo-miniapp",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test tests/host.test.cjs tests/dom.test.cjs tests/package.test.cjs",
+    "test:browser": "node tests/browser.cjs",
+    "preview": "node preview/server.mjs"
+  }
+}

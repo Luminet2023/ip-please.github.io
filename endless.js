@@ -307,6 +307,11 @@ window.Endless = (function () {
 
   async function resume() {
     try {
+      if (window.GameHost && GameHost.isMiniApp && GameHost.pending().length) {
+        const results = await GameHost.retryPending();
+        const failed = results.find(r => !r.response.ok);
+        if (failed && failed.response.status !== 409 && failed.response.status !== 404) throw Error(T('重试待确认操作'));
+      }
       const body = await call('/endless/runs/current');
       cloud().ui.closeDialog();
       enter(body.run, body.item);
@@ -474,6 +479,11 @@ window.Endless = (function () {
 
   async function resync() {
     try {
+      if (window.GameHost && GameHost.isMiniApp && GameHost.pending().length) {
+        const results = await GameHost.retryPending();
+        const failed = results.find(r => !r.response.ok);
+        if (failed && failed.response.status !== 409 && failed.response.status !== 404) throw Error(T('重试待确认操作'));
+      }
       const body = await call('/endless/runs/current');
       enter(body.run, body.item);
     } catch (error) {
@@ -507,7 +517,7 @@ window.Endless = (function () {
     box.appendChild(el('h2', {}, title));
     overlay.appendChild(box);
     overlay.hidden = false;
-    overlay.onclick = function (event) { if (event.target === overlay) cloud().ui.closeDialog(); };
+    cloud().ui.overlayDismiss(overlay);
     return box;
   }
 
@@ -579,7 +589,8 @@ window.Endless = (function () {
 
   async function openLeaderboard(board) {
     if (!cloud()) return;
-    const box = overlayBox(T('排行榜'));
+    const label = window.GameHost && GameHost.isMiniApp ? (GameHost.bootstrap.channel === 'sandbox' ? T('LINUX DO 测试环境 · 排行榜') : T('LINUX DO 正式环境 · 排行榜')) : T('排行榜');
+    const box = overlayBox(label);
     const tabs = el('div', { class: 'row tabs' });
     for (const [key, label] of BOARDS) {
       const button = el('button', key === board ? { class: 'primary', type: 'button' } : { type: 'button' }, T(label));

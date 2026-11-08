@@ -223,10 +223,12 @@ async fn atomic_actions_profile_and_channel_isolation() {
     let sub = format!("{}", now_ms());
     let a = platform(&state, "GET", "bootstrap", &sub, "sandbox", None).await;
     assert_eq!(a.status, StatusCode::OK, "{}", a.text);
+    assert_eq!(a.body["channel"], "sandbox");
     let uid = a.body["user"]["user_id"].as_str().unwrap();
     assert!(ids::is_valid(uid, "user"));
     assert_eq!(a.body["user"]["linuxdo_id"], sub);
     let b = platform(&state, "GET", "bootstrap", &sub, "production", None).await;
+    assert_eq!(b.body["channel"], "production");
     assert_ne!(b.body["user"]["user_id"], uid);
     let p = platform(
         &state,

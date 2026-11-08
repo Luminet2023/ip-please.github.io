@@ -68,7 +68,7 @@ pub async fn bootstrap(State(state): State<AppState>, p: Principal) -> Result<Re
     let active = current(&state, &a).await?.map(|r| runs::run_view(&r));
     Ok(private_json(
         StatusCode::OK,
-        json!({"user":store::user(&state.pool,&a).await?,"announcements":announcements::active(&state.pool).await?["announcements"],"daily":daily(&state,&a).await?,"active_run":active}),
+        json!({"channel":p.channel,"user":store::user(&state.pool,&a).await?,"announcements":announcements::active(&state.pool).await?["announcements"],"daily":daily(&state,&a).await?,"active_run":active}),
     ))
 }
 #[derive(Deserialize)]
