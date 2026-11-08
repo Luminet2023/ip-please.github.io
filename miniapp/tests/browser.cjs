@@ -3,8 +3,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_CORE||'/home/luminet/.nvm/versio
 const out=process.env.BROWSER_ARTIFACTS||'/tmp/ip-please-task3-browser';fs.mkdirSync(out,{recursive:true});
 (async()=>{
  const {serve}=await import('../preview/server.mjs');const server=await serve(0);const url='http://127.0.0.1:'+server.address().port;
- const browser=await chromium.launch({headless:true});let checks=0;
+ let browser,checks=0;
  try{
+ browser=await chromium.launch({headless:true});
  for(const [name,viewport,touch] of [['desktop',{width:1280,height:720},false],['phone',{width:844,height:390},true]]){
   if(process.env.BROWSER_ONLY && name!==process.env.BROWSER_ONLY)continue;
   const context=await browser.newContext({viewport,hasTouch:touch,locale:'en-US',timezoneId:'America/New_York'});const page=await context.newPage();const errors=[];
@@ -56,5 +57,5 @@ const out=process.env.BROWSER_ARTIFACTS||'/tmp/ip-please-task3-browser';fs.mkdir
   assert.deepEqual(errors,[]);checks++;console.log(name+': real canvas language/title/gallery/story/endless, drag/stamp/return/server decision, cloud restore/reopen/day2, lazy avatar, SDK fullscreen/link passed');await context.close();
  }
  console.log(checks+' desktop/mobile scenarios; artifacts '+out);
- }finally{await browser.close();await new Promise(r=>server.close(r));}
+ }finally{try{if(browser)await browser.close();}finally{server.closeAllConnections();await new Promise(r=>server.close(r));}}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -13,7 +13,7 @@
  });
  window.miniApp=Object.freeze({ready:Promise.resolve(),
   user:{getCurrent:opts=>call('user',[],opts),getById:async(id,opts)=>{const user=await call('lookup',[id],opts);if(user.avatarBytes)user.avatarUrl=URL.createObjectURL(new Blob([user.avatarBytes],{type:'image/png'}));return user;}},
-  localStorage:{getItem:key=>call('get',[key]),setItem:(key,value)=>call('set',[key,value])},
+  localStorage:{exportData:()=>call('export'),importData:snapshot=>call('import',[snapshot]),getItem:key=>call('get',[key]),setItem:(key,value)=>call('set',[key,value])},
   http:{request:(name,options={})=>call('http',[name,{query:options.query,json:options.json}],options)},
   assets:{readBytes:(asset,opts)=>call('asset',[asset],opts)},
   theme:{get:()=>call('theme'),onChange:()=>()=>{}},lifecycle:{ready:()=>call('ready')},

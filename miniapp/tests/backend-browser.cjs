@@ -17,6 +17,12 @@ async function run({startBackend,launchBrowser=launchChromium}={}){
   await title();await shot('backend-title');const before=await fixture.audit();
   await click(420,304);await frame.getByRole('button',{name:'ENDLESS',exact:true}).click();await frame.locator('#cloud-overlay').waitFor({state:'hidden'});await page.waitForTimeout(2500);await click(15,298);await page.waitForTimeout(4200);
   const next=await waitCall('run_next');assert.equal(next.response.status,200);assert.equal(next.response.body.run.generator_version,2);
+  // Random entrants have different spoken introductions. Wait for the actual
+  // passport icon's gold centre, rather than dragging before handDocs renders it.
+  await frame.waitForFunction(()=>{
+   const p=document.querySelector('#game').getContext('2d').getImageData(57,271,1,1).data;
+   return p[0]===190 && p[1]===160 && p[2]===100;
+  },null,{timeout:30000});
   await drag(54,270,470,185);
   // Actual passport header and photograph hit targets produce a server inspection, even when no discrepancy matches.
   await click(618,338);await click(530,180);await click(470,210);await page.waitForTimeout(600);

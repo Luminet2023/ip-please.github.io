@@ -5,7 +5,8 @@ const {chromium}=require(process.env.PLAYWRIGHT_CORE||'/home/luminet/.nvm/versio
 const root=path.resolve(__dirname,'../..'),out=process.env.BROWSER_ARTIFACTS||'/tmp/ip-please-task4-browser';fs.mkdirSync(out,{recursive:true});
 (async()=>{
  const server=http.createServer((req,res)=>{const p=new URL(req.url,'http://local').pathname;const file=path.resolve(root,'.'+(p==='/'?'/index.html':p));if(!file.startsWith(root+'/')){res.writeHead(403);return res.end();}fs.readFile(file,(e,b)=>{res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.html')?'text/html':'application/octet-stream');res.statusCode=e?404:200;res.end(e?'Not found':b);});});await new Promise(r=>server.listen(0,'127.0.0.1',r));
- const browser=await chromium.launch({headless:true});try{
+ let browser;try{
+  browser=await chromium.launch({headless:true});
   const page=await browser.newPage({viewport:{width:1280,height:720}});const errors=[];page.on('pageerror',e=>errors.push(e.stack));
   // Network is irrelevant to this pure rendering audit; no fixture auth or scores.
   await page.route('https://api.luminet.cn/**',r=>r.fulfill({status:200,contentType:'application/json',body:'{"announcements":[]}'}));
@@ -35,5 +36,5 @@ const root=path.resolve(__dirname,'../..'),out=process.env.BROWSER_ARTIFACTS||'/
    console.log(language+': 88 portrait/expression transparency checks, long translated documents, '+report.checks.length+' real fieldAt targets');
   }
   assert.deepEqual(errors,[]);
- }finally{await browser.close();await new Promise(r=>server.close(r));}
+ }finally{try{if(browser)await browser.close();}finally{server.closeAllConnections();await new Promise(r=>server.close(r));}}
 })().catch(e=>{console.error(e);process.exitCode=1;});

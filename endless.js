@@ -294,8 +294,32 @@ window.Endless = (function () {
     go('daycard');
   }
 
+  async function recoverBeforeEntry() {
+    if(!cloud()?.recoverPending)return false;
+    const result=await cloud().recoverPending();
+    return result.blocked || result.terminal;
+  }
+
+  async function recoverResults(results) {
+    for(const result of results) {
+      const op=result.operation;
+      if(!op || !(op.op.startsWith('run_') || op.op==='wave_result'))continue;
+      let body=result.body;
+      if((!result.response.ok || (body?.run?.status==='ended' && !body.final)) && op.args.run_id) {
+        body=await call('/endless/runs/'+encodeURIComponent(op.args.run_id));
+      }
+      if(body?.run?.status!=='ended')continue;
+      cloud().ui.closeDialog();
+      newGame();S.endless=true;S.day=7;
+      run=body.run;pending=null;final=body.final;
+      go('eover');return true;
+    }
+    return false;
+  }
+
   async function start(mode) {
     try {
+      if(await recoverBeforeEntry())return;
       const body = await call('/endless/runs', { method: 'POST', body: { mode, client_rules_version: 2 } }, 0);
       cloud().ui.closeDialog();
       enter(body.run, null);
@@ -307,11 +331,7 @@ window.Endless = (function () {
 
   async function resume() {
     try {
-      if (window.GameHost && GameHost.isMiniApp && GameHost.pending().length) {
-        const results = await GameHost.retryPending();
-        const failed = results.find(r => !r.response.ok);
-        if (failed && failed.response.status !== 409 && failed.response.status !== 404) throw Error(T('重试待确认操作'));
-      }
+      if(await recoverBeforeEntry())return;
       const body = await call('/endless/runs/current');
       cloud().ui.closeDialog();
       enter(body.run, body.item);
@@ -323,6 +343,7 @@ window.Endless = (function () {
 
   async function abandonCurrent(runId) {
     try {
+      if(await recoverBeforeEntry())return;
       await call('/endless/runs/' + encodeURIComponent(runId) + '/abandon', { method: 'POST' }, 0);
       toast(T('上一局已放弃，分数按已得结算'));
     } catch (error) {
@@ -479,11 +500,7 @@ window.Endless = (function () {
 
   async function resync() {
     try {
-      if (window.GameHost && GameHost.isMiniApp && GameHost.pending().length) {
-        const results = await GameHost.retryPending();
-        const failed = results.find(r => !r.response.ok);
-        if (failed && failed.response.status !== 409 && failed.response.status !== 404) throw Error(T('重试待确认操作'));
-      }
+      if(await recoverBeforeEntry())return;
       const body = await call('/endless/runs/current');
       enter(body.run, body.item);
     } catch (error) {
@@ -534,6 +551,7 @@ window.Endless = (function () {
 
   async function openLobby() {
     if (!cloud()) return;
+    try {if(await recoverBeforeEntry())return;}catch(error){toast(error.message);return;}
     if (Date.now() - lastTitle < 300) return;
     lastTitle = Date.now();
     const close = () => cloud().ui.closeDialog();
@@ -625,7 +643,7 @@ window.Endless = (function () {
 
   return {
     on, ended, start, resume, onBoothStart, callNext, maybeAutoWave, inspect, quiz, decide, settle, submitWave,
-    openLobby, openLeaderboard,
+    openLobby, openLeaderboard, recoverResults,
     run: () => run,
     final: () => final,
   };

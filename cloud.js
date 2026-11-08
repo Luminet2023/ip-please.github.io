@@ -520,7 +520,7 @@ window.CloudSync = (function () {
     const settings = options || {};
     if (platform) {
       const result = await GameHost.request(path, settings);
-      if (!result.response.ok) throw apiError(result.response, result.body);
+      if (!result.response.ok) { const error=apiError(result.response,result.body);error.operation=result.operation;throw error; }
       return result.body;
     }
     let token = await accessToken();
@@ -557,10 +557,11 @@ window.CloudSync = (function () {
     return apiFetch('/sync/save');
   }
 
-  function uploadSave(state, baseVersion) {
+  function uploadSave(state, baseVersion, replacesRequestId) {
     return apiFetch('/sync/save', {
       method: 'POST',
       body: { day: state.day, payload: state, base_version: baseVersion },
+      replacesRequestId: replacesRequestId,
     });
   }
 
@@ -649,7 +650,7 @@ window.CloudSync = (function () {
       toast(tr('{0}已同步到云端', label));
     } catch (error) {
       if (error.status === 409) {
-        await handleConflict(state, reason);
+        await handleConflict(state, reason, error.operation);
         return;
       }
       if (error.code === 'sync_rate_limited') {
@@ -666,23 +667,25 @@ window.CloudSync = (function () {
     }
   }
 
-  async function forceUpload(state, serverVersion) {
+  async function forceUpload(state, serverVersion, replacesRequestId) {
     try {
       const snapshot = JSON.parse(JSON.stringify(state));
-      const result = await uploadSave(snapshot, serverVersion);
+      const result = await uploadSave(snapshot, serverVersion, replacesRequestId);
       saveMeta(metaFromServer(result));
       render();
       toast(tr('已用本机存档覆盖云端（第 {0} 天）', result.day));
+      return true;
     } catch (error) {
       if (error.status === 409) {
         toast('云端又更新了，请再试一次');
-        return;
+        if(platform) await handleConflict(state, 'manual', error.operation);
+        return false;
       }
       toast(tr('覆盖失败：') + (error.message || '网络错误'));
     }
   }
 
-  async function handleConflict(localState, reason) {
+  async function handleConflict(localState, reason, operation) {
     let server = null;
     try {
       server = await fetchLatest();
@@ -690,11 +693,20 @@ window.CloudSync = (function () {
       toast(tr('云端存档冲突，但读取失败：') + (error.message || '网络错误'));
       return;
     }
-    if (!isRestorable(server.payload)) {
+    if (!platform && !isRestorable(server.payload)) {
       await forceUpload(localState, server.version);
       return;
     }
     const title = reason === 'ending' ? '结局存档冲突' : '云存档冲突';
+    let resolving=false;
+    const choose=async local=>{
+      if(resolving || (!local && !isRestorable(server.payload)))return;resolving=true;
+      try {
+        if(local) {if(await forceUpload(localState,server.version,operation?.request_id))closeDialog();}
+        else {if(operation)await GameHost.resolvePending(operation.request_id);closeDialog();applyCloudSave(server);}
+      } catch(error) {toast(error.message || '网络错误');}
+      finally {resolving=false;}
+    };
     showDialog({
       title: title,
       paragraphs: [
@@ -703,11 +715,11 @@ window.CloudSync = (function () {
         '选「用云端存档」会覆盖本机进度并重新载入；选「保留本机」会把本机进度上传并覆盖云端。',
       ],
       buttons: [
-        { label: '用云端存档', onClick: function () { closeDialog(); applyCloudSave(server); } },
+        { label: '用云端存档', disabled: !isRestorable(server.payload), onClick: () => choose(false) },
         {
           label: '保留本机',
           primary: true,
-          onClick: function () { closeDialog(); forceUpload(localState, server.version); },
+          onClick: () => choose(true),
         },
         { label: '稍后再说', onClick: closeDialog },
       ],
@@ -728,6 +740,7 @@ window.CloudSync = (function () {
       return;
     }
 
+    if (platform && GameHost.pending().length) return;
     if (!isRestorable(server.payload)) {
       saveMeta(metaFromServer(server));
       toast(tr('已登录。{0}，日终会用本机进度覆盖', unrestorableReason(server.payload)), 4200);
@@ -758,17 +771,34 @@ window.CloudSync = (function () {
     });
   }
 
+  let recoveryInFlight = null;
+  function recoverPending() {
+    if (!platform) return Promise.resolve({blocked:false,terminal:false,hasRun:false});
+    if (recoveryInFlight) return recoveryInFlight;
+    recoveryInFlight=(async()=>{
+      const results=await GameHost.retryPending();
+      render();
+      for(const result of results) if(!result.response.ok) {
+        const error=apiError(result.response,result.body),op=result.operation;
+        if(error.code==='sync_conflict' && op?.op==='save') {
+          await handleConflict(op.args.payload,'manual',op);
+          return {blocked:true,terminal:false,hasRun:false};
+        }
+        const runOperation=op && (op.op.startsWith('run_') || op.op==='wave_result');
+        if(!(runOperation && (error.code==='endless_state_conflict' || error.code==='not_found')))throw error;
+      }
+      const hasRun=results.some(r=>r.operation?.op.startsWith('run_') || r.operation?.op==='wave_result');
+      const terminal=hasRun && window.Endless ? await Endless.recoverResults(results) : false;
+      return {blocked:false,terminal,hasRun};
+    })().finally(()=>{recoveryInFlight=null;});
+    return recoveryInFlight;
+  }
+
   async function retryPending() {
     try {
-      const results = await GameHost.retryPending();
-      render();
-      const failed = results.find(r => !r.response.ok);
-      if (failed) {
-        if (failed.response.status === 409 && failed.operation?.op === 'save') { await handleConflict(failed.operation.args.payload, 'manual'); return; }
-        if ([404,409].includes(failed.response.status) && failed.operation?.op.startsWith('run_')) { if (window.Endless) Endless.resume(); return; }
-        throw apiError(failed.response, failed.body);
-      }
-      if (results.some(r => r.operation?.op.startsWith('run_') || r.operation?.op === 'wave_result') && window.Endless) Endless.resume();
+      const result=await recoverPending();
+      if(result.blocked)return;
+      if(result.hasRun && !result.terminal && window.Endless)await Endless.resume();
       toast('待确认操作已恢复');
     } catch (error) { toast(error.message || '网络错误'); }
   }
@@ -924,7 +954,7 @@ window.CloudSync = (function () {
     dialog.append(node('h2', config.title));
     config.paragraphs.forEach(text => dialog.append(node('p', text)));
     const row = node('div', undefined, 'row');
-    config.buttons.forEach((button, index) => { const b = node('button', button.label, button.primary ? 'primary' : ''); b.type = 'button'; b.dataset.index = index; row.append(b); });
+    config.buttons.forEach((button, index) => { const b = node('button', button.label, button.primary ? 'primary' : ''); b.type = 'button'; b.dataset.index = index; b.disabled=!!button.disabled; row.append(b); });
     dialog.append(row); overlay.replaceChildren(dialog);
     overlay.hidden = false;
     overlayDismiss(overlay, function (event) {
@@ -1001,6 +1031,7 @@ window.CloudSync = (function () {
 
   return {
     retryPending: retryPending,
+    recoverPending: recoverPending,
     onDayEnd: onDayEnd,
     onGameEnd: onGameEnd,
     login: login,

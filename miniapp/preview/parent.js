@@ -62,6 +62,8 @@ window.addEventListener('message',async e=>{
   else if(method==='theme')value={mode:'dark',locale:fixture.locale,background:'#161313',text:'#fff',accent:'#e89c74',border:'#5a514b',reducedMotion:false,viewport:{width:innerWidth,height:innerHeight}};
   else if(method==='get')value=localStorage.getItem(fixture.channel+':'+args[0]);
   else if(method==='set'){if(fixture.failStorage)throw Error('Fixture quota');localStorage.setItem(fixture.channel+':'+args[0],args[1]);value=null;}
+  else if(method==='export'){value={format:1,entries:Object.entries(localStorage).filter(([k])=>k.startsWith(fixture.channel+':')).map(([k,v])=>[k.slice(fixture.channel.length+1),v])};}
+  else if(method==='import'){if(fixture.failStorage)throw Error('Fixture quota');if(args[0].format!==1)throw Error('Invalid storage snapshot');for(const [k,v] of args[0].entries)localStorage.setItem(fixture.channel+':'+k,v);value=null;}
   else if(method==='http')value=await http(...args);
   else if(method==='asset'){if(!/^assets\/(font|atlas|bg|win)\.png$/.test(args[0]))throw Error('Undeclared asset');value=new Uint8Array(await(await fetch('/web/'+args[0])).arrayBuffer());}
   else if(method==='lookup'){if(fixture.failAvatar)throw Error('Fixture avatar unavailable');if(!Number.isSafeInteger(args[0]))throw Error('Unsafe SDK user ID');value={id:args[0],name:'Fixture',username:'fixture',initials:'FI',trustLevel:1,avatarUrl:null,avatarBytes:new Uint8Array(await(await fetch('/web/assets/win.png')).arrayBuffer())};}

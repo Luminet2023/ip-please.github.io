@@ -8,7 +8,7 @@ function platform() {
   const disk = new Map(); const calls = []; let fail = false; let id=42;
   const sdk = {ready:Promise.resolve(), user:{getCurrent:async()=>({id,username:'tester',name:'Test'}), getById:async n=>({id:n,avatarUrl:'blob:test'})},
     theme:{get:async()=>({locale:'ja'})}, lifecycle:{ready:async()=>{}},
-    localStorage:{getItem:async k=>disk.get(k)||null,setItem:async(k,v)=>{if(fail)throw Error('quota');disk.set(k,v);}},
+    localStorage:{exportData:async()=>({format:1,entries:[...disk]}),importData:async({entries})=>{if(fail)throw Error('quota');for(const [k,v] of entries)disk.set(k,v);return null;},getItem:async k=>disk.get(k)||null,setItem:async(k,v)=>{if(fail)throw Error('quota');disk.set(k,v);}},
     http:{request:async(name, opts)=>{calls.push({name,opts}); if(name==='bootstrap')return response(200,{user:{user_id:'user_abcdefghijklmnop',linuxdo_id:'42',display_name:'Test'},channel:'sandbox',announcements:[],daily:{},active_run:null});if(name==='profile')return response(200,{user_id:'user_abcdefghijklmnop',linuxdo_id:'42',display_name:'Test'});return response(200,{version:1});}}};
   return {sdk,disk,calls,fail: v=>fail=v,account: v=>id=v};
 }
