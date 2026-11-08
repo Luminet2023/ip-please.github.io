@@ -7,16 +7,19 @@ on:
       - '*.js'
       - 'index.html'
       - 'tools/**'
-      - 'backend/src/endless/**'
+      - 'backend/**'
       - 'tests/frontend/**'
+      - 'miniapp/**'
       - '.github/workflows/frontend.yml'
   pull_request:
     paths:
       - '*.js'
       - 'index.html'
       - 'tools/**'
-      - 'backend/src/endless/**'
+      - 'backend/**'
       - 'tests/frontend/**'
+      - 'miniapp/**'
+      - '.github/workflows/frontend.yml'
   workflow_dispatch:
 
 permissions:
@@ -47,6 +50,63 @@ jobs:
         working-directory: .
         run: |
           node tools/endless_client_test.js
+          node tools/endless_v2_test.js
           node tools/plot_regression_test.js
           node tools/smoke_test.js
           node tools/storage_namespace_test.js
+          node tools/check_i18n.js
+
+  miniapp:
+    name: packaged miniapp / strict browser / real Rust MySQL
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: ip_please_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      TEST_DATABASE_URL: mysql://root:root@127.0.0.1:3306/ip_please_test
+      PLAYWRIGHT_CORE: ${{ github.workspace }}/node_modules/playwright-core
+      BROWSER_ARTIFACTS: ${{ runner.temp }}/miniapp-browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.93'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - run: npm ci --prefix tests/frontend
+      - run: npm install --no-save --package-lock=false playwright-core@1.59.1
+      - run: npx playwright-core install --with-deps chromium
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - run: pip install -r tools/requirements.txt
+      - name: verify generated translations and font bytes
+        run: |
+          python tools/gen_zh_hant.py
+          python tools/build_assets.py
+          git diff --exit-code -- assets.js zh-hant.js
+      - run: node miniapp/build.mjs
+      - run: npm test --prefix miniapp
+      - run: node miniapp/tests/browser.cjs
+      - run: node miniapp/tests/backend-browser.cjs
+      - run: node miniapp/tests/visual.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: miniapp-package-and-browser-evidence
+          path: |
+            miniapp/dist/package/
+            ${{ runner.temp }}/miniapp-browser/

@@ -1,7 +1,8 @@
 import {createServer} from 'node:http';import {readFile} from 'node:fs/promises';import {fileURLToPath} from 'node:url';import path from 'node:path';
 const here=path.dirname(fileURLToPath(import.meta.url));
-export async function serve(port=4173){const server=createServer(async(req,res)=>{
+export async function serve(port=4173, bridge=null){const server=createServer(async(req,res)=>{
  try{const url=new URL(req.url,'http://localhost');const p=url.pathname;
+ if(bridge && await bridge(req,res,url))return;
  if(p==='/frame'){
  res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; img-src blob:; font-src 'none'; connect-src 'none'; media-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'");
  res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/web/app.css"></head><body>'+await readFile(path.join(here,'../dist/web/index.html'),'utf8')+'<script src="/frame.js"></script><script src="/web/app.js"></script></body></html>');return;

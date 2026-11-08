@@ -3,11 +3,20 @@ const user={user_id:'user_preview0000000001',linuxdo_id:'42',display_name:'Fixtu
 const daily={date:'2026-11-08',played:false,in_progress:false,run_id:null,travelers:40,resets_at:1794153600};
 const ok=body=>({status:200,headers:{},body});
 const missing=()=>({status:404,headers:{},body:{detail:'The requested resource was not found.'}});
-const fixture={calls:[],ready:false,failStorage:false,loseNextAction:false,offline:false,account:42,channel:'sandbox',locale:'en',run:null,item:null,cloud:null,receipts:new Map()};
+const fixture={calls:[],ready:false,failStorage:false,loseNextAction:false,offline:false,account:Number(new URLSearchParams(location.search).get('subject')||42),channel:'sandbox',locale:'en',run:null,item:null,cloud:null,receipts:new Map()};
 window.preview=fixture;
 function run(mode){return {run_id:'run_preview000000001',generator_version:2,inspection_date:'2026.10.25',mode,status:'active',end_reason:null,score:0,travelers:0,processed:0,correct:0,document_reviews:0,model_identity_checks:0,streak:0,best_streak:0,strikes:0,max_strikes:3,multiplier:1,travelers_total:mode==='daily'?40:null,next_kind:'traveler',bulletin:null,wanted:null};}
 function traveler(){return {entrant_id:'ent_preview000000001',seq:1,person:'P03',voice:140,intro:[['E','Hello, inspector.',null]],primary:'pp',docs:[{type:'passport',key:'pp',cc:'US',photo:'P03',surname:'MILLER',given:'JAMES',dob:'1984.03.12',sex:'M',iss:'NEW YORK',exp:'2031.07.22'},{type:'device',key:'dv',ip:'72.14.3.9',loc:'美国 · 纽约',tz:'America/New_York',lang:'en-US',device:'MacBook',net:'home'},{type:'account',key:'ac',pay:{brand:'VISA',last4:'1234',virtual:false},bill:'12 Oak St, NY',phone:'+1 212-555-0123'},{type:'entry_permit',key:'ep',holder:'MILLER, JAMES',purpose:'visit',exp:'2027.01.01'}],logins:[],xray:[]};}
 async function http(name,o){
+ if(new URLSearchParams(location.search).has('backend')) {
+  if(fixture.offline)throw Error('Fixture offline');
+  if(fixture.timeoutNext){fixture.timeoutNext=false;await new Promise(r=>setTimeout(r,21000));throw Error('Fixture timeout');}
+  const response=await fetch('/bridge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,options:o,account:fixture.account,channel:fixture.channel})});
+  const value=await response.json();
+  if(name==='action' && fixture.loseNextAction){fixture.loseNextAction=false;if(fixture.offlineAfterLoss)fixture.offline=true;throw Error('Fixture lost committed response');}
+  return value;
+ }
+
  if(fixture.offline)throw Error('Fixture offline');
  const account={...user,user_id:fixture.account===42?user.user_id:'user_preview000000002',linuxdo_id:String(fixture.account)};
  if(name==='bootstrap')return ok({channel:fixture.channel,user:account,announcements:[],daily,active_run:fixture.run});
@@ -55,7 +64,7 @@ window.addEventListener('message',async e=>{
   else if(method==='set'){if(fixture.failStorage)throw Error('Fixture quota');localStorage.setItem(fixture.channel+':'+args[0],args[1]);value=null;}
   else if(method==='http')value=await http(...args);
   else if(method==='asset'){if(!/^assets\/(font|atlas|bg|win)\.png$/.test(args[0]))throw Error('Undeclared asset');value=new Uint8Array(await(await fetch('/web/'+args[0])).arrayBuffer());}
-  else if(method==='lookup'){if(!Number.isSafeInteger(args[0]))throw Error('Unsafe SDK user ID');value={id:args[0],name:'Fixture',username:'fixture',initials:'FI',trustLevel:1,avatarUrl:null,avatarBytes:new Uint8Array(await(await fetch('/web/assets/win.png')).arrayBuffer())};}
+  else if(method==='lookup'){if(fixture.failAvatar)throw Error('Fixture avatar unavailable');if(!Number.isSafeInteger(args[0]))throw Error('Unsafe SDK user ID');value={id:args[0],name:'Fixture',username:'fixture',initials:'FI',trustLevel:1,avatarUrl:null,avatarBytes:new Uint8Array(await(await fetch('/web/assets/win.png')).arrayBuffer())};}
   else if(method==='ready'){fixture.ready=true;value=null;}
   else if(method==='full')value={active:args[0]};
   else if(method==='link')value=null;

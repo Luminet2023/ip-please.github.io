@@ -595,6 +595,14 @@ pub(super) fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
         ]
     });
 
+    // Only v2 changes: v1 persisted generation and its golden remain frozen.
+    if spec.v2 {
+        for issue in issues.iter_mut().filter(|i| i.kind == "billing_region") {
+            issue.args.insert("bill".into(), bill.clone());
+            issue.args.insert("loc".into(), loc.clone());
+        }
+    }
+
     let facts = Facts {
         cc: cc.to_string(),
         device: device.clone(),
@@ -930,6 +938,57 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     const SEED: Seed = [42u8; 32];
+
+    #[test]
+    fn compound_billing_uses_final_document_facts_in_both_orders() {
+        for flaws in [["oregon", "cnip"], ["cnip", "oregon"]] {
+            let generated = regular(
+                &mut crate::endless::rng::stream(&SEED, "billing", 0),
+                RegularSpec {
+                    t: 20,
+                    entrant_id: "ent_fixture0000000001",
+                    person: "P03",
+                    flaws: &flaws,
+                    bulletin: None,
+                    force_bulletin: false,
+                    wanted_person: "",
+                    v2: true,
+                },
+            );
+            let loc = generated
+                .public
+                .docs
+                .iter()
+                .find_map(|d| {
+                    if let Doc::Device { loc, .. } = d {
+                        Some(loc)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            let bill = generated
+                .public
+                .docs
+                .iter()
+                .find_map(|d| {
+                    if let Doc::Account { bill, .. } = d {
+                        Some(bill)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            let issue = generated
+                .secret
+                .issues
+                .iter()
+                .find(|i| i.kind == "billing_region")
+                .unwrap();
+            assert_eq!(&issue.args["loc"], loc, "{flaws:?}");
+            assert_eq!(&issue.args["bill"], bill, "{flaws:?}");
+        }
+    }
 
     #[test]
     fn slots_alternate_travelers_and_waves() {

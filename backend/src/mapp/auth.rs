@@ -30,8 +30,11 @@ pub struct Principal {
     pub version: String,
     pub scopes: Vec<String>,
     pub aud: String,
+    #[serde(deserialize_with = "safe_integer")]
     pub iat: i64,
+    #[serde(deserialize_with = "safe_integer")]
     pub nbf: i64,
+    #[serde(deserialize_with = "safe_integer")]
     pub exp: i64,
     pub jti: String,
     pub htm: String,
@@ -340,5 +343,22 @@ impl FromRequestParts<AppState> for Principal {
 }
 
 fn trust_level<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u8>, D::Error> {
-    u8::deserialize(d).map(Some)
+    let value = safe_integer(d)?;
+    if !(0..=4).contains(&value) {
+        return Err(serde::de::Error::custom("invalid trust level"));
+    }
+    Ok(Some(value as u8))
+}
+
+// JSON Number semantics match the SDK: 1 and 1.0 are both integer values.
+// Deserialize Number first so null, booleans and strings never coerce to numbers.
+fn safe_integer<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
+    let number = serde_json::Number::deserialize(d)?;
+    let value = number
+        .as_f64()
+        .ok_or_else(|| serde::de::Error::custom("invalid number"))?;
+    if !value.is_finite() || value.fract() != 0.0 || value.abs() > 9_007_199_254_740_991.0 {
+        return Err(serde::de::Error::custom("expected safe integer"));
+    }
+    Ok(value as i64)
 }

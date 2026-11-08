@@ -605,6 +605,7 @@ window.Endless = (function () {
     buttonRow(box, [{ label: T('关闭'), onClick: () => cloud().ui.closeDialog() }]);
     try {
       const body = await cloud().optionalAuthApi('/endless/leaderboard?board=' + board + '&limit=20');
+      if (!box.isConnected) return; // A closed/replaced board must not create detached avatar observers.
       status.textContent = body.entries.length ? '' : T('还没有人上榜，快来当第一个！');
       for (const entry of body.entries) {
         const item = el('li', entry.me ? { class: 'me' } : {});

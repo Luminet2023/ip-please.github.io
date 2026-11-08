@@ -405,3 +405,24 @@ CI 要求（main 分支必须保持绿）：
 - 小程序事务使用单次事务的 READ COMMITTED，加稳定账号行锁，避免不同用户首次写入的 gap-lock 死锁，
   不修改网站或数据库全局隔离级别。run source 在同事务创建，普通结算、最终名次和后台过期均按来源分榜。
   新增 `006_mapp.sql` 仅 CREATE TABLE，不更改或重置旧网站排行榜。完整 DTO 合同见 Task 2 report。
+
+### 版本与包验收补充
+
+- 新局 `GENERATOR_VERSION=2`，旧 state 缺失版本按 v1；旅客/波次/公告/通缉必须按持久化版本派发。
+  v1 golden 冻结，修复 v2 最终事实的破绽说明不能改 v1。更新 v2 fingerprint 必须说明行为原因。
+  生成序列变更遵守上文 UTC+8 午夜规则，保留旧榜、旧局和每日种子；不得以新赛季规避迁移。
+- `miniapp/build.mjs` 用 pinned 官方 SDK packer 生成全游戏 IIFE ZIP；测试/preview/测试 JWKS 私钥不入包。
+  SDK 提供网络、存储、资源、全屏与链接；严格 CSP/Trusted Types 不允许 HTML 字符串注入或 eval。
+  头像按可见性加载，关闭/替换列表必须释放未进入视口的 observer，保留 session cache/首字回退。
+- `npm test --prefix miniapp` 包含 host、DOM、ZIP 白名单和 pinned SDK 的真实 ES256 numeric oracle。
+  SDK 的整数值 JSON（包括 `1.0`/时间戳 `.0`）应接受，null/非整数/不安全整数拒绝；Rust 的禁止 key header
+  存在性规则比 SDK truthiness 更严格，因此不能宣称整个验签器逐字节完全等价。
+- `node miniapp/tests/browser.cjs` 验证严格不透明 iframe 内的最终 IIFE 桌面/触控流程；
+  `TEST_DATABASE_URL=... node miniapp/tests/backend-browser.cjs` 使用实际 Rust HTTP/MySQL 和固定测试 ES256/JWKS。
+  后者只可连接专用 `ip_please_test`；`backend/examples/miniapp_fixture.rs` 不属于生产二进制。
+  `node miniapp/tests/visual.cjs` 为共享源码的真实浏览器场景审计（四语言、表情、长文档、真实字段命中），
+  不冒充最终包的自然完整剧情通关。截图目录由 `BROWSER_ARTIFACTS` 指定。
+- CI 必须检查 `miniapp/**` 与共享 JS、v2 tests；backend PR 运行 fmt/clippy/default/MySQL，只有非 PR 才发布镜像。
+  最终源修改后重建 ZIP 并校验 SHA256。真实已认证 LINUX DO 沙盒不可用时，记为待验收；本地 fixture 不算 live。
+- `MAPP_APP_ID` 为唯一小程序配置项；固定公网 origin/audience、issuer、JWKS 与 CORS 见上一节及部署说明。
+  发布与实际平台验证的命令/权限/午夜切换、旧榜保留和兼容回滚在 `deploy/README.md`。

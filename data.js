@@ -659,6 +659,7 @@ function randomEntrant(day, kind) {
     person, voice: rint(100, 190), intro: [['E', pick(co.hello)]], primary: 'pp', issues: [], quiz: null,
     ok: ['approve'], react: { approve: [['E', pick(co.thanks)]] },
   };
+  let billingIssue = null;
   const nervous = (lines) => ['E', pick(lines), { sweat: true, expr: 'nervous' }];
   for (const kind of kinds) {
   if (kind === 'valid') continue;
@@ -693,7 +694,8 @@ function randomEntrant(day, kind) {
   } else if (kind === 'oregon') {
     const wrong = co.cities.find(c => c[2] !== st);
     bill = `${pick(STREETS)}, ${wrong ? wrong[2] : 'NY'}`;
-    spec.issues.push({ pairs: [['ac.账单', 'rule.pay'], ['ac.账单', 'dv.归属']], title: '记录比对', sub: T('账单：{0}   VS   归属地：{1}', bill, loc), ask: [['C', '你住哪？'], nervous(['……地址忘了更新。'])] });
+    billingIssue = { pairs: [['ac.账单', 'rule.pay'], ['ac.账单', 'dv.归属']], title: '记录比对', ask: [['C', '你住哪？'], nervous(['……地址忘了更新。'])] };
+    spec.issues.push(billingIssue);
     spec.reason = T('账单：{0}   VS   归属地：{1}', bill, loc);
   } else if (kind === 'sms') {
     phone = `+1 ${pick(['209', '310', '415', '646'])}-555-01${digits(2)}`;
@@ -755,6 +757,8 @@ function randomEntrant(day, kind) {
       T('3 天前 {0}  {1}', tm(12, 22), lg),
     ];
   }
+  // Compound flaws can change location after billing was chosen. Disclose final facts.
+  if (billingIssue) billingIssue.sub = T('账单：{0}   VS   归属地：{1}', bill, loc);
   spec.docs = [{ key: 'pp', doc: pp }, { key: 'dv', doc: device2(ip, loc, tz, lang, null, day >= 7 ? (net || '家宽') : net) }];
   if (day >= 3) spec.docs.push({ key: 'ac', doc: accountCard(pay, bill, phone) });
   return spec;

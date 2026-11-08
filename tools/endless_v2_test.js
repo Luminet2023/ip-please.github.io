@@ -9,6 +9,12 @@ for (const country of ['UNITED STATES OF AMERICA','UNITED KINGDOM','JAPAN','DEUT
 }
 assert.ok(samples.filter(s=>s.country==='REPUBLIC OF SINGAPORE'&&s.ok.includes('deny')).every(s=>!['Asia/Shanghai','Asia/Singapore'].includes(s.tz)),'Singapore defect differs from UTC+8');
 console.log('✓ local nationality distribution and incompatible timezone');
+for (const order of [['oregon','cnip'],['cnip','oregon']]) {
+  const facts=JSON.parse(run(`JSON.stringify((()=>{const s=randomEntrant(7,${JSON.stringify(order)});return {loc:s.docs.find(d=>d.key==='dv').doc.rows.find(r=>r[0]==='归属')[1],bill:s.docs.find(d=>d.key==='ac').doc.rows.find(r=>r[0]==='账单')[1],issue:s.issues.find(i=>i.pairs.some(p=>p.includes('ac.账单')))};})())`));
+  assert.equal(facts.issue.sub,`账单：${facts.bill}   VS   归属地：${facts.loc}`,order.join(' -> '));
+}
+console.log('✓ compound billing evidence describes final document facts in both orders');
+
 run(`setCtx(document.createElement('canvas').getContext('2d')); var permit=docFromServer({type:'entry_permit',holder:'TAN, WEI MING',purpose:'research',exp:'2026.10.24'});`);
 assert.ok(run('permit'), 'server entry permit is rendered');
 for(const key of ['holder','purpose','exp']) assert.ok(run(`permit.fields['${key}']`), 'clickable '+key);

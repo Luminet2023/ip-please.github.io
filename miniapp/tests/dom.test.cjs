@@ -17,3 +17,23 @@ test('an opening touch compatibility click cannot immediately dismiss the new ov
  overlay.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));assert.equal(overlay.hidden,false);
  overlay.dispatchEvent(new w.Event('pointerdown',{bubbles:true}));overlay.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));assert.equal(overlay.hidden,true);
 });
+test('offscreen avatar observers release removed boards, retain visible lazy loading and fallback',async(t)=>{
+ const dom=new JSDOM('<div id="cloud-overlay" hidden></div>',{url:'https://game.test',runScripts:'outside-only'});t.after(()=>dom.window.close());const w=dom.window;
+ const watched=new Map();let lookups=0;
+ w.IntersectionObserver=class {constructor(cb){this.cb=cb;this.nodes=new Set();}observe(n){this.nodes.add(n);watched.set(n,this);}unobserve(n){this.nodes.delete(n);watched.delete(n);}disconnect(){for(const n of this.nodes)watched.delete(n);this.nodes.clear();}};
+ w.GameHost={isMiniApp:true,avatar:async()=>{lookups++;return 'blob:fixture';},bootstrap:{user:{user_id:'user_fixture000000001'},channel:'sandbox'},subscribe:()=>()=>{}};
+ w.fetch=async()=>({ok:true,status:200,text:async()=>'{"announcements":[]}',headers:{get:()=>null}});
+ for(const f of ['config.js','cloud.js'])vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname,'../..',f),'utf8'),dom.getInternalVMContext());
+ const turn=()=>new Promise(r=>setTimeout(r,0));const show=()=>{w.CloudSync.ui.showDialog({title:'Board',paragraphs:[],buttons:[]});const slot=w.CloudSync.ui.avatar({linuxdo_id:'42',display_name:'Fallback'});w.document.querySelector('.dialog').append(slot);return slot;};
+ show();await turn();assert.equal(watched.size,1);assert.equal(lookups,0);
+ w.CloudSync.ui.closeDialog();await turn();assert.equal(watched.size,0,'closing an unseen board must release its observer');
+ show();const slot=show();await turn();assert.equal(watched.size,1,'replacing an unseen board releases detached rows');
+ watched.get(slot).cb([{target:slot,isIntersecting:true}]);await turn();assert.equal(watched.size,0);assert.equal(lookups,1);assert.ok(slot.querySelector('img'));
+ slot.querySelector('img').dispatchEvent(new w.Event('error'));assert.equal(slot.textContent,'F');
+ // A late response must not create observers in a board that was already closed.
+ w.T=x=>x;vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname,'../../endless.js'),'utf8'),dom.getInternalVMContext());
+ let resolveBoard;w.CloudSync.optionalAuthApi=()=>new Promise(resolve=>{resolveBoard=resolve;});
+ const loading=w.Endless.openLeaderboard('endless');w.CloudSync.ui.closeDialog();
+ resolveBoard({entries:[{rank:1,linuxdo_id:'43',display_name:'Late',score:1}],me:null});await loading;await turn();assert.equal(watched.size,0,'late closed-board response must not retain detached avatar');
+
+});

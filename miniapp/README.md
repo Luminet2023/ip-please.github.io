@@ -24,3 +24,23 @@ Actions write a durable journal before transport. Timeout, offline, 401, 429 and
 The only network declarations are the four fixed platform-authenticated `/anthropic/v1/mapp/` endpoints. `bootstrap.channel` is returned from the verified server principal and labels sandbox/production boards; neither launch arguments nor client state chooses the backend channel. Profile fields are presentation only. Avatar lookup accepts only exact decimal safe integers, starts when visible, coalesces per session, uses SDK Blob URLs, and falls back to initials.
 
 `preview/` is deliberately outside the ZIP. It serves the exact built app in an opaque-origin `sandbox="allow-scripts"` iframe with `connect-src 'none'`, `require-trusted-types-for 'script'`, and `trusted-types 'none'`. Its deterministic SDK/server fixture runs in the parent; the app frame can access assets/storage/network only through the fixture bridge. Browser tests use real canvas pointer/touch inputs and PNG rendering. Fixture decision responses prove client transport/UI handling, not real authentication or authoritative server scoring. Signed backend/MySQL tests provide separate server evidence. Actual LINUX DO sandbox upload, real SDK session policies and live backend acceptance remain external acceptance steps.
+
+## Stronger local acceptance
+
+```sh
+npm ci --prefix tests/frontend
+npm install --no-save --package-lock=false playwright-core@1.59.1
+npx playwright-core install chromium
+export PLAYWRIGHT_CORE="$PWD/node_modules/playwright-core"
+export BROWSER_ARTIFACTS=/tmp/ip-please-miniapp-acceptance
+node miniapp/build.mjs
+npm test --prefix miniapp
+node miniapp/tests/browser.cjs
+# Dedicated disposable MySQL only; use your local fixture credentials, never production.
+TEST_DATABASE_URL='mysql://TEST_USER:TEST_PASSWORD@127.0.0.1:33306/ip_please_test' node miniapp/tests/backend-browser.cjs
+node miniapp/tests/visual.cjs
+```
+
+The backend browser script starts the **real Rust router and MySQL store** via a test-only example. A loopback parent bridge signs requests using the repository's public test ES256 key and serves its JWKS; signatures, query binding, transactions, receipts, scoring and board queries execute in Rust. Game timing checks remain enabled; request burst throttling is disabled in this fixture. No Authorization header/token enters screenshots or call reports. The bridge and keys remain outside the ZIP and production binary. This is stronger local integration evidence, still not a real LINUX DO account/session, platform permission, public proxy or production deployment test.
+
+The separate visual scene audit uses actual shared-source Canvas PNG rendering for all six new AI (plus existing cast), eight expressions, four languages, long translated documents and actual `fieldAt` targets. Its fixture scene setup is explicitly separate from built-IIFE real mouse/touch play; it does not claim a natural 14-day browser playthrough. The deterministic story suite covers all 14 days and 30 endings.

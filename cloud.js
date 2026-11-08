@@ -120,6 +120,16 @@ window.CloudSync = (function () {
 
   const AVATAR_COLORS = ['#7a3b2a', '#3b5a7a', '#4a6b3a', '#6b4a7a', '#7a6a2a', '#2a6b6b'];
 
+  const pendingAvatars = new Map();
+  let avatarObserver = null;
+  function releaseAvatars(root) {
+    for (const [slot, observer] of pendingAvatars) {
+      if (!slot.isConnected || (root && root.contains(slot))) {
+        observer.disconnect(); pendingAvatars.delete(slot);
+      }
+    }
+  }
+
   // 头像：IdP 给了 https 图片就用，没有或加载失败时显示名字首字（底色按 tag 区分同名玩家）。
   function avatar(user) {
     const fallback = document.createElement('span');
@@ -137,7 +147,12 @@ window.CloudSync = (function () {
         slot.replaceChildren(img);
       };
       if (typeof IntersectionObserver === 'function') {
-        const observer = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) { observer.disconnect(); load(); } });
+        const observer = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) { observer.disconnect(); pendingAvatars.delete(slot); load(); } });
+        pendingAvatars.set(slot, observer);
+        if (!avatarObserver) {
+          avatarObserver = new MutationObserver(() => releaseAvatars());
+          avatarObserver.observe(document.documentElement, { childList: true, subtree: true });
+        }
         observer.observe(slot);
       } else { setTimeout(load, 0); }
       return slot;
@@ -885,6 +900,7 @@ window.CloudSync = (function () {
     const panel = el('cloud-panel');
     if (!panel) return;
     const show = force === undefined ? panel.hidden : force;
+    if (!show) releaseAvatars(panel);
     panel.hidden = !show;
     if (show) renderPanel();
   }

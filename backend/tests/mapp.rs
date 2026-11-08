@@ -74,6 +74,70 @@ fn sign_mapp(c: &Value) -> String {
     .unwrap()
 }
 #[tokio::test]
+async fn signed_numeric_claims_accept_integer_values_and_reject_invalid_values() {
+    let (v, _) = verifier().await;
+    let now = now_secs();
+    let url = format!("{AUDIENCE}{PREFIX}/query?op=daily");
+    for trust in [0.0, 1.0, 4.0] {
+        let mut c = claims("GET", "query", "123", "sandbox");
+        c["iat"] = json!(now as f64);
+        c["nbf"] = json!(now as f64);
+        c["exp"] = json!((now + 300) as f64);
+        c["trust_level"] = json!(trust);
+        assert!(
+            v.verify(
+                &format!("Bearer {}", sign_mapp(&c)),
+                "test-miniapp",
+                "GET",
+                &url,
+                now
+            )
+            .await
+            .is_ok(),
+            "integer-valued .0 claims, trust={trust}"
+        );
+    }
+    for field in ["iat", "nbf", "exp", "trust_level"] {
+        for bad in [
+            Value::Null,
+            json!("1"),
+            json!(true),
+            json!(1.5),
+            json!(9007199254740992u64),
+        ] {
+            let mut c = claims("GET", "query", "123", "sandbox");
+            c[field] = bad.clone();
+            assert!(
+                v.verify(
+                    &format!("Bearer {}", sign_mapp(&c)),
+                    "test-miniapp",
+                    "GET",
+                    &url,
+                    now
+                )
+                .await
+                .is_err(),
+                "{field}={bad}"
+            );
+        }
+    }
+    for bad in [-1.0, 5.0, 256.0] {
+        let mut c = claims("GET", "query", "123", "sandbox");
+        c["trust_level"] = json!(bad);
+        assert!(v
+            .verify(
+                &format!("Bearer {}", sign_mapp(&c)),
+                "test-miniapp",
+                "GET",
+                &url,
+                now
+            )
+            .await
+            .is_err());
+    }
+}
+
+#[tokio::test]
 async fn signed_sdk_claims_and_query_binding() {
     let (v, count) = verifier().await;
     let c = claims("GET", "query", "123", "sandbox");
