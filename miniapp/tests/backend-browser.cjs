@@ -16,7 +16,7 @@ async function run({startBackend,launchBrowser=launchChromium}={}){
   const waitCall=async(op,count=1)=>{for(let i=0;i<100;i++){const matches=fixture.calls.filter(c=>c.request?.op===op);if(matches.length>=count)return matches.at(-1);await page.waitForTimeout(100);}throw Error('No bridge operation '+op);};
   await title();await shot('backend-title');const before=await fixture.audit();
   await click(420,304);await frame.getByRole('button',{name:'ENDLESS',exact:true}).click();await frame.locator('#cloud-overlay').waitFor({state:'hidden'});await page.waitForTimeout(2500);await click(528,330);await page.waitForTimeout(300);await click(528,330);await click(15,298);await page.waitForTimeout(4200);
-  const next=await waitCall('run_next');assert.equal(next.response.status,200);assert.equal(next.response.body.run.generator_version,3);
+  const next=await waitCall('run_next');assert.equal(next.response.status,200);assert.equal(next.response.body.run.generator_version,4);
   // Random entrants have different spoken introductions. Wait for the actual
   // passport icon's gold centre, rather than dragging before handDocs renders it.
   await shot('backend-before-passport');

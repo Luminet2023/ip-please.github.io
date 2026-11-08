@@ -2,10 +2,15 @@ use ip_please_sync::endless::{
     model::{Decision, Doc},
     state::{Current, Mode, RunState, StepError},
 };
+fn legacy_v3(mode: Mode, seed: &[u8; 32], date: Option<String>) -> RunState {
+    let mut run = RunState::new(mode, seed, date);
+    run.generator_version = 3;
+    run
+}
 #[test]
 fn early_runs_publish_only_learned_rules_and_documents() {
     for seed in 0..40 {
-        let mut s = RunState::new(Mode::Endless, &[seed; 32], None);
+        let mut s = legacy_v3(Mode::Endless, &[seed; 32], None);
         s.next(0, &mut |_| "ent_test".into()).unwrap();
         assert_eq!(
             s.view_summary()["progression"]["active_rules"],
@@ -30,7 +35,7 @@ fn early_runs_publish_only_learned_rules_and_documents() {
 }
 #[test]
 fn initial_fifteen_slots_are_travelers_and_wrong_decision_unlocks_stage() {
-    let mut s = RunState::new(Mode::Endless, &[7; 32], None);
+    let mut s = legacy_v3(Mode::Endless, &[7; 32], None);
     for t in 0..15 {
         s.next(i64::from(t) * 10000, &mut |_| "ent_test".into())
             .unwrap();
@@ -71,7 +76,7 @@ fn initial_fifteen_slots_are_travelers_and_wrong_decision_unlocks_stage() {
 }
 #[test]
 fn quiz_cannot_run_before_published_even_with_evidence() {
-    let mut s = RunState::new(Mode::Endless, &[2; 32], None);
+    let mut s = legacy_v3(Mode::Endless, &[2; 32], None);
     s.next(0, &mut |_| "ent_test".into()).unwrap();
     if let Some(Current::Traveler(ref mut t)) = s.current {
         t.found.push(0);
@@ -145,7 +150,7 @@ fn every_milestone_gates_flaws_docs_evidence_and_stays_deterministic() {
                             assert!(active.contains(&serde_json::json!(k)), "hidden {f} at {t}");
                         }
                     }
-                    let mut s = RunState::new(Mode::Endless, &[seed; 32], None);
+                    let mut s = legacy_v3(Mode::Endless, &[seed; 32], None);
                     s.current = Some(Current::Traveler(
                         ip_please_sync::endless::state::TravelerState {
                             entrant_id: "ent_test".into(),
@@ -208,7 +213,7 @@ fn v3_golden_and_full_daily_keep_40_travelers_with_wave_progress_separate() {
         hex::encode(hash.finalize()),
         "7e32c9d12ddb9ab210c2ee9c4e2a509074d7af9b13c591043ff14b82862688ff"
     );
-    let mut s = RunState::new(Mode::Daily, &[13; 32], Some("2026-11-09".into()));
+    let mut s = legacy_v3(Mode::Daily, &[13; 32], Some("2026-11-09".into()));
     let mut now = 0;
     let mut order = vec![];
     while !s.ended() {
@@ -247,7 +252,7 @@ fn v3_golden_and_full_daily_keep_40_travelers_with_wave_progress_separate() {
 #[test]
 fn all_new_visible_constitution_fields_accept_incorrect_comparisons() {
     use ip_please_sync::endless::state::Claim;
-    let mut s = RunState::new(Mode::Endless, &[13; 32], None);
+    let mut s = legacy_v3(Mode::Endless, &[13; 32], None);
     s.slot = 37;
     s.travelers = 35;
     s.next(0, &mut |_| "ent_test".into()).unwrap();
