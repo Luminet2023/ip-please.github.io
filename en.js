@@ -1830,6 +1830,7 @@ Object.assign(EN, {
   "公告已下线": "Announcement retired.",
   "下线失败：": "Could not retire: ",
   "本页基于 ": "This edition is based on ",
+  " 本项目完全开源，GitHub：": " This project is fully open source. GitHub: ",
   " 二次开发，合并了茗（": ", incorporating the work of Ming (",
   "）的《零号档案 · File Zero》，并新增云存档同步功能；游戏本体、剧本与美术素材版权归原作者与 mod 作者，特此致谢。": ")'s File Zero mod and adding cloud saves. The game, story and artwork belong to the original creators and mod author, with our thanks.",
   "云端还没有存档": "No cloud save yet.",

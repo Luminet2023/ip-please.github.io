@@ -29,12 +29,12 @@ async function run({startBackend,launchBrowser=launchChromium}={}){
   // Record screenshot even on a hit-coordinate regression, to make it diagnosable.
   await shot('backend-inspection');
   await waitCall('run_inspect');await click(618,338);
-  // Lose the real successful response AFTER the server commits; visible unknown-receipt state must survive reopening.
+  // Lose the successful response AFTER commit; keep recovery in the panel, without a gameplay banner.
   await page.evaluate(()=>{preview.loseNextAction=true;preview.offlineAfterLoss=true;});
   await click(633,224);await page.waitForTimeout(400);await click(512,224);await page.waitForTimeout(800);await drag(470,185,100,270);await page.waitForTimeout(1400);
   const decision=await waitCall('run_decision');assert.equal(decision.response.status,200);const committed=await fixture.audit();
-  await frame.locator('#host-storage').waitFor({state:'visible'});assert.match(await frame.locator('#host-storage').innerText(),/unconfirmed|acknowledg|confirm|尚未确认/i);await shot('backend-unknown-receipt');
-  await page.reload();await ready();await frame.locator('#host-storage').waitFor({state:'visible'});await frame.locator('#host-storage-retry').click();await frame.locator('#host-storage').waitFor({state:'hidden'});
+  assert.equal(await frame.locator('#host-storage').isVisible(),false);await shot('backend-unknown-receipt');
+  await page.reload();await ready();assert.equal(await frame.locator('#host-storage').isVisible(),false);await frame.locator('#cloud').click();await frame.locator('[data-action="retry-pending"]').click();
   const replay=await waitCall('run_decision',2);assert.equal(replay.request.request_id,decision.request.request_id);assert.deepEqual(replay.response.body,decision.response.body);assert.deepEqual(await fixture.audit(),committed);
   await page.reload();await title();await click(420,304);await frame.getByRole('button',{name:'Continue',exact:true}).click();await page.waitForTimeout(2300);await shot('backend-resumed');
   // Settle through the real lobby action, then query all three platform boards; website board count stays fixed.
@@ -54,12 +54,12 @@ async function run({startBackend,launchBrowser=launchChromium}={}){
   await frame.locator('#cloud').click();await frame.getByRole('button',{name:'Sync now',exact:true}).click();await frame.getByRole('button',{name:'Keep local',exact:true}).waitFor();await shot('backend-save-conflict');
   await frame.getByRole('button',{name:'Keep local',exact:true}).click();await page.waitForTimeout(500);
   const saves=fixture.calls.filter(c=>c.request?.op==='save');assert.ok(saves.some(c=>c.response.status===409));assert.equal(saves.at(-1).response.body.version,3);
-  // Offline preserves a pending original envelope and the UI explains retry.
-  await page.evaluate(()=>preview.offline=true);await frame.getByRole('button',{name:'Sync now',exact:true}).click();await frame.locator('#host-storage').waitFor({state:'visible'});await shot('backend-offline');
-  await page.evaluate(()=>preview.offline=false);await frame.locator('#host-storage-retry').click();await frame.locator('#host-storage').waitFor({state:'hidden'});assert.equal(fixture.calls.filter(c=>c.request?.op==='save').at(-1).response.body.version,4);
+  // Offline preserves the original envelope; recovery remains in the cloud panel.
+  await page.evaluate(()=>preview.offline=true);await frame.getByRole('button',{name:'Sync now',exact:true}).click();assert.equal(await frame.locator('#host-storage').isVisible(),false);await shot('backend-offline');
+  await page.evaluate(()=>preview.offline=false);await frame.locator('[data-action="retry-pending"]').click();await page.waitForTimeout(500);assert.equal(fixture.calls.filter(c=>c.request?.op==='save').at(-1).response.body.version,4);
   // Real SDK-boundary deadline; no server response is fabricated.
-  await page.evaluate(()=>preview.timeoutNext=true);await frame.getByRole('button',{name:'Sync now',exact:true}).click();await page.waitForTimeout(20500);await frame.locator('#host-storage').waitFor({state:'visible'});await shot('backend-timeout');
-  await frame.locator('#host-storage-retry').click();await frame.locator('#host-storage').waitFor({state:'hidden'});assert.equal(fixture.calls.filter(c=>c.request?.op==='save').at(-1).response.body.version,5);
+  await page.evaluate(()=>preview.timeoutNext=true);await frame.getByRole('button',{name:'Sync now',exact:true}).click();await page.waitForTimeout(20500);assert.equal(await frame.locator('#host-storage').isVisible(),false);await shot('backend-timeout');
+  await frame.locator('[data-action="retry-pending"]').click();await page.waitForTimeout(500);assert.equal(fixture.calls.filter(c=>c.request?.op==='save').at(-1).response.body.version,5);
   // Daily: fetch an entrant, reopen unchanged pending state, abandon without judging, and verify daily rank.
   // Full 40-traveler completion is covered by real MySQL integration tests.
   await page.reload();await title();await click(420,304);await frame.getByRole('button',{name:'DAILY CHALLENGE',exact:true}).click();await frame.locator('#cloud-overlay').waitFor({state:'hidden'});await page.waitForTimeout(2500);await click(15,298);await page.waitForTimeout(4200);

@@ -46,6 +46,12 @@ window.CloudSync = (function () {
       p.append(a);
     }
     p.append(document.createTextNode(tr('）的《零号档案 · File Zero》，并新增云存档同步功能；游戏本体、剧本与美术素材版权归原作者与 mod 作者，特此致谢。')));
+    p.append(document.createTextNode(tr(' 本项目完全开源，GitHub：')));
+    const repositoryUrl = 'https://github.com/Luminet2023/ip-please.github.io';
+    const repository = node('a', 'Luminet2023/ip-please.github.io');
+    repository.href = repositoryUrl; repository.target = '_blank'; repository.rel = 'noopener noreferrer';
+    if (platform) repository.addEventListener('click', e => { e.preventDefault(); GameHost.openLink(repositoryUrl).catch(e => toast(e.message)); });
+    p.append(repository);
     return p;
   }
 
