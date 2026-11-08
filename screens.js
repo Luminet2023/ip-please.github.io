@@ -442,6 +442,7 @@ function drawEover(t) {
   if (t > 1.0) {
     if (fin) {
       bigText(W / 2, 150, T('{0} 分', fin.score), 12, 2, K.CLAUDE_L);
+      txt(W / 2, 246, T('证件复核 {0} · 模型核验 {1}', fin.document_reviews || 0, fin.model_identity_checks || 0), 8, K.WHITE, 'ma');
       txt(W / 2, 192, T('处理 {0} 位旅客 · 判对 {1} · 最高连对 {2}', fin.travelers, fin.correct, fin.best_streak), 10, K.WHITE, 'ma');
       const ranks = fin.ranks || {};
       const rank = ranks.daily || ranks.endless;

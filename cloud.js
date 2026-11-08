@@ -48,6 +48,7 @@ window.CloudSync = (function () {
     'The login attempt is invalid or has expired.': 'login_attempt_invalid',
     'Too many requests. Please retry later.': 'rate_limited',
     'An endless run is already in progress.': 'endless_run_active',
+    'The game rules have changed. Please reload to start a new run.': 'endless_rules_outdated',
     'The endless run state has changed. Please reload.': 'endless_state_conflict',
     "Today's daily challenge has already been played.": 'daily_already_played',
   };
@@ -68,6 +69,7 @@ window.CloudSync = (function () {
     login_attempt_invalid: '登录校验失败，请重新登录',
     rate_limited: '操作太频繁，请稍后再试',
     endless_run_active: '已有一局无尽模式在进行中',
+    endless_rules_outdated: '游戏规则已更新，请刷新页面后开始新对局',
     endless_state_conflict: '对局状态已变化，正在重新同步',
     daily_already_played: '今天的每日挑战已经玩过了',
   };

@@ -127,6 +127,7 @@
 | `unauthorized` | 401 | `Unauthorized`（缺少 `Authorization` 头） |
 | `login_attempt_invalid` | 400 | `The login attempt is invalid or has expired.` |
 | `rate_limited` | 429 | `Too many requests. Please retry later.`（必须带 `Retry-After`） |
+| `endless_rules_outdated` | 409 | `The game rules have changed. Please reload to start a new run.` |
 | `endless_run_active` | 409 | `An endless run is already in progress.` |
 | `endless_state_conflict` | 409 | `The endless run state has changed. Please reload.` |
 | `daily_already_played` | 409 | `Today's daily challenge has already been played.` |

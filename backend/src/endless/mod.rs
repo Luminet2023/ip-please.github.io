@@ -3,6 +3,7 @@
 //! 前端只拿到「证件上写了什么」，正确答案、破绽位置、谁会接测谎题都留在服务器。
 
 pub mod generator;
+pub mod generator_v2;
 pub mod model;
 pub mod rng;
 pub mod routes;

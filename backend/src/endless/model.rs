@@ -81,6 +81,12 @@ pub enum Doc {
         bill: String,
         phone: String,
     },
+    EntryPermit {
+        key: String,
+        holder: String,
+        purpose: String,
+        exp: String,
+    },
     ModelPermit {
         key: String,
         claim: String,
@@ -167,7 +173,14 @@ pub struct Secret {
 
 /// 检查模式可以点选的字段（输入白名单）。
 pub fn is_known_field(key: &str) -> bool {
-    const FIELDS: [&str; 40] = [
+    const FIELDS: [&str; 47] = [
+        "ep.holder",
+        "ep.purpose",
+        "ep.exp",
+        "rule.date",
+        "rule.issuing",
+        "rule.permit",
+        "rule.registry",
         "pp.header",
         "pp.name",
         "pp.photo",

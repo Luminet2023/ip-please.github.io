@@ -200,7 +200,10 @@ function detain() {
   SFX.play('click');
   if (!e || e.phase !== 'here' || !e.handed || B.event) return;
   e.phase = 'detained'; e.tDetain = now + 0.2; B.detainT = now;
-  if (e.spec.srv) Endless.decide(e, 'detain').catch(() => {});   // 拘留动画期间请求已在路上
+  if (e.spec.srv) {
+    if (ENDLESS_AI[e.spec.person]) runSteps(endlessReaction(e, 'detain', {}));
+    Endless.decide(e, 'detain').catch(() => {});
+  }   // 拘留动画期间请求已在路上
   stopTension();
   SFX.play('detain');
   SFX.play('scuffle', 1, 0.2);
@@ -448,6 +451,8 @@ function askQuiz(e, cn) {
   } else {
     steps.push(['E', tofu ? 'Tofu… what?' : pick(QUIZ_CONFUSED), { expr: 'neutral' }]);
   }
+  const ai = e.spec.srv && ENDLESS_AI[e.spec.person];
+  if (ai) steps.push(['E', cn ? ai.quizExposed : ai.quizClear, {expr:cn?'shock':'neutral'}]);
   runSteps(steps);
 }
 
@@ -583,7 +588,7 @@ function srvInspect(claim, noMatch) {
   Endless.inspect(e, claim).then((r) => {
     I.pending = false;
     if (B.ent !== e || B.insp !== I) return;
-    if (r.match) showIssue(issueFromServer(r.issue));
+    if (r.match) showIssue(issueFromServer(r.issue, e.spec.person));
     else if (r.locked) I.banner = { title: T('核验次数用完了'), sub: T('这位旅客只能靠你自己判断了'), bad: false };
     else I.banner = noMatch;
   }, (error) => {

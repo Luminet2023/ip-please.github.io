@@ -389,6 +389,8 @@ pub async fn final_view(pool: &MySqlPool, run: &RunRow) -> Result<Value, AppErro
         "travelers": state.travelers,
         "processed": state.processed,
         "correct": state.correct,
+        "document_reviews": state.document_reviews,
+        "model_identity_checks": state.model_identity_checks,
         "best_streak": state.best_streak,
         "end_reason": state.end_reason,
         "flagged": state.flagged(),

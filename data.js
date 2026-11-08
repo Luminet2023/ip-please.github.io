@@ -646,7 +646,7 @@ function randomEntrant(day, kind) {
   if (day === 1) return randomDay1(kind === 'valid');
   const person = takePoolPerson();
   const kinds = Array.isArray(kind) ? kind : [kind];   // 无尽模式会给一组缺陷叠在一起
-  const cc = kinds.includes('valid') ? pick(['US', 'US', 'US', 'US', 'UK', 'JP', 'DE', 'SG']) : 'US';
+  const cc = pick(['US', 'US', 'US', 'US', 'UK', 'JP', 'DE', 'SG']);
   const co = COUNTRIES[cc];
   const [city, tz0, st, code, cityEn] = pick(co.cities);
   const sex = ASSETS.people[person].sex || 'M';
@@ -663,9 +663,9 @@ function randomEntrant(day, kind) {
   for (const kind of kinds) {
   if (kind === 'valid') continue;
   if (kind === 'tz') {
-    tz = 'Asia/Shanghai';
-    spec.issues.push(TZ_ISSUE(co.name, tz, [['C', '你的时区是北京时间。'], nervous(['……我刚从北京出差回来。', '时区是什么？', '我电脑坏了。', '……这是美国东八区。'])]));
-    spec.reason = '时区：北京时间';
+    tz = cc === 'SG' ? 'America/New_York' : 'Asia/Shanghai';
+    spec.issues.push(TZ_ISSUE(co.name, tz, [['C', T('设备时区：{0}，与归属地不符。', tz)], nervous(['时区是什么？', '我电脑坏了。'])]));
+    spec.reason = T('设备时区：{0}，与归属地不符。', tz);
   } else if (kind === 'lang') {
     lang = 'zh-CN';
     spec.issues.push(LANG_ISSUE(co.name, lang, [['C', '你的浏览器语言是简体中文。'], nervous(['……这是我奶奶的电脑。', '……我在学中文。', 'Chinese is beautiful!'])]));
@@ -674,9 +674,9 @@ function randomEntrant(day, kind) {
     loc = pick(CN_LOCS.slice(0, 4));
     ip = randIP(true);
     tz = 'Asia/Shanghai';
-    spec.intro = [['E', pick(["I'm American!", 'Hi, I work in China.'])]];
-    spec.issues.push(REGION_ISSUE(loc, [['C', '你的 IP 在中国。'], ['E', "But I'm American!", { expr: 'shock' }]]));
-    spec.issues.push({ pairs: [['pp.header', 'dv.归属']], title: '信息不符', sub: T('国籍：美国   VS   IP：{0}', loc.split(' · ').slice(0, 2).join(' · ')) });
+    spec.intro = [['E', T('我的护照国籍是{0}。', co.name)]];
+    spec.issues.push(REGION_ISSUE(loc, [['C', '你的 IP 在中国。'], ['E', T('我的护照国籍是{0}。', co.name), { expr: 'shock' }]]));
+    spec.issues.push({ pairs: [['pp.header', 'dv.归属']], title: '信息不符', sub: T('国籍：{0}   VS   IP：{1}', co.name, loc.split(' · ').slice(0, 2).join(' · ')) });
     spec.reason = 'IP 在中国：只看地区，不看脸';
     spec.react = { deny: [['E', 'Unbelievable.', { expr: 'sad' }]] };
   } else if (kind === 'hidden') {
@@ -691,9 +691,10 @@ function randomEntrant(day, kind) {
     spec.issues.push(VIRTUAL_ISSUE([['C', '这张卡在哪办的？'], nervous(['……网上买的，很方便。', '……朋友给的。', '它很真！'])]));
     spec.reason = '付款卡：虚拟卡';
   } else if (kind === 'oregon') {
-    bill = '123 Main St, OR';
-    spec.issues.push(ADDR_ISSUE([['C', '你住哪？'], nervous(['……我们是邻居。', '俄勒冈不收税嘛。'])]));
-    spec.reason = T('账单在俄勒冈，IP 在{0}', city);
+    const wrong = co.cities.find(c => c[2] !== st);
+    bill = `${pick(STREETS)}, ${wrong ? wrong[2] : 'NY'}`;
+    spec.issues.push({ pairs: [['ac.账单', 'rule.pay'], ['ac.账单', 'dv.归属']], title: '记录比对', sub: T('账单：{0}   VS   归属地：{1}', bill, loc), ask: [['C', '你住哪？'], nervous(['……地址忘了更新。'])] });
+    spec.reason = T('账单：{0}   VS   归属地：{1}', bill, loc);
   } else if (kind === 'sms') {
     phone = `+1 ${pick(['209', '310', '415', '646'])}-555-01${digits(2)}`;
     spec.issues.push(SMS_ISSUE(phone, [['C', '这个号码今天注册了三千次。'], nervous(['……我人缘好。', '这号是我花两块钱买的！'])]));
