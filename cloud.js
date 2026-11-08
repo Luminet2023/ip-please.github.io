@@ -698,14 +698,14 @@ window.CloudSync = (function () {
       return;
     }
     const title = reason === 'ending' ? '结局存档冲突' : '云存档冲突';
-    let resolving=false;
+    let chosen=false;
     const choose=async local=>{
-      if(resolving || (!local && !isRestorable(server.payload)))return;resolving=true;
+      if(chosen || (!local && !isRestorable(server.payload)))return;
+      chosen=true;closeDialog();
       try {
-        if(local) {if(await forceUpload(localState,server.version,operation?.request_id))closeDialog();}
-        else {if(operation)await GameHost.resolvePending(operation.request_id);closeDialog();applyCloudSave(server);}
+        if(local) await forceUpload(localState,server.version,operation?.request_id);
+        else {if(operation)await GameHost.resolvePending(operation.request_id);applyCloudSave(server);}
       } catch(error) {toast(error.message || '网络错误');}
-      finally {resolving=false;}
     };
     showDialog({
       title: title,

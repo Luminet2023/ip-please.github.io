@@ -323,7 +323,7 @@ ZIP 恰好包含 `manifest.json`、`index.html`、`app.js`、`app.css`、`string
 
 ### 网站静态资源原子发布与缓存验收
 
-本次网站脚本统一使用 `?v=20261108-1`（包括 `game-host.js`），画面中的 `BUILD_VERSION` 为 `2026.11.08.1`。未来改动共享 JS 时必须一起更新全部脚本标记和 BUILD_VERSION；后端拒绝旧规则不是静态缓存失效的替代品。
+本次网站脚本统一使用 `?v=20261108-2`（包括 `game-host.js`），画面中的 `BUILD_VERSION` 为 `2026.11.08.2`。未来改动共享 JS 时必须一起更新全部脚本标记和 BUILD_VERSION；后端拒绝旧规则不是静态缓存失效的替代品。
 
 1. 在新发布目录准备同一源码 SHA 的 `index.html` 与所有引用的 JS/素材，核对清单 SHA；完成部署授权后，以目录/版本切换方式一次发布。不能先切 HTML、再逐个覆盖旧目录里的 JS。保留上一完整版本供兼容回滚。
 2. HTML 应强制再验证（例如 `Cache-Control: no-cache`）；CDN 必须把 query 参数纳入 JS 缓存键。若缓存层忽略 query，先修正规则或清除所有旧 JS 缓存。发布时清除/再验证 HTML，不能只刷新入口而保留相同 JS URL。

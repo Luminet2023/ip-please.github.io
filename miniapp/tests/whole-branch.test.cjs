@@ -124,3 +124,29 @@ test('exported records isolate exact account and channel prefixes',async()=>{
  const account=await createMiniAppHost(p.sdk);assert.equal(account.storage.getItem(saveKey),null);assert.equal(account.storage.getItem('ip-please-lang'),null);
  p.sdk.http.request=original;const reopened=await createMiniAppHost(p.sdk);assert.equal(reopened.storage.getItem(saveKey),'{"day":7}');assert.equal(reopened.storage.getItem('ip-please-lang'),null);
 });
+for(const status of [200,409])test('keep-local network failure invalidates old cloud choice and recovers replacement '+status,async t=>{
+ const p=platform(),local={day:2,plot:{}},remote={day:7,plot:{}},calls=[];
+ const conflict={status:409,body:{detail:'The cloud save has a newer version than the client base version.'}};
+ p.setAction(async r=>{calls.push(r);if(calls.length===1)return conflict;if(calls.length===2)throw Error('offline after replacement');return status===409?conflict:{status:200,body:{version:4,day:2}};});
+ p.setQuery(async()=>({status:200,body:{payload:remote,day:7,version:calls.length>=3?4:3,updated_at:'2026-11-08T00:00:00Z'}}));
+ const rt=await runtime(t,p);let reloads=0;rt.host.reload=()=>reloads++;
+ rt.host.storage.setItem(saveKey,JSON.stringify(local));await rt.host.flush();
+ await rt.host.request('/sync/save',{method:'POST',body:{day:2,payload:local,base_version:1}});
+ rt.run(fs.readFileSync(path.join(root,'cloud.js'),'utf8'));await rt.sandbox.Endless.resume();
+ const buttons=[...rt.dom.window.document.querySelectorAll('.dialog button')],oldCloud=buttons.find(b=>b.textContent==='用云端存档');
+ buttons.find(b=>b.textContent==='保留本机').click();await turn();await turn();
+ const replacement=rt.host.pending()[0];assert.notEqual(replacement.request_id,calls[0].request_id);assert.equal(replacement.args.day,2);
+ oldCloud.click();await turn();await turn();
+ assert.equal(reloads,0,'an old cloud choice cannot reload while its replacement is unconfirmed');
+ assert.deepEqual(JSON.parse(rt.host.storage.getItem(saveKey)),local);
+ assert.equal(rt.dom.window.document.getElementById('cloud-overlay').hidden,true);
+ assert.equal(rt.host.pending()[0].request_id,replacement.request_id);
+ await rt.sandbox.CloudSync.retryPending();await turn();
+ assert.equal(calls[2].request_id,replacement.request_id,'recover the original replacement envelope');
+ if(status===409){
+  const freshCloud=[...rt.dom.window.document.querySelectorAll('.dialog button')].find(b=>b.textContent==='用云端存档');assert.ok(freshCloud);assert.notEqual(freshCloud,oldCloud);
+  oldCloud.click();await turn();assert.equal(reloads,0);assert.equal(rt.host.pending()[0].request_id,replacement.request_id);
+  freshCloud.click();await turn();await turn();assert.equal(reloads,1);assert.deepEqual(JSON.parse(rt.host.storage.getItem(saveKey)),remote);
+ }else {assert.equal(reloads,0);assert.deepEqual(JSON.parse(rt.host.storage.getItem(saveKey)),local);}
+ assert.equal(rt.host.pending().length,0);
+});
