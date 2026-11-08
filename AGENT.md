@@ -71,6 +71,7 @@
 | `ann` | 公告 | `announcement_id`，管理员发布的公告 |
 | `run` | 无尽模式对局 | `run_id`，一局无尽 / 每日挑战 |
 | `ent` | 无尽模式旅客 | `entrant_id`，对局中服务器下发的一位旅客 |
+| `req` | 小程序动作请求 | `request_id`，按已验证平台账号隔离的幂等回执 |
 | `wave` | 无尽模式波次 | `wave_id`，对局中的黑话快剪 / 蒸馏大军波次 |
 
 ### 示例
@@ -116,6 +117,7 @@
 | `not_found` | 404 | `The requested resource was not found.` |
 | `invalid_request` | 400 | `The request is invalid.` |
 | `method_not_allowed` | 405 | `Method not allowed.` |
+| `mapp_request_conflict` | 409 | `The request ID has already been used for a different action.` |
 | `sync_conflict` | 409 | `The cloud save has a newer version than the client base version.` |
 | `sync_snapshot_expired` | 410 | `The requested save snapshot is no longer available.` |
 | `sync_rate_limited` | 429 | `Too many sync requests. Please retry later.`（必须带 `Retry-After`） |
@@ -378,3 +380,28 @@ CI 要求（main 分支必须保持绿）：
 
 - 模板中的 Next.js 规则块不适用：本仓库没有 Next.js，前端是原生 JS 静态站。
 - 模板要求的 `/backend-api/*` 前缀被本项目的 `/anthropic/v1/*` 取代（见「后端 URL」）。
+
+## LINUX DO 小程序边界
+
+外部 `app_id` 与 `linuxdo_id` 是平台的不透明标识符，不是本项目资源 ID。身份来自已验签的 issuer/app/channel/sub，独立于网站账户；禁止用户名合并。
+
+- 小程序固定入口（全部仅接受已验签平台 Bearer JWT）：`GET /anthropic/v1/mapp/bootstrap`、
+  `POST /anthropic/v1/mapp/profile`、`GET /anthropic/v1/mapp/query`、`POST /anthropic/v1/mapp/action`。
+- `MAPP_APP_ID` 默认 `01a1baa6-abbf-7ed6-afac-bfa495a47dd3`。Issuer 固定 `https://linux.do`，
+  audience 固定 `https://api.luminet.cn`，公钥只从 `https://linux.do/mini-app-api/jwks` 获取；
+  不读取请求里的 Host、转发头、JWKS URL 或 channel 来配置验签。CORS 允许 `https://linux.do`。
+- `bootstrap` 返回 `{user, announcements:[], daily, active_run}`；`profile` 只接受
+  `{id: string, username: string, name?: string|null}`，`id` 必须等于已验签 `sub`，直接返回 user 对象。
+  User 包含 `user_id, linuxdo_id: string, display_name, avatar_url: null, tag`，无管理员、会话、AT/RT。
+- `query` 的 `op` 白名单：`save / snapshots / snapshot / run_current / run / daily / leaderboard / announcements`；
+  其他允许的查询字段为 `save_id / run_id / board / period / limit`。JWT 对固定 query 原始前缀和
+  SDK 规范化动态后缀分别校验，不能任意排序或重新编码固定部分。
+- `action`：`{request_id: req_*, op, args}`。op 白名单为 `save / run_start / run_next / run_inspect /
+  run_quiz / run_decision / wave_result / run_abandon`；`run_id`、`wave_id`、`picks/hits` 都在 args 顶层。
+  `run_start` 仍要求 `client_rules_version: 2`。不接受 body 的 user/platform/channel/角色字段。
+- 成功及终态业务错误的回执与业务变更同一个 SQL 事务提交；同请求 ID 同 payload 重放原 status/body，
+  不同 payload 返回 `mapp_request_conflict`。429（包括 TooEarly）与 500/503 不保存回执，可等待后用同一
+  request_id 重试。丢失成功响应必须重试原 request_id，不能生成新 ID。
+- 小程序事务使用单次事务的 READ COMMITTED，加稳定账号行锁，避免不同用户首次写入的 gap-lock 死锁，
+  不修改网站或数据库全局隔离级别。run source 在同事务创建，普通结算、最终名次和后台过期均按来源分榜。
+  新增 `006_mapp.sql` 仅 CREATE TABLE，不更改或重置旧网站排行榜。完整 DTO 合同见 Task 2 report。

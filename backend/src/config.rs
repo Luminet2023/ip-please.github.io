@@ -7,6 +7,7 @@ use anyhow::{bail, Context};
 #[derive(Clone, Debug)]
 pub struct Config {
     pub bind_addr: String,
+    pub mapp_app_id: String,
     pub database_url: String,
     pub oidc_issuer: String,
     pub oidc_client_id: String,
@@ -102,6 +103,7 @@ impl Config {
         }
 
         Ok(Self {
+            mapp_app_id: var_or("MAPP_APP_ID", "01a1baa6-abbf-7ed6-afac-bfa495a47dd3"),
             bind_addr: var_or("BIND_ADDR", "0.0.0.0:8080"),
             database_url,
             oidc_issuer: var_or("OIDC_ISSUER", "https://auth.luminet.cn/realms/prod")
@@ -139,6 +141,7 @@ impl Config {
     /// 测试用：不读环境变量的固定配置。
     pub fn for_tests(database_url: &str, issuer: &str) -> Self {
         Self {
+            mapp_app_id: "test-miniapp".into(),
             bind_addr: "127.0.0.1:0".to_string(),
             database_url: database_url.to_string(),
             oidc_issuer: issuer.trim_end_matches('/').to_string(),

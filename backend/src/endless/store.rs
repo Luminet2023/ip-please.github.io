@@ -4,7 +4,7 @@
 use chrono::{Datelike, FixedOffset, TimeZone, Utc};
 use serde_json::{json, Value};
 use sqlx::mysql::MySqlRow;
-use sqlx::{MySql, MySqlPool, Row, Transaction};
+use sqlx::{Executor, MySql, MySqlConnection, MySqlPool, Row, Transaction};
 
 use super::state::{Mode, RunState, StepError};
 use crate::error::{AppError, DetailCode};
@@ -95,8 +95,8 @@ fn duplicate_key(err: &sqlx::Error, key: &str) -> bool {
 }
 
 /// 开新局。已有进行中的对局 → 409 `endless_run_active`；今天的每日挑战已玩过 → 409 `daily_already_played`。
-pub async fn create(
-    pool: &MySqlPool,
+pub async fn create<'e, E: Executor<'e, Database = MySql>>(
+    pool: E,
     user_id: &str,
     state: &RunState,
     now: i64,
@@ -140,7 +140,10 @@ pub async fn active_run_id(pool: &MySqlPool, user_id: &str) -> Result<Option<Str
         .map_err(AppError::db)
 }
 
-pub async fn load(pool: &MySqlPool, run_id: &str) -> Result<Option<RunRow>, AppError> {
+pub async fn load<'e, E: Executor<'e, Database = MySql>>(
+    pool: E,
+    run_id: &str,
+) -> Result<Option<RunRow>, AppError> {
     let row = sqlx::query(&format!(
         "SELECT {RUN_COLUMNS} FROM ip_please_endless_runs WHERE run_id = ?"
     ))
@@ -232,6 +235,15 @@ async fn persist(
 
 /// 对局结束：写排行榜（同一榜同一周期只保留个人最高分；可疑对局不上榜）。
 async fn finalize(tx: &mut Transaction<'_, MySql>, run: &RunRow, now: i64) -> Result<(), AppError> {
+    let scope: Option<String> =
+        sqlx::query_scalar("SELECT scope_key FROM ip_please_mapp_run_sources WHERE run_id = ?")
+            .bind(&run.run_id)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(AppError::db)?;
+    if let Some(scope) = scope {
+        return crate::mapp::store::finalize(tx, run, now, &scope).await;
+    }
     let state = &run.state;
     if state.flagged() {
         tracing::warn!(run_id = %run.run_id, violations = state.timing_violations, "flagged run kept off the leaderboard");
@@ -274,12 +286,31 @@ pub async fn mutate<T>(
     step: impl FnOnce(&mut RunState) -> Result<(T, Value), StepError>,
 ) -> Result<(T, RunRow), AppError> {
     let mut tx = pool.begin().await.map_err(AppError::db)?;
+    let result = mutate_tx(&mut tx, run_id, user_id, now, kind, step).await;
+    if !matches!(
+        &result,
+        Err(AppError::Internal(_)
+            | AppError::Detail(DetailCode::InternalError | DetailCode::SyncUnavailable))
+    ) {
+        tx.commit().await.map_err(AppError::db)?;
+    }
+    result
+}
+
+pub async fn mutate_tx<T>(
+    tx: &mut Transaction<'_, MySql>,
+    run_id: &str,
+    user_id: &str,
+    now: i64,
+    kind: &str,
+    step: impl FnOnce(&mut RunState) -> Result<(T, Value), StepError>,
+) -> Result<(T, RunRow), AppError> {
     let row = sqlx::query(&format!(
         "SELECT {RUN_COLUMNS} FROM ip_please_endless_runs WHERE run_id = ? AND user_id = ? FOR UPDATE"
     ))
     .bind(run_id)
     .bind(user_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await
     .map_err(AppError::db)?
     .ok_or(AppError::Detail(DetailCode::NotFound))?;
@@ -291,9 +322,8 @@ pub async fn mutate<T>(
     {
         run.state.end(reason);
         run.ended_at_ms = Some(now);
-        persist(&mut tx, &run, now, ("expire", &json!({ "reason": reason }))).await?;
-        finalize(&mut tx, &run, now).await?;
-        tx.commit().await.map_err(AppError::db)?;
+        persist(tx, &run, now, ("expire", &json!({ "reason": reason }))).await?;
+        finalize(tx, &run, now).await?;
         return Err(AppError::Detail(DetailCode::EndlessStateConflict));
     }
 
@@ -303,11 +333,11 @@ pub async fn mutate<T>(
     if ended_now {
         run.ended_at_ms = Some(now);
     }
-    persist(&mut tx, &run, now, (kind, &log)).await?;
+    run.last_action_at_ms = now;
+    persist(tx, &run, now, (kind, &log)).await?;
     if ended_now {
-        finalize(&mut tx, &run, now).await?;
+        finalize(tx, &run, now).await?;
     }
-    tx.commit().await.map_err(AppError::db)?;
     Ok((value, run))
 }
 
@@ -367,12 +397,28 @@ pub fn run_view(run: &RunRow) -> Value {
 
 /// 结束后的结算视图（含各榜名次）。
 pub async fn final_view(pool: &MySqlPool, run: &RunRow) -> Result<Value, AppError> {
+    let mut conn = pool.acquire().await.map_err(AppError::db)?;
+    final_view_conn(&mut conn, run).await
+}
+
+pub async fn final_view_conn(conn: &mut MySqlConnection, run: &RunRow) -> Result<Value, AppError> {
+    let scope: Option<String> =
+        sqlx::query_scalar("SELECT scope_key FROM ip_please_mapp_run_sources WHERE run_id = ?")
+            .bind(&run.run_id)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(AppError::db)?;
     let state = &run.state;
     let ended_ms = run.ended_at_ms.unwrap_or(run.last_action_at_ms);
     let mut ranks = serde_json::Map::new();
     let mut personal_best = Value::Null;
     for (board, period) in boards_for(state.mode, state.daily_date.as_deref(), ended_ms) {
-        let mine = my_entry(pool, board, &period, &run.user_id).await?;
+        let mine = match &scope {
+            Some(scope) => {
+                crate::mapp::store::my_entry(conn, scope, board, &period, &run.user_id).await?
+            }
+            None => my_entry(conn, board, &period, &run.user_id).await?,
+        };
         if board != "weekly" {
             personal_best = mine.as_ref().map(|m| json!(m.1)).unwrap_or(Value::Null);
         }
@@ -401,7 +447,7 @@ pub async fn final_view(pool: &MySqlPool, run: &RunRow) -> Result<Value, AppErro
 
 /// 自己在某榜的 (名次, 分数)。
 async fn my_entry(
-    pool: &MySqlPool,
+    pool: &mut MySqlConnection,
     board: &str,
     period: &str,
     user_id: &str,
@@ -412,7 +458,7 @@ async fn my_entry(
     .bind(board)
     .bind(period)
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *pool)
     .await
     .map_err(AppError::db)?;
     let Some(row) = row else {
@@ -429,7 +475,7 @@ async fn my_entry(
     .bind(score)
     .bind(score)
     .bind(achieved)
-    .fetch_one(pool)
+    .fetch_one(&mut *pool)
     .await
     .map_err(AppError::db)?;
     Ok(Some((better + 1, score)))
@@ -480,10 +526,15 @@ pub async fn leaderboard(
         entries.push(entry);
     }
     let me = match viewer {
-        Some((user_id, _)) => my_entry(pool, board, period, user_id)
-            .await?
-            .map(|(rank, score)| json!({ "rank": rank, "score": score }))
-            .unwrap_or(Value::Null),
+        Some((user_id, _)) => my_entry(
+            &mut *pool.acquire().await.map_err(AppError::db)?,
+            board,
+            period,
+            user_id,
+        )
+        .await?
+        .map(|(rank, score)| json!({ "rank": rank, "score": score }))
+        .unwrap_or(Value::Null),
         None => Value::Null,
     };
     Ok(json!({ "board": board, "period": period, "entries": entries, "me": me }))

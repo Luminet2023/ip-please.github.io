@@ -74,7 +74,7 @@ fn is_invisible(c: char) -> bool {
 }
 
 /// 规范化 IdP 给的名字：去掉不可见字符、合并空白、最长 32 字；空的或像邮箱的不用。
-fn clean_name(raw: &str) -> Option<String> {
+pub fn clean_name(raw: &str) -> Option<String> {
     let visible: String = raw
         .chars()
         .map(|c| if c.is_whitespace() { ' ' } else { c })

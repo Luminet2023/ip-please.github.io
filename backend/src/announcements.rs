@@ -57,6 +57,10 @@ pub async fn list_active(
     state
         .limiter
         .check(ratelimit::PUBLIC_READ, &client_ip(&state, &headers))?;
+    Ok(private_json(StatusCode::OK, active(&state.pool).await?))
+}
+
+pub async fn active(pool: &sqlx::MySqlPool) -> Result<Value, AppError> {
     let now = now_ms();
     let rows = sqlx::query(&format!(
         "SELECT {COLUMNS} FROM ip_please_announcements
@@ -66,17 +70,14 @@ pub async fn list_active(
     .bind(now)
     .bind(now)
     .bind(PUBLIC_LIMIT)
-    .fetch_all(&state.pool)
+    .fetch_all(pool)
     .await
     .map_err(AppError::db)?;
     let items = rows
         .iter()
         .map(|row| row_json(row, false))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(private_json(
-        StatusCode::OK,
-        json!({ "announcements": items }),
-    ))
+    Ok(json!({ "announcements": items }))
 }
 
 #[derive(Debug, Deserialize)]

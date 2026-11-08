@@ -32,11 +32,12 @@ pub enum DetailCode {
     EndlessStateConflict,
     DailyAlreadyPlayed,
     EndlessRulesOutdated,
+    MappRequestConflict,
 }
 
 impl DetailCode {
     /// 全部已登记的错误码（测试与文档核对用）。
-    pub const ALL: [DetailCode; 18] = [
+    pub const ALL: [DetailCode; 19] = [
         DetailCode::NotFound,
         DetailCode::ValidationError,
         DetailCode::MethodNotAllowed,
@@ -55,6 +56,7 @@ impl DetailCode {
         DetailCode::EndlessStateConflict,
         DetailCode::DailyAlreadyPlayed,
         DetailCode::EndlessRulesOutdated,
+        DetailCode::MappRequestConflict,
     ];
 }
 
@@ -69,6 +71,7 @@ impl DetailCode {
             DetailCode::SyncConflict
             | DetailCode::EndlessRunActive
             | DetailCode::EndlessStateConflict
+            | DetailCode::MappRequestConflict
             | DetailCode::EndlessRulesOutdated
             | DetailCode::DailyAlreadyPlayed => StatusCode::CONFLICT,
             DetailCode::SyncSnapshotExpired => StatusCode::GONE,
@@ -86,6 +89,9 @@ impl DetailCode {
 
     pub fn message(self) -> &'static str {
         match self {
+            DetailCode::MappRequestConflict => {
+                "The request ID has already been used for a different action."
+            }
             DetailCode::NotFound => "The requested resource was not found.",
             DetailCode::ValidationError => "The request is invalid.",
             DetailCode::MethodNotAllowed => "Method not allowed.",

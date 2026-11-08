@@ -323,7 +323,7 @@ pub struct LeaderboardQuery {
     limit: Option<i64>,
 }
 
-fn valid_period(board: &str, period: &str) -> bool {
+pub fn valid_period(board: &str, period: &str) -> bool {
     let bytes = period.as_bytes();
     match board {
         "endless" => period == "all",

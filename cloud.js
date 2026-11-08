@@ -47,6 +47,7 @@ window.CloudSync = (function () {
     Unauthorized: 'unauthorized',
     'The login attempt is invalid or has expired.': 'login_attempt_invalid',
     'Too many requests. Please retry later.': 'rate_limited',
+    'The request ID has already been used for a different action.': 'mapp_request_conflict',
     'An endless run is already in progress.': 'endless_run_active',
     'The game rules have changed. Please reload to start a new run.': 'endless_rules_outdated',
     'The endless run state has changed. Please reload.': 'endless_state_conflict',

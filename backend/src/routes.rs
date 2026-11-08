@@ -29,6 +29,10 @@ use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/anthropic/v1/mapp/bootstrap", get(crate::mapp::bootstrap))
+        .route("/anthropic/v1/mapp/query", get(crate::mapp::query))
+        .route("/anthropic/v1/mapp/profile", post(crate::mapp::profile))
+        .route("/anthropic/v1/mapp/action", post(crate::mapp::action))
         .route("/anthropic/v1/health", get(health))
         .route("/anthropic/v1/auth/login", post(auth::routes::login))
         .route("/anthropic/v1/auth/callback", post(auth::routes::callback))
@@ -157,12 +161,15 @@ fn row_to_save(row: &MySqlRow) -> Result<SaveRow, AppError> {
 }
 
 async fn get_save(State(state): State<AppState>, user: AuthUser) -> Result<Response, AppError> {
-    let user_id = user.user_id;
+    get_save_for(&state, &user.user_id).await
+}
+
+pub async fn get_save_for(state: &AppState, user_id: &str) -> Result<Response, AppError> {
     let row = sqlx::query(
         "SELECT save_id, version, day, payload, updated_at_ms
          FROM ip_please_save_slots WHERE user_id = ?",
     )
-    .bind(&user_id)
+    .bind(user_id)
     .fetch_optional(&state.pool)
     .await
     .map_err(AppError::db)?;
@@ -188,7 +195,7 @@ async fn get_save(State(state): State<AppState>, user: AuthUser) -> Result<Respo
 // ———————————————————— 日终上传 ————————————————————
 
 #[derive(Debug, Deserialize)]
-struct SaveUpload {
+pub struct SaveUpload {
     day: i64,
     payload: Value,
     #[serde(default)]
@@ -211,20 +218,29 @@ async fn put_save(
     let user_id = user.user_id;
     state.limiter.check(sync_upload_rule(&state), &user_id)?;
 
+    let mut tx = state.pool.begin().await.map_err(AppError::db)?;
+    let body = save_in_tx(&mut tx, &user_id, &upload).await?;
+    tx.commit().await.map_err(AppError::db)?;
+    Ok(private_json(StatusCode::OK, body))
+}
+
+pub async fn save_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+    user_id: &str,
+    upload: &SaveUpload,
+) -> Result<Value, AppError> {
     let payload_text = serde_json::to_string(&upload.payload)?;
     let now_ms = now_ms();
 
-    let mut tx = state.pool.begin().await.map_err(AppError::db)?;
     let current: Option<i64> =
         sqlx::query_scalar("SELECT version FROM ip_please_save_slots WHERE user_id = ? FOR UPDATE")
-            .bind(&user_id)
-            .fetch_optional(&mut *tx)
+            .bind(user_id)
+            .fetch_optional(&mut **tx)
             .await
             .map_err(AppError::db)?;
 
     let current_version = current.unwrap_or(0);
     if upload.base_version != current_version {
-        let _ = tx.rollback().await;
         return Err(AppError::Detail(DetailCode::SyncConflict));
     }
 
@@ -237,12 +253,12 @@ async fn put_save(
          VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&save_id)
-    .bind(&user_id)
+    .bind(user_id)
     .bind(version)
     .bind(upload.day)
     .bind(&payload_text)
     .bind(now_ms)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .map_err(AppError::db)?;
 
@@ -257,8 +273,8 @@ async fn put_save(
         .bind(upload.day)
         .bind(&payload_text)
         .bind(now_ms)
-        .bind(&user_id)
-        .execute(&mut *tx)
+        .bind(user_id)
+        .execute(&mut **tx)
         .await
         .map_err(AppError::db)?;
     } else {
@@ -267,39 +283,27 @@ async fn put_save(
                 (user_id, save_id, version, day, payload, updated_at_ms)
              VALUES (?, ?, ?, ?, ?, ?)",
         )
-        .bind(&user_id)
+        .bind(user_id)
         .bind(&save_id)
         .bind(version)
         .bind(upload.day)
         .bind(&payload_text)
         .bind(now_ms)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
         .map_err(AppError::db)?;
     }
 
-    tx.commit().await.map_err(AppError::db)?;
-    tracing::info!(
-        user_id = %user_id,
-        session_id = %user.session_id,
-        day = upload.day,
-        version,
-        "cloud save stored"
-    );
-
-    Ok(private_json(
-        StatusCode::OK,
-        json!({
-            "user_id": user_id,
-            "save_id": save_id,
-            "version": version,
-            "day": upload.day,
-            "updated_at": iso_from_ms(now_ms),
-        }),
-    ))
+    Ok(json!({
+        "user_id": user_id,
+        "save_id": save_id,
+        "version": version,
+        "day": upload.day,
+        "updated_at": iso_from_ms(now_ms),
+    }))
 }
 
-fn validate_upload(upload: &SaveUpload, max_payload_bytes: usize) -> Result<(), AppError> {
+pub fn validate_upload(upload: &SaveUpload, max_payload_bytes: usize) -> Result<(), AppError> {
     if !(1..=64).contains(&upload.day) {
         return Err(AppError::Detail(DetailCode::ValidationError));
     }
@@ -341,8 +345,15 @@ async fn list_snapshots(
     user: AuthUser,
     QueryParams(query): QueryParams<SnapshotQuery>,
 ) -> Result<Response, AppError> {
-    let limit = query.limit.unwrap_or(50).clamp(1, 200);
-    let user_id = user.user_id;
+    list_snapshots_for(&state, &user.user_id, query.limit.unwrap_or(50)).await
+}
+
+pub async fn list_snapshots_for(
+    state: &AppState,
+    user_id: &str,
+    limit: i64,
+) -> Result<Response, AppError> {
+    let limit = limit.clamp(1, 200);
 
     let rows = sqlx::query(
         "SELECT save_id, version, day, created_at_ms
@@ -351,7 +362,7 @@ async fn list_snapshots(
          ORDER BY version DESC
          LIMIT ?",
     )
-    .bind(&user_id)
+    .bind(user_id)
     .bind(limit)
     .fetch_all(&state.pool)
     .await
@@ -390,16 +401,23 @@ async fn get_snapshot(
     user: AuthUser,
     PathId(save_id): PathId,
 ) -> Result<Response, AppError> {
-    ids::require(&save_id, ids::PREFIX_SAVE)?;
-    let user_id = user.user_id;
+    get_snapshot_for(&state, &user.user_id, &save_id).await
+}
+
+pub async fn get_snapshot_for(
+    state: &AppState,
+    user_id: &str,
+    save_id: &str,
+) -> Result<Response, AppError> {
+    ids::require(save_id, ids::PREFIX_SAVE)?;
 
     let row = sqlx::query(
         "SELECT save_id, version, day, payload, created_at_ms AS updated_at_ms
          FROM ip_please_save_snapshots
          WHERE save_id = ? AND user_id = ?",
     )
-    .bind(&save_id)
-    .bind(&user_id)
+    .bind(save_id)
+    .bind(user_id)
     .fetch_optional(&state.pool)
     .await
     .map_err(AppError::db)?;

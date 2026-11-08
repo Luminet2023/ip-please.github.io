@@ -8,6 +8,7 @@ use rand::Rng;
 
 use crate::error::{AppError, DetailCode};
 
+pub const PREFIX_REQUEST: &str = "req";
 pub const PREFIX_USER: &str = "user";
 pub const PREFIX_SAVE: &str = "save";
 pub const PREFIX_SESSION: &str = "sess";
