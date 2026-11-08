@@ -154,8 +154,9 @@ function drawDayCard(t) {
     const daily = window.Endless && Endless.run() && Endless.run().mode === 'daily';
     bigText(W / 2, 126, T(daily ? '每日挑战' : '无尽模式'), 12, 4, K.WHITE);
     txt(W / 2, 192, T(daily ? '东八区检查站 · 今日特别班' : '东八区检查站 · 加班夜'), 10, K.GREY, 'ma');
-    txt(W / 2, 214, T('规则全书生效 · 大肥鱼出没 · 判错 3 次调岗'), 8, K.GREY_D, 'ma');
-    txt(W / 2, 232, T('指认破绽加分 · 连对提高倍率 · 小心通缉犯与临时规定'), 8, K.GREY_D, 'ma');
+    const progressive = !!(window.Endless && Endless.run()?.progression);
+    txt(W / 2, 214, T(progressive ? '每 5 位旅客解锁新章 · 判错 3 次调岗' : '规则全书生效 · 大肥鱼出没 · 判错 3 次调岗'), 8, K.GREY_D, 'ma');
+    txt(W / 2, 232, T(progressive ? '先读新章，再叫下一位 · 指认破绽加分' : '指认破绽加分 · 连对提高倍率 · 小心通缉犯与临时规定'), 8, K.GREY_D, 'ma');
     return;
   }
   bigText(W / 2, 132, `DAY ${S.day}`, 12, 4, K.WHITE);

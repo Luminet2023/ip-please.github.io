@@ -4,6 +4,7 @@
 
 pub mod generator;
 pub mod generator_v2;
+pub mod generator_v3;
 pub mod model;
 pub mod rng;
 pub mod routes;

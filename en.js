@@ -1944,3 +1944,19 @@ Object.assign(EN, {
   "使用访客进度": "Use guest progress",
   "保留账号进度": "Keep account progress"
 });
+
+Object.assign(EN, {
+  "新章 {0}：打开宪法查看 NEW 条款": "Chapter {0}: open the constitution for NEW rules",
+  "规则阅读记录未保存，请重试打开宪法": "Review was not saved. Open the constitution to retry.",
+  "照片须与本人一致": "Photo must match the traveler",
+  "护照照片与窗口中的旅客须一致": "Compare the passport photo with the traveler at the window",
+  "把窗口中的旅客与通缉令照片比对": "Compare the traveler with the wanted poster photo",
+  "桌面公告规定在标示人数内生效": "Desk bulletins apply for the stated number of travelers",
+  "护照在检查日必须有效": "Passport must be valid on the inspection date"
+});
+
+Object.assign(EN, {
+  "每 5 位旅客解锁新章 · 判错 3 次调岗": "New chapter every 5 travelers · 3 errors end the shift",
+  "先读新章，再叫下一位 · 指认破绽加分": "Read new chapters before calling · Point out flaws for bonus points",
+  "第 {0} 章": "CH. {0}"
+});

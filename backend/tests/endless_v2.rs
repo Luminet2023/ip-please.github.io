@@ -3,9 +3,9 @@ use ip_please_sync::endless::{
     state::{Mode, RunState},
 };
 #[test]
-fn new_runs_use_v2_while_v1_resumes_unchanged() {
+fn new_runs_use_v3_while_v1_and_v2_resume_unchanged() {
     let state = RunState::new(Mode::Daily, &[9; 32], Some("2026-11-08".into()));
-    assert_eq!(state.generator_version, 2, "new games must negotiate v2");
+    assert_eq!(state.generator_version, 3, "new games must negotiate v3");
     let mut old = serde_json::to_value(&state).unwrap();
     old["generator_version"] = 1.into();
     let mut old: RunState = serde_json::from_value(old).unwrap();
@@ -21,6 +21,8 @@ use ip_please_sync::endless::state::Current;
 use std::collections::{BTreeMap, BTreeSet};
 fn generate(seed: u8, t: u32) -> ip_please_sync::endless::state::TravelerState {
     let mut s = RunState::new(Mode::Endless, &[seed; 32], None);
+    s.generator_version = 2;
+    s.generator_version = 2;
     s.slot = t + t / 8;
     s.next(0, &mut |_| "ent_test".into()).unwrap();
     match s.current.unwrap() {
@@ -83,7 +85,8 @@ fn v2_all_nationalities_have_clean_and_flawed_documents_and_ai_cases() {
 }
 #[test]
 fn v2_exposes_fixed_shift_and_has_two_ai_per_sixteen_without_wanted_collisions() {
-    let s = RunState::new(Mode::Endless, &[8; 32], None);
+    let mut s = RunState::new(Mode::Endless, &[8; 32], None);
+    s.generator_version = 2;
     assert_eq!(s.view_summary()["inspection_date"], "2026.10.25");
     for block in 0..8 {
         let mut ai = 0;
@@ -100,6 +103,7 @@ fn v2_exposes_fixed_shift_and_has_two_ai_per_sixteen_without_wanted_collisions()
 #[test]
 fn wanted_must_be_detained_and_citation_explains_that() {
     let mut s = RunState::new(Mode::Endless, &[8; 32], None);
+    s.generator_version = 2;
     let t = generator::wanted_for(&[8; 32], 0).appear_at;
     s.slot = t + t / 8;
     s.next(0, &mut |_| "ent_test".into()).unwrap();
@@ -179,6 +183,7 @@ fn v2_actual_document_facts_support_every_new_issue_and_evidence_is_inspectable(
                 .iter()
                 .find(|d| matches!(d, Doc::EntryPermit { .. }));
             let mut s = RunState::new(Mode::Endless, &[seed; 32], None);
+            s.generator_version = 2;
             s.current = Some(Current::Traveler(g.clone()));
             for issue in &g.secret.issues {
                 seen.insert(issue.kind.clone());
@@ -318,6 +323,7 @@ fn classification_counters_advance_once_per_decision_including_retry() {
         .find(|t| t.public.person.ends_with("_AI"))
         .unwrap();
     let mut s = RunState::new(Mode::Endless, &[19; 32], None);
+    s.generator_version = 2;
     let decision = model.secret.ok[0];
     s.current = Some(Current::Traveler(model));
     let first = s.decide("ent_test", decision, 2000).unwrap();
@@ -334,7 +340,8 @@ fn start_version_negotiation_rejects_missing_old_and_future_versions() {
     for value in [
         serde_json::json!({"mode":"daily"}),
         serde_json::json!({"mode":"daily","client_rules_version":1}),
-        serde_json::json!({"mode":"daily","client_rules_version":3}),
+        serde_json::json!({"mode":"daily","client_rules_version":2}),
+        serde_json::json!({"mode":"daily","client_rules_version":4}),
     ] {
         assert!(serde_json::from_value::<StartRequest>(value)
             .unwrap()
@@ -342,7 +349,7 @@ fn start_version_negotiation_rejects_missing_old_and_future_versions() {
             .is_err());
     }
     assert!(serde_json::from_value::<StartRequest>(
-        serde_json::json!({"mode":"daily","client_rules_version":2})
+        serde_json::json!({"mode":"daily","client_rules_version":3})
     )
     .unwrap()
     .validate_rules()

@@ -483,29 +483,38 @@ const ENDLESS_REGISTRY = [
   ['GLM', 'glm-4', 'Zhipu'], ['Kimi', 'kimi-k2', 'Moonshot'], ['Gemini', 'gemini-2.5', 'Google'],
 ];
 function endlessRules() {
-  return RULES.filter(r=>r.day<=7).map(r=>r.key==='corp' ? {...r,
+  const rules = RULES.filter(r=>r.day<=7).map(r=>r.key==='corp' ? {...r,
     head:'§6 已认证模型不受出身限制', subs:['注册表中的申报、模型 ID、发行主体须一致']} : r).concat([
     {day:7,page:2,key:'date',head:'证件有效期',subs:['本班检查日期：2026.10.25','护照与入境许可在检查日必须有效']},
     {day:7,page:2,key:'permit',head:'入境许可核验',subs:['持证人须与护照姓名一致','目的：访问 / 研究 / 过境','缺许可：将护照国籍栏与临时规定比对']},
     {day:7,page:3,key:'issuing',head:'护照签发城市目录',subs:Object.values(COUNTRIES).map(c=>c.passport+': '+c.cities.map(city=>city[4]).join(' / '))},
     {day:7,page:4,key:'registry',head:'独立模型认证注册表',subs:ENDLESS_REGISTRY.map(r=>r.join(' / '))},
   ]);
+  const p = window.Endless && Endless.run()?.progression;
+  if (!p) return rules;
+  return rules.concat([
+    {day:7,page:0,key:'photo',head:'照片须与本人一致',subs:['护照照片与窗口中的旅客须一致']},
+    {day:7,page:5,key:'wanted',head:'通缉犯必须拘留',subs:['把窗口中的旅客与通缉令照片比对']},
+    {day:7,page:5,key:'bulletin',head:'临时规定',subs:['桌面公告规定在标示人数内生效']},
+  ]).filter(r=>p.active_rules.includes(r.key)).map(r=>r.key==='date'&&!p.active_rules.includes('permit') ? {...r,subs:['本班检查日期：2026.10.25','护照在检查日必须有效']} : r);
 }
 
 class Rulebook {
   constructor(day) {
     this.day = day;
+    this.stage = S.endless ? window.Endless?.run()?.progression?.stage : undefined;
     this.w = 200;
     this.icon = ['book', C.BOOK];
     const amended = !S.endless && !!S.plot?.law?.amended;
     const v2 = S.endless && window.Endless && Endless.run()?.generator_version >= 2;
+    const progression = S.endless && window.Endless && Endless.run()?.progression;
     const rules = (v2 ? endlessRules() : RULES.filter((r) => r.day <= day)).map(r => r.key === 'corp' && amended ? { ...r,
       head:'§6 中资控股审查（已修订）', subs:['一般主体中资控股过半仍禁止', '已认证模型适用 §12 许可例外'] } : r);
     this.pages = [];
     for (let p = 0; p <= Math.max(...rules.map(r=>r.page)); p++) {
       const L = [];
       for (const r of rules.filter((q) => q.page === p)) {
-        wrap(T(r.head),10,this.w-40).forEach((s,i)=>L.push({s,size:10,col:r.day===day?K.RED_D:K.TEXT,key:r.key,isNew:r.day===day&&i===0}));
+        wrap(T(r.head),10,this.w-40).forEach((s,i)=>L.push({s,size:10,col:(progression ? progression.new_rules.includes(r.key) : r.day===day)?K.RED_D:K.TEXT,key:r.key,isNew:(progression ? progression.new_rules.includes(r.key) : r.day===day)&&i===0}));
         for (const s of r.subs) for(const line of s.includes('|')?[s]:wrap(T(s),8,this.w-20)) L.push({s:line,size:8,col:K.TEXT_L,key:r.key});
       }
       let y = 22;
@@ -520,7 +529,7 @@ class Rulebook {
           fields[row.key] = f ? [f[0], f[1], f[2], y - 2] : [4, row.y - 2, this.w - 5, y - 2];
         }
       }
-      this.pages.push({ rows, fields, h: y + 6 });
+      if (rows.length) this.pages.push({ rows, fields, h: y + 6 });
     }
     this.npages=this.pages.length;
     this.h = Math.max(...this.pages.map((p) => p.h));
@@ -543,7 +552,7 @@ class Rulebook {
       rect(x + this.tab[0], y + this.tab[1], x + this.tab[2], y + this.tab[3], K.BOOK);
       txt(x + this.tab[2] - 4, y + 7, T('第{0}/{1}页 ▶', this.page + 1, this.npages), 8, K.PAPER, 'ra');
     } else {
-      txt(x + w - 8, y + 7, `DAY ${this.day}`, 8, K.PAPER, 'ra');
+      txt(x + w - 8, y + 7, this.stage === undefined ? `DAY ${this.day}` : T('第 {0} 章', this.stage + 1), 8, K.PAPER, 'ra');
     }
     for (const r of this.pages[this.page].rows) {
       if (r.s.includes('|')) {

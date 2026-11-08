@@ -259,7 +259,7 @@ X 光物品），**正确答案、破绽、谁会接测谎题都不下发**。�
 
 - 生成：第 `t` 位旅客只由 `(种子, t)` 决定（ChaCha20 + HMAC 子流，自写抽样函数）。改生成逻辑必须提升
   `GENERATOR_VERSION` 并更新 golden hash，且只在 UTC+8 午夜后上线（否则当天每日挑战的序列会变）。
-  每第 9 格是波次（黑话快剪 / 蒸馏大军交替）。
+  v1/v2 每第 9 格是波次；v3 前 15 格普通旅客，此后每 9 格为 8 位旅客 + 1 波次（快剪 / 蒸馏交替）。
 - 会显示给玩家的字符串（开场白、地名、黑话）必须与前端 JS 原文一致：`tables.rs` 的测试会读 `data.js` /
   `endless.js` / `assets.js` 核对；破绽说明、追问、反应、罚单文案只在前端（按 `kind` 取）。
 - 接口（全部需要会话，按用户限流）：
@@ -398,7 +398,7 @@ CI 要求（main 分支必须保持绿）：
   SDK 规范化动态后缀分别校验，不能任意排序或重新编码固定部分。
 - `action`：`{request_id: req_*, op, args}`。op 白名单为 `save / run_start / run_next / run_inspect /
   run_quiz / run_decision / wave_result / run_abandon`；`run_id`、`wave_id`、`picks/hits` 都在 args 顶层。
-  `run_start` 仍要求 `client_rules_version: 2`。不接受 body 的 user/platform/channel/角色字段。
+  `run_start` 仍要求 `client_rules_version: 3`。不接受 body 的 user/platform/channel/角色字段。
 - 成功及终态业务错误的回执与业务变更同一个 SQL 事务提交；同请求 ID 同 payload 重放原 status/body，
   不同 payload 返回 `mapp_request_conflict`。429（包括 TooEarly）与 500/503 不保存回执，可等待后用同一
   request_id 重试。丢失成功响应必须重试原 request_id，不能生成新 ID。
@@ -408,8 +408,8 @@ CI 要求（main 分支必须保持绿）：
 
 ### 版本与包验收补充
 
-- 新局 `GENERATOR_VERSION=2`，旧 state 缺失版本按 v1；旅客/波次/公告/通缉必须按持久化版本派发。
-  v1 golden 冻结，修复 v2 最终事实的破绽说明不能改 v1。更新 v2 fingerprint 必须说明行为原因。
+- 新局 `GENERATOR_VERSION=3`，旧 state 缺失版本按 v1；旅客/波次/公告/通缉必须按持久化版本派发。
+  v1/v2 golden 冻结，修复 v2 最终事实的破绽说明不能改 v1。更新 v3 fingerprint 必须说明行为原因。
   生成序列变更遵守上文 UTC+8 午夜规则，保留旧榜、旧局和每日种子；不得以新赛季规避迁移。
 - `miniapp/build.mjs` 用 pinned 官方 SDK packer 生成全游戏 IIFE ZIP；测试/preview/测试 JWKS 私钥不入包。
   SDK 提供网络、存储、资源、全屏与链接；严格 CSP/Trusted Types 不允许 HTML 字符串注入或 eval。
@@ -422,7 +422,7 @@ CI 要求（main 分支必须保持绿）：
   后者只可连接专用 `ip_please_test`；`backend/examples/miniapp_fixture.rs` 不属于生产二进制。
   `node miniapp/tests/visual.cjs` 为共享源码的真实浏览器场景审计（四语言、表情、长文档、真实字段命中），
   不冒充最终包的自然完整剧情通关。截图目录由 `BROWSER_ARTIFACTS` 指定。
-- CI 必须检查 `miniapp/**` 与共享 JS、v2 tests；backend PR 运行 fmt/clippy/default/MySQL，只有非 PR 才发布镜像。
+- CI 必须检查 `miniapp/**` 与共享 JS、v2 compatibility + progressive tests；backend PR 运行 fmt/clippy/default/MySQL，只有非 PR 才发布镜像。
   最终源修改后重建 ZIP 并校验 SHA256。真实已认证 LINUX DO 沙盒不可用时，记为待验收；本地 fixture 不算 live。
 - `MAPP_APP_ID` 为唯一小程序配置项；固定公网 origin/audience、issuer、JWKS 与 CORS 见上一节及部署说明。
   发布与实际平台验证的命令/权限/午夜切换、旧榜保留和兼容回滚在 `deploy/README.md`。
@@ -432,3 +432,13 @@ CI 要求（main 分支必须保持绿）：
 - 未登录的 SDK 游客可玩完整 14 天剧情并收集结局，仅使用 SDK 本地存档；不调用受保护的小程序 API，不启用云同步。无尽和每日挑战需要登录。
 - 登录后自动迁移游客进度并尝试同步；遇到已有云存档时必须显示明确的云端/本机选择，不允许静默覆盖。游客进度在持久化转移成功前不能删除；回执恢复继续沿用原 request_id。
 - 平台 SDK 自身按运行渠道管理浏览器存储，这不是服务器数据分区；跨渠道进度通过共同的云存档同步。
+
+### 渐进无尽规则 v3
+
+新局与每日 40 人使用相同的服务器进度；按已结算旅客数计数（错判也计，波次不计）：0 地区/照片，5 时区/语言，10 付款/账单/手机，15 测谎/X 光，20 护照有效期/签发城市，25 模型/认证注册表/已认证例外与六位 AI，30 入境许可姓名/目的/有效期，35 网络/登录/通缉/临时规定。规则、证件、破绽、工具、特殊旅客均按阶段生效；鱼旅客从 10 开始且只使用已公布规则。前 15 格无波次，然后每 8 位旅客接 1 波次；既有波次说明在准备阶段显示。
+
+普通/AI 旅客的 clean 抽样阈值为每千分 `max(250, 650 - 8*t)`（特殊旅客有独立策略）；25 前至多 1 个基础破绽，25 起以 35% 抽取 2 个，50 起先以 25% 抽取 3 个、否则继续 2 个抽样，互斥组合仍过滤。临时规定独立核验，不改变计分公式。阈值表达的是确定性抽样概率，不保证单个短序列的合规比例。
+
+RunView 新增 `progression`（v1/v2 为 null）：`stage` 0..7、`completed_travelers`、`active_rules`、`new_rules`、`next_unlock_at`、`next_rules`、`waves_unlocked`；不包含答案。当前旅客按自己的 t 显示；无当前旅客按下一位序号显示。新章先短暂翻页/描边提示，随后保持清楚的静态箭头；点击实际宪法书打开对应 NEW 页后才放行下一位或恢复待处理旅客。已打开的书保留拖动位置，更新到新条款页；阅读确认按 run_id 存入 gameStorage/SDK，成功持久化后生效。存储失败可点击书重试；减弱动效只保留静态提示，完成条件相同。键盘 B 可打开/确认。
+
+发布仍须配套前后端在 UTC+8 午夜切换；本次仅修改发布说明，不执行生产操作。无需数据库 schema 变更或清榜，持久化 v1/v2 的旅客/波次/公告/通缉继续按旧版本；两个旧 golden 均保留。新开局要求 client_rules_version:3，旧客户端新开局返回 409，旧局恢复不变。

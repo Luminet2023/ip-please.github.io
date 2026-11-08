@@ -64,10 +64,11 @@ function boothInput(x, y) {
 }
 
 function boothDown(x, y) {
+  if (S.endless && ConstitutionGuide.click(x, y)) return;
   if (inBox(x, y, BOOK_BOX) && !B.docs.some(d => d.big && inBox(x, y, docBox(d)))) return toggleRules();
   if (B.insp.on) {
     if (inBox(x, y, INSPECT_BTN)) return setInspect(false);
-    if (S.day >= 4 && inBox(x, y, XRAY_BTN)) return setXray(!B.xray.on);
+    if (S.day >= 4 && (!S.endless || endlessSkill('xray')) && inBox(x, y, XRAY_BTN)) return setXray(!B.xray.on);
     return inspectClick(x, y);
   }
   const tx = trayX(), u = trayU();
@@ -82,10 +83,10 @@ function boothDown(x, y) {
   }
   if (B.finalPhase && finalPageClick(x, y)) return;
   if (inBox(x, y, INSPECT_BTN)) return setInspect(true);
-  if (S.day >= 4 && inBox(x, y, XRAY_BTN)) return setXray(!B.xray.on);
+  if (S.day >= 4 && (!S.endless || endlessSkill('xray')) && inBox(x, y, XRAY_BTN)) return setXray(!B.xray.on);
   if (inBox(x, y, SPEAKER)) return callNext();
-  if (S.day >= 2 && inBox(x, y, DETAIN_BTN)) return detain();
-  if (S.day >= 2 && inBox(x, y, QUIZ_BTN)) return quiz();
+  if (S.day >= 2 && (!S.endless || endlessSkill('quiz')) && inBox(x, y, DETAIN_BTN)) return detain();
+  if (S.day >= 2 && (!S.endless || endlessSkill('quiz')) && inBox(x, y, QUIZ_BTN)) return quiz();
   for (const d of [...B.docs].reverse()) {
     const box = d.big ? docBox(d) : [d.x, d.y, d.x + 18, d.y + 12];
     if (d.big && !inBox(x, y, DESK)) continue;
@@ -194,7 +195,7 @@ function update() {
     if (B.event && B.event.type === 'clones') updateClones();
     const idle = !B.ent && !B.event && !B.cut && !B.closeup && !B.ending && !B.evidence && !(B.evidenceQueue || []).length && !B.finalPhase;
     if (idle && isEvent(nextItem()) && now > B.lastFinish + 1.6) startEvent(B.queue[B.idx++]);
-    if (idle && S.endless && window.Endless) Endless.maybeAutoWave();
+    if (idle && S.endless && window.Endless) {ConstitutionGuide.update(); Endless.maybeAutoWave();}
   }
   if (scene === 'boot') updateLangPick();
   if (scene === 'intro') { typedSounds(INTRO_LINES); if (st() > INTRO_LINES.end) go('title'); }
@@ -280,7 +281,7 @@ function boot() {
   window.addEventListener('pointerup', onUp);
   window.addEventListener('pointercancel', onUp);
   canvasEl.addEventListener('contextmenu', (e) => e.preventDefault());
-  window.addEventListener('keydown', (e) => { if (e.key === 'm' || e.key === 'M') toggleMute(); });
+  window.addEventListener('keydown', (e) => { if (e.key === 'm' || e.key === 'M') toggleMute(); if (scene === 'booth' && S.endless && e.key.toLowerCase() === 'b') { if (B.ruleInst && ConstitutionGuide.unread()) ConstitutionGuide.opened(); else toggleRules(); } });
   newGame();
   return loadImages().then(() => { sceneT0 = performance.now() / 1000; requestAnimationFrame(loop); });
 }

@@ -51,6 +51,7 @@ jobs:
         run: |
           node tools/endless_client_test.js
           node tools/endless_v2_test.js
+          node tools/endless_progressive_test.js
           node tools/plot_regression_test.js
           node tools/smoke_test.js
           node tools/storage_namespace_test.js
@@ -106,6 +107,7 @@ jobs:
       - run: node miniapp/tests/guest-browser.cjs
       - run: node miniapp/tests/guest-browser.cjs --backend
       - run: node miniapp/tests/visual.cjs
+      - run: node miniapp/tests/progressive-browser.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

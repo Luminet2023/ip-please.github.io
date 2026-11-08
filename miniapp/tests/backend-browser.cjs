@@ -6,7 +6,7 @@ async function run({startBackend,launchBrowser=launchChromium}={}){
  startBackend ||= (await import('./backend-bridge.mjs')).startBackend;let fixture,browser;
  try{
   fixture=await startBackend();browser=await launchBrowser();
-  const page=await browser.newPage({viewport:{width:1280,height:720},locale:'en-US',timezoneId:'America/New_York'}),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+  const page=await browser.newPage({viewport:{width:1280,height:720},locale:'en-US',timezoneId:'America/New_York'}),errors=[];page.on('pageerror',e=>{errors.push(e.message);console.log('BROWSER ERROR',e.message);});page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
   await page.goto(fixture.url);let frame=page.frames().find(f=>f.url().endsWith('/frame'));
   const ready=async()=>{frame=page.frames().find(f=>f.url().endsWith('/frame'));await frame.locator('#host-shell').waitFor({state:'hidden',timeout:30000});};
   const click=async(x,y)=>{const b=await frame.locator('#game').boundingBox();await page.mouse.click(b.x+x*b.width/640,b.y+y*b.height/360);};
@@ -15,10 +15,11 @@ async function run({startBackend,launchBrowser=launchChromium}={}){
   const shot=async name=>page.screenshot({path:path.join(out,name+'.png')});
   const waitCall=async(op,count=1)=>{for(let i=0;i<100;i++){const matches=fixture.calls.filter(c=>c.request?.op===op);if(matches.length>=count)return matches.at(-1);await page.waitForTimeout(100);}throw Error('No bridge operation '+op);};
   await title();await shot('backend-title');const before=await fixture.audit();
-  await click(420,304);await frame.getByRole('button',{name:'ENDLESS',exact:true}).click();await frame.locator('#cloud-overlay').waitFor({state:'hidden'});await page.waitForTimeout(2500);await click(15,298);await page.waitForTimeout(4200);
-  const next=await waitCall('run_next');assert.equal(next.response.status,200);assert.equal(next.response.body.run.generator_version,2);
+  await click(420,304);await frame.getByRole('button',{name:'ENDLESS',exact:true}).click();await frame.locator('#cloud-overlay').waitFor({state:'hidden'});await page.waitForTimeout(2500);await click(528,330);await page.waitForTimeout(300);await click(528,330);await click(15,298);await page.waitForTimeout(4200);
+  const next=await waitCall('run_next');assert.equal(next.response.status,200);assert.equal(next.response.body.run.generator_version,3);
   // Random entrants have different spoken introductions. Wait for the actual
   // passport icon's gold centre, rather than dragging before handDocs renders it.
+  await shot('backend-before-passport');
   await frame.waitForFunction(()=>{
    const p=document.querySelector('#game').getContext('2d').getImageData(57,271,1,1).data;
    return p[0]===190 && p[1]===160 && p[2]===100;
@@ -62,7 +63,7 @@ async function run({startBackend,launchBrowser=launchChromium}={}){
   await frame.locator('[data-action="retry-pending"]').click();await page.waitForTimeout(500);assert.equal(fixture.calls.filter(c=>c.request?.op==='save').at(-1).response.body.version,5);
   // Daily: fetch an entrant, reopen unchanged pending state, abandon without judging, and verify daily rank.
   // Full 40-traveler completion is covered by real MySQL integration tests.
-  await page.reload();await title();await click(420,304);await frame.getByRole('button',{name:'DAILY CHALLENGE',exact:true}).click();await frame.locator('#cloud-overlay').waitFor({state:'hidden'});await page.waitForTimeout(2500);await click(15,298);await page.waitForTimeout(4200);
+  await page.reload();await title();await click(420,304);await frame.getByRole('button',{name:'DAILY CHALLENGE',exact:true}).click();await frame.locator('#cloud-overlay').waitFor({state:'hidden'});await page.waitForTimeout(2500);await click(528,330);await page.waitForTimeout(300);await click(528,330);await click(15,298);await page.waitForTimeout(4200);
   const dailyNext=await waitCall('run_next',2);assert.equal(dailyNext.response.body.run.mode,'daily');
   await page.reload();await title();await click(420,304);await frame.getByRole('button',{name:'Abandon run',exact:true}).click();await page.waitForTimeout(800);
   const dailyEnd=await waitCall('run_abandon',2);assert.equal(dailyEnd.response.body.run.mode,'daily');assert.equal(dailyEnd.response.body.run.travelers,0);assert.ok(dailyEnd.response.body.final.ranks.daily>=1);

@@ -1,4 +1,4 @@
-//! V2 policy. V1 retains its RNG sequence; only document construction is shared.
+//! Frozen V2 policy plus opt-in V3 progression. V1/V2 retain their RNG sequences.
 use super::{
     generator::{self as v1, Bulletin, Generated, RegularSpec, Wanted, WaveSpec, WANTED_BLOCK},
     model::{Decision, Doc, Line},
@@ -117,10 +117,16 @@ pub fn bulletin_at(seed: &Seed, t: u32) -> Option<Bulletin> {
     Some(b)
 }
 /// Exactly two shuffled slots per block, excluding all wanted arrivals in that block.
-fn ai_at(seed: &Seed, t: u32) -> Option<(usize, bool)> {
+fn ai_at(seed: &Seed, t: u32, progressive: bool) -> Option<(usize, bool)> {
     let start = t / 16 * 16;
     let mut slots: Vec<u32> = (start..start + 16)
-        .filter(|s| wanted_for(seed, *s / WANTED_BLOCK).appear_at != *s)
+        .filter(|s| {
+            if progressive {
+                super::generator_v3::wanted_for(seed, *s).appear_at != *s
+            } else {
+                wanted_for(seed, *s / WANTED_BLOCK).appear_at != *s
+            }
+        })
         .collect();
     stream(seed, "v2_ai_slots", u64::from(t / 16)).shuffle(&mut slots);
     let position = slots[..2].iter().position(|s| *s == t)?;
@@ -129,16 +135,36 @@ fn ai_at(seed: &Seed, t: u32) -> Option<(usize, bool)> {
     stream(seed, "v2_ai_cast", u64::from(ordinal / 6)).shuffle(&mut cast);
     Some((cast[(ordinal % 6) as usize], ordinal >= 6))
 }
-fn choose_flaws(seed: &Seed, t: u32, ai: Option<usize>) -> Vec<&'static str> {
+fn choose_flaws(seed: &Seed, t: u32, ai: Option<usize>, progressive: bool) -> Vec<&'static str> {
     let mut r = stream(seed, "v2_flaws", u64::from(t));
-    if r.chance(500u64.saturating_sub(8 * u64::from(t)).max(220)) {
+    let clean = if progressive {
+        650u64.saturating_sub(8 * u64::from(t)).max(250)
+    } else {
+        500u64.saturating_sub(8 * u64::from(t)).max(220)
+    };
+    if r.chance(clean) {
         return vec![];
     }
     let mut pool = ai
         .map(|i| THEMES[i].to_vec())
         .unwrap_or_else(|| FLAWS.to_vec());
+    if progressive {
+        pool.retain(|f| super::generator_v3::flaw_unlocked(f, t));
+    }
     r.shuffle(&mut pool);
-    let count = if t >= 12 && r.chance(350) { 2 } else { 1 };
+    let count = if progressive {
+        if t >= 50 && r.chance(250) {
+            3
+        } else if t >= 25 && r.chance(350) {
+            2
+        } else {
+            1
+        }
+    } else if t >= 12 && r.chance(350) {
+        2
+    } else {
+        1
+    };
     let mut selected = vec![];
     for f in pool {
         if selected.len() == count {
@@ -157,15 +183,31 @@ fn choose_flaws(seed: &Seed, t: u32, ai: Option<usize>) -> Vec<&'static str> {
     selected
 }
 pub fn traveler(seed: &Seed, t: u32, entrant_id: &str) -> Generated {
+    traveler_policy(seed, t, entrant_id, false)
+}
+pub(super) fn traveler_policy(
+    seed: &Seed,
+    t: u32,
+    entrant_id: &str,
+    progressive: bool,
+) -> Generated {
     let mut r = stream(seed, "v2_traveler", u64::from(t));
-    let wanted = wanted_for(seed, t / WANTED_BLOCK);
-    let ai = ai_at(seed, t);
+    let wanted = if progressive {
+        super::generator_v3::wanted_for(seed, t)
+    } else {
+        wanted_for(seed, t / WANTED_BLOCK)
+    };
+    let ai = if !progressive || t >= 25 {
+        ai_at(seed, t, progressive)
+    } else {
+        None
+    };
     let mut g;
-    if t == wanted.appear_at {
+    if (!progressive || t >= 35) && t == wanted.appear_at {
         g = v1::fugitive(&mut r, &wanted, t, entrant_id);
         g.secret.ok = vec![Decision::Detain];
     } else if let Some((index, repeat)) = ai {
-        let flaws = choose_flaws(seed, t, Some(index));
+        let flaws = choose_flaws(seed, t, Some(index), progressive);
         g = v1::regular(
             &mut r,
             RegularSpec {
@@ -202,12 +244,19 @@ pub fn traveler(seed: &Seed, t: u32, entrant_id: &str) -> Generated {
         )];
         // Personality or Chinese-language fluency is never a liar signal.
         g.secret.liar = !flaws.is_empty() && stream(seed, "v2_ai_quiz", u64::from(t)).chance(500);
-        add_documents(&mut g, seed, t, &flaws);
-    } else if r.chance(90) {
-        let kind = *r.pick(&["deep", "rice", "cad", "openai", "whale"]);
+        add_documents(&mut g, seed, t, &flaws, !progressive || t >= 30);
+    } else if (!progressive || t >= 10) && r.chance(90) {
+        let pool: &[&str] = if !progressive || t >= 25 {
+            &["deep", "rice", "cad", "openai", "whale"]
+        } else if t >= 15 {
+            &["deep", "rice", "cad", "whale"]
+        } else {
+            &["deep", "cad", "whale"]
+        };
+        let kind = *r.pick(pool);
         g = v1::fish(&mut r, kind, t, entrant_id);
     } else {
-        let flaws = choose_flaws(seed, t, None);
+        let flaws = choose_flaws(seed, t, None, progressive);
         let person = v1::portrait_for(seed, t, &wanted);
         g = v1::regular(
             &mut r,
@@ -222,17 +271,34 @@ pub fn traveler(seed: &Seed, t: u32, entrant_id: &str) -> Generated {
                 wanted_person: &wanted.person,
             },
         );
-        add_documents(&mut g, seed, t, &flaws);
+        add_documents(&mut g, seed, t, &flaws, !progressive || t >= 30);
     }
     if g.secret.wanted || g.public.person == "FISH" {
-        add_documents(&mut g, seed, t, &[]);
+        add_documents(&mut g, seed, t, &[], !progressive || t >= 30);
     }
-    if let Some(b) = bulletin_at(seed, t) {
+    let bulletin = if progressive {
+        super::generator_v3::bulletin_at(seed, t)
+    } else {
+        bulletin_at(seed, t)
+    };
+    if let Some(b) = bulletin {
         apply_bulletin(&mut g, &b);
+    }
+    if progressive {
+        if t < 10 {
+            g.public.docs.retain(|d| !matches!(d, Doc::Account { .. }));
+        }
+        if t < 35 {
+            g.public.logins.clear();
+        }
+        if t < 15 {
+            g.public.xray.clear();
+            g.secret.liar = false;
+        }
     }
     g
 }
-fn add_documents(g: &mut Generated, seed: &Seed, t: u32, flaws: &[&str]) {
+fn add_documents(g: &mut Generated, seed: &Seed, t: u32, flaws: &[&str], permit: bool) {
     let mut r = stream(seed, "v2_permit", u64::from(t));
     let mut holder = String::new();
     if let Some(Doc::Passport {
@@ -262,7 +328,9 @@ fn add_documents(g: &mut Generated, seed: &Seed, t: u32, flaws: &[&str]) {
             ));
         }
     }
-    if flaws.contains(&"permit_holder") || flaws.contains(&"permit_expired") || r.chance(800) {
+    if permit
+        && (flaws.contains(&"permit_holder") || flaws.contains(&"permit_expired") || r.chance(800))
+    {
         let exp = if flaws.contains(&"permit_expired") {
             "2026.10.24"
         } else {
