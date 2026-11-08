@@ -185,6 +185,15 @@ function accountCard(pay, bill, phone) {
 }
 
 // 夹在护照里的小纸条（地下中转联盟）
+// Field names are protocol keys; displayed labels are localized independently.
+class EntryPermit extends Card {
+  constructor({ holder, purpose, exp }) {
+    super([['持证人', holder], ['入境目的', ({visit:'访问',research:'研究',transit:'过境'})[purpose] || purpose], ['有效期', exp]],
+      { title: '入境许可', sub: 'ENTRY PERMIT', color: [202,220,190], colorD: [116,145,105], seal: false });
+    this.fields = { holder: this.fields['持证人'], purpose: this.fields['入境目的'], exp: this.fields['有效期'] };
+  }
+}
+
 class Note {
   constructor(lines) {
     this.lines = lines.map((s) => T(s));
@@ -469,13 +478,28 @@ const RULES = [
   { day: 13, page: 2, key: 'license', head: '§12 已认证模型许可（§6 修订后生效）', subs: ['模型 ID / 发行主体 / 许可编号须一致'] },
 ];
 
+const ENDLESS_REGISTRY = [
+  ['GPT', 'gpt-4o', 'OpenAI'], ['Qwen', 'qwen-plus', 'Alibaba'], ['Grok', 'grok-3', 'xAI'],
+  ['GLM', 'glm-4', 'Zhipu'], ['Kimi', 'kimi-k2', 'Moonshot'], ['Gemini', 'gemini-2.5', 'Google'],
+];
+function endlessRules() {
+  return RULES.filter(r=>r.day<=7).map(r=>r.key==='corp' ? {...r,
+    head:'§6 已认证模型不受出身限制', subs:['注册表中的申报、模型 ID、发行主体须一致']} : r).concat([
+    {day:7,page:2,key:'date',head:'证件有效期',subs:['本班检查日期：2026.10.25','护照与入境许可在检查日必须有效']},
+    {day:7,page:2,key:'permit',head:'入境许可核验',subs:['持证人须与护照姓名一致','目的：访问 / 研究 / 过境','缺许可：将护照国籍栏与临时规定比对']},
+    {day:7,page:3,key:'issuing',head:'护照签发城市目录',subs:Object.values(COUNTRIES).map(c=>c.passport+': '+c.cities.map(city=>city[4]).join(' / '))},
+    {day:7,page:4,key:'registry',head:'独立模型认证注册表',subs:ENDLESS_REGISTRY.map(r=>r.join(' / '))},
+  ]);
+}
+
 class Rulebook {
   constructor(day) {
     this.day = day;
     this.w = 200;
     this.icon = ['book', C.BOOK];
     const amended = !S.endless && !!S.plot?.law?.amended;
-    const rules = RULES.filter((r) => r.day <= day).map(r => r.key === 'corp' && amended ? { ...r,
+    const v2 = S.endless && window.Endless && Endless.run()?.generator_version >= 2;
+    const rules = (v2 ? endlessRules() : RULES.filter((r) => r.day <= day)).map(r => r.key === 'corp' && amended ? { ...r,
       head:'§6 中资控股审查（已修订）', subs:['一般主体中资控股过半仍禁止', '已认证模型适用 §12 许可例外'] } : r);
     this.pages = [];
     for (let p = 0; p <= Math.max(...rules.map(r=>r.page)); p++) {

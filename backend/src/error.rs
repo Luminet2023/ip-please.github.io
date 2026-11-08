@@ -31,11 +31,13 @@ pub enum DetailCode {
     EndlessRunActive,
     EndlessStateConflict,
     DailyAlreadyPlayed,
+    EndlessRulesOutdated,
+    MappRequestConflict,
 }
 
 impl DetailCode {
     /// 全部已登记的错误码（测试与文档核对用）。
-    pub const ALL: [DetailCode; 17] = [
+    pub const ALL: [DetailCode; 19] = [
         DetailCode::NotFound,
         DetailCode::ValidationError,
         DetailCode::MethodNotAllowed,
@@ -53,6 +55,8 @@ impl DetailCode {
         DetailCode::EndlessRunActive,
         DetailCode::EndlessStateConflict,
         DetailCode::DailyAlreadyPlayed,
+        DetailCode::EndlessRulesOutdated,
+        DetailCode::MappRequestConflict,
     ];
 }
 
@@ -67,6 +71,8 @@ impl DetailCode {
             DetailCode::SyncConflict
             | DetailCode::EndlessRunActive
             | DetailCode::EndlessStateConflict
+            | DetailCode::MappRequestConflict
+            | DetailCode::EndlessRulesOutdated
             | DetailCode::DailyAlreadyPlayed => StatusCode::CONFLICT,
             DetailCode::SyncSnapshotExpired => StatusCode::GONE,
             DetailCode::SyncRateLimited | DetailCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
@@ -83,6 +89,9 @@ impl DetailCode {
 
     pub fn message(self) -> &'static str {
         match self {
+            DetailCode::MappRequestConflict => {
+                "The request ID has already been used for a different action."
+            }
             DetailCode::NotFound => "The requested resource was not found.",
             DetailCode::ValidationError => "The request is invalid.",
             DetailCode::MethodNotAllowed => "Method not allowed.",
@@ -103,6 +112,9 @@ impl DetailCode {
             DetailCode::RateLimited => "Too many requests. Please retry later.",
             DetailCode::EndlessRunActive => "An endless run is already in progress.",
             DetailCode::EndlessStateConflict => "The endless run state has changed. Please reload.",
+            DetailCode::EndlessRulesOutdated => {
+                "The game rules have changed. Please reload to start a new run."
+            }
             DetailCode::DailyAlreadyPlayed => "Today's daily challenge has already been played.",
         }
     }

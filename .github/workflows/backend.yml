@@ -5,6 +5,16 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'data.js'
+      - 'endless.js'
+      - 'assets.js'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'data.js'
+      - 'endless.js'
+      - 'assets.js'
       - '.github/workflows/backend.yml'
   workflow_dispatch:
 
@@ -67,6 +77,7 @@ jobs:
 
   build:
     name: build & push ghcr
+    if: github.event_name != 'pull_request'
     needs: [test, integration]
     runs-on: ubuntu-latest
     steps:

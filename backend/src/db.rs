@@ -24,6 +24,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "005_profiles",
         include_str!("../migrations/005_profiles.sql"),
     ),
+    ("006_mapp", include_str!("../migrations/006_mapp.sql")),
 ];
 
 /// 启动时 MySQL 可能还没就绪（docker compose 拉起顺序不定），带重试连接。

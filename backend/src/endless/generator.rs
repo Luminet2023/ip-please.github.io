@@ -235,13 +235,13 @@ fn args(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         .collect()
 }
 
-fn pairs(list: &[&[&str]]) -> Vec<Vec<String>> {
+pub(super) fn pairs(list: &[&[&str]]) -> Vec<Vec<String>> {
     list.iter()
         .map(|pair| pair.iter().map(|s| s.to_string()).collect())
         .collect()
 }
 
-fn issue(kind: &str, a: BTreeMap<String, String>, p: Vec<Vec<String>>) -> Issue {
+pub(super) fn issue(kind: &str, a: BTreeMap<String, String>, p: Vec<Vec<String>>) -> Issue {
     Issue {
         kind: kind.into(),
         args: a,
@@ -250,7 +250,7 @@ fn issue(kind: &str, a: BTreeMap<String, String>, p: Vec<Vec<String>>) -> Issue 
 }
 
 /// 同一个立绘池按 24 人一轮不重复地抽；通缉犯那一段里其他人不会长成通缉犯。
-fn portrait_for(seed: &Seed, t: u32, wanted: &Wanted) -> &'static str {
+pub(super) fn portrait_for(seed: &Seed, t: u32, wanted: &Wanted) -> &'static str {
     let mut order: Vec<&'static str> = PORTRAITS.iter().map(|(id, _)| *id).collect();
     stream(seed, "pool", u64::from(t / 24)).shuffle(&mut order);
     let i = (t % 24) as usize;
@@ -328,6 +328,7 @@ pub fn traveler(seed: &Seed, t: u32, entrant_id: &str) -> Generated {
     regular(
         &mut r,
         RegularSpec {
+            v2: false,
             t,
             entrant_id,
             person,
@@ -339,17 +340,18 @@ pub fn traveler(seed: &Seed, t: u32, entrant_id: &str) -> Generated {
     )
 }
 
-struct RegularSpec<'a> {
-    t: u32,
-    entrant_id: &'a str,
-    person: &'a str,
-    flaws: &'a [&'static str],
-    bulletin: Option<&'a Bulletin>,
-    force_bulletin: bool,
-    wanted_person: &'a str,
+pub(super) struct RegularSpec<'a> {
+    pub(super) t: u32,
+    pub(super) entrant_id: &'a str,
+    pub(super) person: &'a str,
+    pub(super) flaws: &'a [&'static str],
+    pub(super) bulletin: Option<&'a Bulletin>,
+    pub(super) force_bulletin: bool,
+    pub(super) wanted_person: &'a str,
+    pub(super) v2: bool,
 }
 
-fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
+pub(super) fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
     let has = |flaw: &str| spec.flaws.contains(&flaw);
     let valid = spec.flaws.is_empty();
     let forced = spec.bulletin.filter(|_| spec.force_bulletin);
@@ -360,7 +362,7 @@ fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
             .unwrap_or("")
     };
 
-    let mut cc = if valid {
+    let mut cc = if valid || spec.v2 {
         *r.pick(&tables::VALID_CC)
     } else {
         "US"
@@ -409,7 +411,12 @@ fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
     for flaw in spec.flaws {
         match *flaw {
             "tz" => {
-                tz = "Asia/Shanghai".into();
+                tz = if spec.v2 && cc == "SG" {
+                    "America/New_York"
+                } else {
+                    "Asia/Shanghai"
+                }
+                .into();
                 issues.push(issue(
                     "tz",
                     args(&[("country", country.name), ("tz", &tz)]),
@@ -436,7 +443,11 @@ fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
                 loc = r.pick(&tables::CN_LOCS[..4]).to_string();
                 ip = rand_ip(r, true);
                 tz = "Asia/Shanghai".into();
-                intro = vec![Line::entrant(r.pick_str(&tables::CNIP_HELLO))];
+                intro = if spec.v2 {
+                    vec![Line::entrant(&format!("我的护照国籍是{}。", country.name))]
+                } else {
+                    vec![Line::entrant(r.pick_str(&tables::CNIP_HELLO))]
+                };
                 issues.push(issue(
                     "region",
                     args(&[("loc", &loc)]),
@@ -444,7 +455,11 @@ fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
                 ));
                 issues.push(issue(
                     "nationality_ip",
-                    args(&[("loc", &loc2(&loc))]),
+                    if spec.v2 {
+                        args(&[("loc", &loc2(&loc)), ("country", country.name)])
+                    } else {
+                        args(&[("loc", &loc2(&loc))])
+                    },
                     pairs(&[&["pp.header", "dv.归属"]]),
                 ));
             }
@@ -467,10 +482,27 @@ fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
                 ));
             }
             "oregon" => {
-                bill = "123 Main St, OR".into();
+                bill = if spec.v2 {
+                    format!(
+                        "{}, {}",
+                        r.pick(&tables::STREETS),
+                        country
+                            .cities
+                            .iter()
+                            .find(|c| c.st != city.st)
+                            .map(|c| c.st)
+                            .unwrap_or("NY")
+                    )
+                } else {
+                    "123 Main St, OR".into()
+                };
                 issues.push(issue(
-                    "oregon",
-                    args(&[("city", city.name)]),
+                    if spec.v2 { "billing_region" } else { "oregon" },
+                    if spec.v2 {
+                        args(&[("bill", &bill), ("loc", &loc)])
+                    } else {
+                        args(&[("city", city.name)])
+                    },
                     pairs(&[&["ac.账单", "rule.pay"], &["ac.账单", "dv.归属"]]),
                 ));
             }
@@ -563,6 +595,14 @@ fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
         ]
     });
 
+    // Only v2 changes: v1 persisted generation and its golden remain frozen.
+    if spec.v2 {
+        for issue in issues.iter_mut().filter(|i| i.kind == "billing_region") {
+            issue.args.insert("bill".into(), bill.clone());
+            issue.args.insert("loc".into(), loc.clone());
+        }
+    }
+
     let facts = Facts {
         cc: cc.to_string(),
         device: device.clone(),
@@ -635,10 +675,11 @@ fn regular(r: &mut Stream, spec: RegularSpec<'_>) -> Generated {
 }
 
 /// 通缉犯：证件全部自洽，只是脸和通缉令上的一样（护照上用的是化名）。
-fn fugitive(r: &mut Stream, wanted: &Wanted, t: u32, entrant_id: &str) -> Generated {
+pub(super) fn fugitive(r: &mut Stream, wanted: &Wanted, t: u32, entrant_id: &str) -> Generated {
     let mut generated = regular(
         r,
         RegularSpec {
+            v2: false,
             t,
             entrant_id,
             person: &wanted.person,
@@ -670,7 +711,7 @@ fn fugitive(r: &mut Stream, wanted: &Wanted, t: u32, entrant_id: &str) -> Genera
     generated
 }
 
-fn fish(r: &mut Stream, kind: &str, t: u32, entrant_id: &str) -> Generated {
+pub(super) fn fish(r: &mut Stream, kind: &str, t: u32, entrant_id: &str) -> Generated {
     let us = &COUNTRIES[0];
     let city = r.pick(us.cities);
     let mut loc = format!("美国 · {}", city.name);
@@ -897,6 +938,57 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     const SEED: Seed = [42u8; 32];
+
+    #[test]
+    fn compound_billing_uses_final_document_facts_in_both_orders() {
+        for flaws in [["oregon", "cnip"], ["cnip", "oregon"]] {
+            let generated = regular(
+                &mut crate::endless::rng::stream(&SEED, "billing", 0),
+                RegularSpec {
+                    t: 20,
+                    entrant_id: "ent_fixture0000000001",
+                    person: "P03",
+                    flaws: &flaws,
+                    bulletin: None,
+                    force_bulletin: false,
+                    wanted_person: "",
+                    v2: true,
+                },
+            );
+            let loc = generated
+                .public
+                .docs
+                .iter()
+                .find_map(|d| {
+                    if let Doc::Device { loc, .. } = d {
+                        Some(loc)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            let bill = generated
+                .public
+                .docs
+                .iter()
+                .find_map(|d| {
+                    if let Doc::Account { bill, .. } = d {
+                        Some(bill)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            let issue = generated
+                .secret
+                .issues
+                .iter()
+                .find(|i| i.kind == "billing_region")
+                .unwrap();
+            assert_eq!(&issue.args["loc"], loc, "{flaws:?}");
+            assert_eq!(&issue.args["bill"], bill, "{flaws:?}");
+        }
+    }
 
     #[test]
     fn slots_alternate_travelers_and_waves() {

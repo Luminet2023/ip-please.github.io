@@ -6,6 +6,7 @@
 // - 管理员身份由后端会话决定（Keycloak 角色）；这里只决定显不显示按钮，权限以后端为准。
 
 window.Announce = (function () {
+  const tr = text => typeof T === 'function' ? T(text) : text;
   const DISMISSED_KEY = 'ip-please-announce-dismissed-v1';
   const REFRESH_MS = 15 * 60 * 1000;
   const LEVEL_LABEL = { info: '公告', warning: '注意', maintenance: '维护' };
@@ -27,7 +28,7 @@ window.Announce = (function () {
 
   function loadDismissed() {
     try {
-      const list = JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]');
+      const list = JSON.parse(gameStorage.getItem(DISMISSED_KEY) || '[]');
       return Array.isArray(list) ? list : [];
     } catch (error) {
       return [];
@@ -36,7 +37,7 @@ window.Announce = (function () {
 
   function saveDismissed(list) {
     try {
-      localStorage.setItem(DISMISSED_KEY, JSON.stringify(list.slice(-50)));
+      gameStorage.setItem(DISMISSED_KEY, JSON.stringify(list.slice(-50)));
     } catch (error) {
       /* 隐私模式：下次还会再显示，无伤大雅 */
     }
@@ -61,7 +62,7 @@ window.Announce = (function () {
     head.className = 'head';
     const tag = document.createElement('span');
     tag.className = 'tag';
-    tag.textContent = LEVEL_LABEL[next.level] || LEVEL_LABEL.info;
+    tag.textContent = typeof T === 'function' ? T(LEVEL_LABEL[next.level] || LEVEL_LABEL.info) : LEVEL_LABEL[next.level] || LEVEL_LABEL.info;
     const title = document.createElement('strong');
     title.textContent = next.title;
     head.appendChild(tag);
@@ -72,7 +73,7 @@ window.Announce = (function () {
 
     const close = document.createElement('button');
     close.type = 'button';
-    close.textContent = '知道了';
+    close.textContent = typeof T === 'function' ? T('知道了') : '知道了';
     close.addEventListener('click', function () {
       dismiss(next.announcement_id);
     });
@@ -136,7 +137,7 @@ window.Announce = (function () {
       adminItems = Array.isArray(result && result.announcements) ? result.announcements : [];
     } catch (error) {
       adminItems = [];
-      api.ui.toast('读取公告列表失败：' + (error.message || '网络错误'));
+      api.ui.toast(tr('读取公告列表失败：') + (error.message || '网络错误'));
     } finally {
       adminLoading = false;
       api.refreshPanel();
@@ -146,31 +147,26 @@ window.Announce = (function () {
   function renderAdmin(user) {
     if (!user || !user.is_admin) return '';
     if (adminItems === null) loadAdmin();
-    const rows = ['<div class="admin"><h2>公告管理</h2>'];
-    if (adminItems === null) {
-      rows.push('<p>正在读取…</p>');
-    } else if (!adminItems.length) {
-      rows.push('<p>当前没有生效中的公告。</p>');
-    } else {
-      adminItems.forEach((item) => {
-        rows.push(
-          '<div class="row ann-item"><span>' + escape(LEVEL_LABEL[item.level] || '公告') + ' · ' +
-          escape(item.title) + (item.ends_at ? '（至 ' + escape(formatTime(item.ends_at)) + '）' : '') +
-          '</span><button data-action="ann-retire" data-id="' + escape(item.announcement_id) + '">下线</button></div>'
-        );
-      });
+    const t = text => typeof T === 'function' ? T(text) : text;
+    const make = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = t(text); if (cls) n.className = cls; return n; };
+    const box = make('div', null, 'admin'); box.append(make('h2', '公告管理'));
+    if (adminItems === null) box.append(make('p', '正在读取…'));
+    else if (!adminItems.length) box.append(make('p', '当前没有生效中的公告。'));
+    else adminItems.forEach(item => {
+      const row = make('div', null, 'row ann-item');
+      row.append(make('span', t(LEVEL_LABEL[item.level] || '公告') + ' · ' + item.title + (item.ends_at ? ' (' + formatTime(item.ends_at) + ')' : '')));
+      const b = make('button', '下线'); b.dataset.action = 'ann-retire'; b.dataset.id = item.announcement_id; row.append(b); box.append(row);
+    });
+    for (const [tag, id, max, placeholder] of [['input','ann-title',60,'标题（最多 60 字）'],['textarea','ann-body',500,'正文（最多 500 字）']]) {
+      const row = make('div', null, 'row'), input = make(tag); input.id=id; input.maxLength=max; input.placeholder=t(placeholder); if(tag==='textarea') input.rows=3; row.append(input); box.append(row);
     }
-    rows.push('<div class="row"><input id="ann-title" maxlength="60" placeholder="标题（≤60 字）"></div>');
-    rows.push('<div class="row"><textarea id="ann-body" maxlength="500" rows="3" placeholder="正文（≤500 字）"></textarea></div>');
-    rows.push(
-      '<div class="row"><select id="ann-level">' +
-      Object.keys(LEVEL_LABEL).map((key) => '<option value="' + key + '">' + LEVEL_LABEL[key] + '</option>').join('') +
-      '</select><select id="ann-duration">' +
-      DURATIONS.map((item, index) => '<option value="' + index + '">' + item.label + '</option>').join('') +
-      '</select><button class="primary" data-action="ann-publish">发布</button></div>'
-    );
-    rows.push('</div>');
-    return rows.join('');
+    const row=make('div', null, 'row');
+    for (const [id, entries] of [['ann-level',Object.entries(LEVEL_LABEL)],['ann-duration',DURATIONS.map((d,i)=>[i,d.label])]]) {
+      const select=make('select'); select.id=id;
+      for (const [value,label] of entries) {const option=make('option',label);option.value=value;select.append(option);} row.append(select);
+    }
+    const publish=make('button','发布','primary'); publish.dataset.action='ann-publish';row.append(publish);box.append(row);
+    return box;
   }
 
   async function publish() {
@@ -194,7 +190,7 @@ window.Announce = (function () {
       api.refreshPanel();
       refresh();
     } catch (error) {
-      api.ui.toast('发布失败：' + (error.message || '网络错误'));
+      api.ui.toast(tr('发布失败：') + (error.message || '网络错误'));
     }
   }
 
@@ -207,7 +203,7 @@ window.Announce = (function () {
       api.refreshPanel();
       refresh();
     } catch (error) {
-      api.ui.toast('下线失败：' + (error.message || '网络错误'));
+      api.ui.toast(tr('下线失败：') + (error.message || '网络错误'));
     }
   }
 

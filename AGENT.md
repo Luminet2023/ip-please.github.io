@@ -71,6 +71,7 @@
 | `ann` | 公告 | `announcement_id`，管理员发布的公告 |
 | `run` | 无尽模式对局 | `run_id`，一局无尽 / 每日挑战 |
 | `ent` | 无尽模式旅客 | `entrant_id`，对局中服务器下发的一位旅客 |
+| `req` | 小程序动作请求 | `request_id`，按已验证平台账号隔离的幂等回执 |
 | `wave` | 无尽模式波次 | `wave_id`，对局中的黑话快剪 / 蒸馏大军波次 |
 
 ### 示例
@@ -116,6 +117,7 @@
 | `not_found` | 404 | `The requested resource was not found.` |
 | `invalid_request` | 400 | `The request is invalid.` |
 | `method_not_allowed` | 405 | `Method not allowed.` |
+| `mapp_request_conflict` | 409 | `The request ID has already been used for a different action.` |
 | `sync_conflict` | 409 | `The cloud save has a newer version than the client base version.` |
 | `sync_snapshot_expired` | 410 | `The requested save snapshot is no longer available.` |
 | `sync_rate_limited` | 429 | `Too many sync requests. Please retry later.`（必须带 `Retry-After`） |
@@ -127,6 +129,7 @@
 | `unauthorized` | 401 | `Unauthorized`（缺少 `Authorization` 头） |
 | `login_attempt_invalid` | 400 | `The login attempt is invalid or has expired.` |
 | `rate_limited` | 429 | `Too many requests. Please retry later.`（必须带 `Retry-After`） |
+| `endless_rules_outdated` | 409 | `The game rules have changed. Please reload to start a new run.` |
 | `endless_run_active` | 409 | `An endless run is already in progress.` |
 | `endless_state_conflict` | 409 | `The endless run state has changed. Please reload.` |
 | `daily_already_played` | 409 | `Today's daily challenge has already been played.` |
@@ -377,3 +380,49 @@ CI 要求（main 分支必须保持绿）：
 
 - 模板中的 Next.js 规则块不适用：本仓库没有 Next.js，前端是原生 JS 静态站。
 - 模板要求的 `/backend-api/*` 前缀被本项目的 `/anthropic/v1/*` 取代（见「后端 URL」）。
+
+## LINUX DO 小程序边界
+
+外部 `app_id` 与 `linuxdo_id` 是平台的不透明标识符，不是本项目资源 ID。身份来自已验签的 issuer/app/channel/sub，独立于网站账户；禁止用户名合并。
+
+- 小程序固定入口（全部仅接受已验签平台 Bearer JWT）：`GET /anthropic/v1/mapp/bootstrap`、
+  `POST /anthropic/v1/mapp/profile`、`GET /anthropic/v1/mapp/query`、`POST /anthropic/v1/mapp/action`。
+- `MAPP_APP_ID` 默认 `01a1baa6-abbf-7ed6-afac-bfa495a47dd3`。Issuer 固定 `https://linux.do`，
+  audience 固定 `https://api.luminet.cn`，公钥只从 `https://linux.do/mini-app-api/jwks` 获取；
+  不读取请求里的 Host、转发头、JWKS URL 或 channel 来配置验签。CORS 允许 `https://linux.do`。
+- `bootstrap` 返回 `{channel, user, announcements:[], daily, active_run}`，`channel` 只取已验签 Principal 的 `sandbox|production`；`profile` 只接受
+  `{id: string, username: string, name?: string|null}`，`id` 必须等于已验签 `sub`，直接返回 user 对象。
+  User 包含 `user_id, linuxdo_id: string, display_name, avatar_url: null, tag`，无管理员、会话、AT/RT。
+- `query` 的 `op` 白名单：`save / snapshots / snapshot / run_current / run / daily / leaderboard / announcements`；
+  其他允许的查询字段为 `save_id / run_id / board / period / limit`。JWT 对固定 query 原始前缀和
+  SDK 规范化动态后缀分别校验，不能任意排序或重新编码固定部分。
+- `action`：`{request_id: req_*, op, args}`。op 白名单为 `save / run_start / run_next / run_inspect /
+  run_quiz / run_decision / wave_result / run_abandon`；`run_id`、`wave_id`、`picks/hits` 都在 args 顶层。
+  `run_start` 仍要求 `client_rules_version: 2`。不接受 body 的 user/platform/channel/角色字段。
+- 成功及终态业务错误的回执与业务变更同一个 SQL 事务提交；同请求 ID 同 payload 重放原 status/body，
+  不同 payload 返回 `mapp_request_conflict`。429（包括 TooEarly）与 500/503 不保存回执，可等待后用同一
+  request_id 重试。丢失成功响应必须重试原 request_id，不能生成新 ID。
+- 小程序事务使用单次事务的 READ COMMITTED，加稳定账号行锁，避免不同用户首次写入的 gap-lock 死锁，
+  不修改网站或数据库全局隔离级别。run source 在同事务创建，普通结算、最终名次和后台过期均按来源分榜。
+  新增 `006_mapp.sql` 仅 CREATE TABLE，不更改或重置旧网站排行榜。完整 DTO 合同见 Task 2 report。
+
+### 版本与包验收补充
+
+- 新局 `GENERATOR_VERSION=2`，旧 state 缺失版本按 v1；旅客/波次/公告/通缉必须按持久化版本派发。
+  v1 golden 冻结，修复 v2 最终事实的破绽说明不能改 v1。更新 v2 fingerprint 必须说明行为原因。
+  生成序列变更遵守上文 UTC+8 午夜规则，保留旧榜、旧局和每日种子；不得以新赛季规避迁移。
+- `miniapp/build.mjs` 用 pinned 官方 SDK packer 生成全游戏 IIFE ZIP；测试/preview/测试 JWKS 私钥不入包。
+  SDK 提供网络、存储、资源、全屏与链接；严格 CSP/Trusted Types 不允许 HTML 字符串注入或 eval。
+  头像按可见性加载，关闭/替换列表必须释放未进入视口的 observer，保留 session cache/首字回退。
+- `npm test --prefix miniapp` 包含 host、DOM、ZIP 白名单和 pinned SDK 的真实 ES256 numeric oracle。
+  SDK 的整数值 JSON（包括 `1.0`/时间戳 `.0`）应接受，null/非整数/不安全整数拒绝；Rust 的禁止 key header
+  存在性规则比 SDK truthiness 更严格，因此不能宣称整个验签器逐字节完全等价。
+- `node miniapp/tests/browser.cjs` 验证严格不透明 iframe 内的最终 IIFE 桌面/触控流程；
+  `TEST_DATABASE_URL=... node miniapp/tests/backend-browser.cjs` 使用实际 Rust HTTP/MySQL 和固定测试 ES256/JWKS。
+  后者只可连接专用 `ip_please_test`；`backend/examples/miniapp_fixture.rs` 不属于生产二进制。
+  `node miniapp/tests/visual.cjs` 为共享源码的真实浏览器场景审计（四语言、表情、长文档、真实字段命中），
+  不冒充最终包的自然完整剧情通关。截图目录由 `BROWSER_ARTIFACTS` 指定。
+- CI 必须检查 `miniapp/**` 与共享 JS、v2 tests；backend PR 运行 fmt/clippy/default/MySQL，只有非 PR 才发布镜像。
+  最终源修改后重建 ZIP 并校验 SHA256。真实已认证 LINUX DO 沙盒不可用时，记为待验收；本地 fixture 不算 live。
+- `MAPP_APP_ID` 为唯一小程序配置项；固定公网 origin/audience、issuer、JWKS 与 CORS 见上一节及部署说明。
+  发布与实际平台验证的命令/权限/午夜切换、旧榜保留和兼容回滚在 `deploy/README.md`。

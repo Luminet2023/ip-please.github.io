@@ -72,7 +72,7 @@ const ENDINGS = {
 
 function archiveEndings() {
   try {
-    const ids = JSON.parse(localStorage.getItem(ENDING_ARCHIVE_KEY) || '[]');
+    const ids = JSON.parse(gameStorage.getItem(ENDING_ARCHIVE_KEY) || '[]');
     return Array.isArray(ids) ? [...new Set(ids.filter((id) => typeof id==='string' && Object.prototype.hasOwnProperty.call(ENDINGS,id)))] : [];
   } catch (e) { return []; }
 }
@@ -80,7 +80,7 @@ function archiveEndings() {
 function archiveEnding(id) {
   try {
     const list = archiveEndings();
-    if (!list.includes(id)) { list.push(id); localStorage.setItem(ENDING_ARCHIVE_KEY, JSON.stringify(list)); }
+    if (!list.includes(id)) { list.push(id); gameStorage.setItem(ENDING_ARCHIVE_KEY, JSON.stringify(list)); }
   } catch (e) { /* 隐私模式 */ }
   const p = S.plot;
   if (p && !p.endingsUnlocked.includes(id)) p.endingsUnlocked.push(id);

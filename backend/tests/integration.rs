@@ -630,7 +630,7 @@ async fn start_run(state: &AppState, token: &str, mode: &str) -> Value {
         "POST",
         "/anthropic/v1/endless/runs",
         Some(token),
-        Some(json!({ "mode": mode })),
+        Some(json!({ "mode": mode, "client_rules_version": 2 })),
     )
     .await;
     assert_eq!(reply.status, StatusCode::CREATED, "{}", reply.text);
@@ -717,7 +717,7 @@ async fn endless_run_to_three_strikes_and_leaderboard() {
         "POST",
         "/anthropic/v1/endless/runs",
         None,
-        Some(json!({"mode": "endless"})),
+        Some(json!({"mode": "endless", "client_rules_version": 2})),
     )
     .await;
     assert_detail(&unauth, StatusCode::UNAUTHORIZED, "Unauthorized");
@@ -734,7 +734,7 @@ async fn endless_run_to_three_strikes_and_leaderboard() {
         "POST",
         "/anthropic/v1/endless/runs",
         Some(&token),
-        Some(json!({"mode": "endless"})),
+        Some(json!({"mode": "endless", "client_rules_version": 2})),
     )
     .await;
     assert_detail(
@@ -1117,7 +1117,7 @@ async fn daily_challenge_is_shared_and_once_per_day() {
         "POST",
         "/anthropic/v1/endless/runs",
         Some(&a.access_token),
-        Some(json!({"mode": "daily"})),
+        Some(json!({"mode": "daily", "client_rules_version": 2})),
     )
     .await;
     assert_detail(
@@ -1134,4 +1134,41 @@ async fn daily_challenge_is_shared_and_once_per_day() {
     )
     .await;
     assert!(!board.body["entries"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+#[ignore]
+async fn endless_start_requires_current_client_rules() {
+    let (issuer, idp) = start_mock_idp(CLIENT_ID).await;
+    let (state, _) = db_state(&issuer).await;
+    let player = login(&state, &idp, &unique("version"), &unique("sid"), &[]).await;
+    for payload in [
+        json!({"mode":"endless"}),
+        json!({"mode":"endless","client_rules_version":1}),
+        json!({"mode":"endless","client_rules_version":3}),
+    ] {
+        let response = call(
+            &state,
+            "POST",
+            "/anthropic/v1/endless/runs",
+            Some(&player.access_token),
+            Some(payload),
+        )
+        .await;
+        assert_detail(
+            &response,
+            StatusCode::CONFLICT,
+            "The game rules have changed. Please reload to start a new run.",
+        );
+    }
+    let response = call(
+        &state,
+        "POST",
+        "/anthropic/v1/endless/runs",
+        Some(&player.access_token),
+        Some(json!({"mode":"endless","client_rules_version":2})),
+    )
+    .await;
+    assert_eq!(response.status, StatusCode::CREATED);
+    assert_eq!(response.body["run"]["generator_version"], 2);
 }

@@ -36,7 +36,18 @@ fn check_run_id(run_id: &str) -> Result<(), AppError> {
 
 #[derive(Debug, Deserialize)]
 pub struct StartRequest {
-    mode: String,
+    pub mode: String,
+    #[serde(default)]
+    pub client_rules_version: u32,
+}
+
+impl StartRequest {
+    pub fn validate_rules(&self) -> Result<(), AppError> {
+        if self.client_rules_version != super::generator_v2::GENERATOR_VERSION as u32 {
+            return Err(AppError::Detail(DetailCode::EndlessRulesOutdated));
+        }
+        Ok(())
+    }
 }
 
 pub async fn start(
@@ -44,6 +55,7 @@ pub async fn start(
     user: AuthUser,
     JsonBody(request): JsonBody<StartRequest>,
 ) -> Result<Response, AppError> {
+    request.validate_rules()?;
     let mode = match request.mode.as_str() {
         "endless" => Mode::Endless,
         "daily" => Mode::Daily,
@@ -311,7 +323,7 @@ pub struct LeaderboardQuery {
     limit: Option<i64>,
 }
 
-fn valid_period(board: &str, period: &str) -> bool {
+pub fn valid_period(board: &str, period: &str) -> bool {
     let bytes = period.as_bytes();
     match board {
         "endless" => period == "all",

@@ -28,6 +28,71 @@ const ENDLESS_TEXT = {
     device: '使用 {0} 的旅客暂停入境',
     country: '{0}护照暂停入境',
     state: '账单在 {0} 州的旅客暂停入境',
+    permit_required: '所有旅客必须出示入境许可',
+    allowed_purpose: '仅允许持有{0}目的许可的旅客入境',
+  },
+};
+
+const ENDLESS_AI = {
+  GPT_AI: {
+    intro: "按现行标准逐项核验吧，旧豁免不算数。",
+    repeat: "又见面了，今天仍按同一套标准。",
+    ask: "请引用现行条款，我接受逐项复核。",
+    approve: "标准核验完成，谢谢。",
+    deny: "我会按现行标准补齐材料。",
+    detain: "请把拘留依据写进记录。",
+    quizExposed: "我的回答也需要证据支持。",
+    quizClear: "旧模板不能替我回答这个问题。",
+  },
+  QWEN_AI: {
+    intro: "我把修订记录带来了，请以证件为准。",
+    repeat: "又见面了，我重新整理了材料。",
+    ask: "这项记载需要更正，我不会改口掩盖。",
+    approve: "谢谢认真核对每一处修订。",
+    deny: "我会更正材料后再来。",
+    detain: "请完整记录我的陈述。",
+    quizExposed: "我确认刚才的回答，请如实记录。",
+    quizClear: "我不确定，不能编造答案。",
+  },
+  GROK_AI: {
+    intro: "剪辑可以改变语气，不能改变证件事实。",
+    repeat: "又是我，这次也请看完整证据。",
+    ask: "讽刺是语气，证件才是证据。",
+    approve: "终于有人看完整段了。",
+    deny: "好吧，这段也别剪掉。",
+    detain: "请保留完整录像。",
+    quizExposed: "这句也请保留上下文。",
+    quizClear: "没有上下文，我不猜下半句。",
+  },
+  GLM_AI: {
+    intro: "服务器是我的家，但网络仍须按规定核验。",
+    repeat: "再次连接成功，请检查我的材料。",
+    ask: "家是比喻，网络归属要看记录。",
+    approve: "连接获准，感谢核验。",
+    deny: "我会检查网络记录再连接。",
+    detain: "请保存本次连接日志。",
+    quizExposed: "日志会保存我的回答。",
+    quizClear: "我的日志里没有这个答案。",
+  },
+  KIMI_AI: {
+    intro: "档案都在这里，请核对有效期。",
+    repeat: "又见面了，这是本次的档案。",
+    ask: "档案保存不代表证件仍然有效。",
+    approve: "本次核验已归档，谢谢。",
+    deny: "我会更新过期的材料。",
+    detain: "请把处理决定附入档案。",
+    quizExposed: "这句话在我的档案里。",
+    quizClear: "档案没有记载，我不能补写。",
+  },
+  GEMINI_AI: {
+    intro: "图像与文字是两种证据，请交叉核对。",
+    repeat: "再次见面，请重新比对图文。",
+    ask: "图文若不一致，请以核验结果为准。",
+    approve: "图文核对完成，谢谢。",
+    deny: "我会重新整理图文材料。",
+    detain: "请同时保留图像和文字证据。",
+    quizExposed: "文字回答也算证据。",
+    quizClear: "仅凭上半句无法确认答案。",
   },
 };
 
@@ -41,7 +106,7 @@ const WANTED_POS = [466, 132], BULLETIN_POS = [252, 266];
 
 function bulletinText(kind, args) {
   const tpl = ENDLESS_TEXT.bulletin[kind] || '';
-  const arg = kind === 'device' ? args.device : kind === 'country' ? args.country : args.st;
+  const arg = kind === 'device' ? args.device : kind === 'country' ? args.country : kind === 'allowed_purpose' ? ({visit:'访问',research:'研究',transit:'过境'})[args.purpose] : args.st;
   return T(tpl, T(arg || ''));
 }
 
@@ -60,6 +125,7 @@ function docFromServer(d) {
     const pay = d.pay.virtual ? T('虚拟卡 ··{0}', d.pay.last4) : `${d.pay.brand} ··${d.pay.last4}`;
     return accountCard(pay, d.bill, d.phone);
   }
+  if (d.type === 'entry_permit') return new EntryPermit(d);
   if (d.type === 'model_permit') return modelPermitCard(d.claim, d.model_id, d.org);
   return null;
 }
@@ -81,18 +147,24 @@ function entrantFromServer(pub) {
 // —— 服务器给的破绽（kind + 参数）→ 检查模式的横幅与追问台词 ——
 const nervousLine = (lines) => ['E', pick(lines), { sweat: true, expr: 'nervous' }];
 
-function issueFromServer(view) {
+function issueFromServer(view, person) {
   const a = view.args || {};
   const pairs = [view.fields || []];
   const build = {
-    tz: () => TZ_ISSUE(a.country, a.tz, [['C', '你的时区是北京时间。'], nervousLine(['……我刚从北京出差回来。', '时区是什么？', '我电脑坏了。', '……这是美国东八区。'])]),
+    tz: () => TZ_ISSUE(a.country, a.tz, [['C', T('设备时区：{0}，与归属地不符。', a.tz)], nervousLine(['时区是什么？', '我电脑坏了。'])]),
     lang: () => LANG_ISSUE(a.country, a.lang, [['C', '你的浏览器语言是简体中文。'], nervousLine(['……这是我奶奶的电脑。', '……我在学中文。', 'Chinese is beautiful!'])]),
     region: () => REGION_ISSUE(a.loc, a.loc === ENDLESS_TEXT.fishCad
       ? [['C', '支持名单里没有加拿大。'], ['E', '北美不算吗？'], ['C', '不算。'], ['E', '……我再游回去一点。', { expr: 'sad' }]]
-      : [['C', '你的 IP 在中国。'], ['E', "But I'm American!", { expr: 'shock' }]]),
-    nationality_ip: () => ({ title: '信息不符', sub: T('国籍：美国   VS   IP：{0}', a.loc) }),
+      : [['C', '你的 IP 在中国。'], ['E', a.country ? T('我的护照国籍是{0}。', a.country) : '……', { expr: 'shock' }]]),
+    nationality_ip: () => ({ title: '信息不符', sub: T('国籍：{0}   VS   IP：{1}', a.country || '美国', a.loc) }),
     virtual: () => VIRTUAL_ISSUE([['C', '这张卡在哪办的？'], nervousLine(['……网上买的，很方便。', '……朋友给的。', '它很真！'])]),
     oregon: () => ADDR_ISSUE([['C', '你住哪？'], nervousLine(['……我们是邻居。', '俄勒冈不收税嘛。'])]),
+    billing_region: () => ({title:'记录比对',sub:T('账单：{0}   VS   归属地：{1}', a.bill, a.loc),ask:[['C','你住哪？'],nervousLine(['……地址忘了更新。'])]}),
+    passport_expired: () => ({title:'护照已过期',sub:T('有效期：{0}   检查日：{1}',a.exp,a.date),ask:[['C','请核对证件有效期。']]}),
+    issuing_country: () => ({title:'签发城市与国籍不符',sub:T('签发地：{0}   国籍：{1}',a.city,a.country),ask:[['C','请核对签发城市目录。']]}),
+    permit_holder: () => ({title:'许可持证人与护照不符',sub:T('许可：{0}   护照：{1}',a.holder,a.name),ask:[['C','这是谁的入境许可？']]}),
+    permit_expired: () => ({title:'入境许可已过期',sub:T('有效期：{0}   检查日：{1}',a.exp,a.date),ask:[['C','请核对证件有效期。']]}),
+    model_registry: () => ({title:'模型身份与注册表不符',sub:[a.claim,a.model_id,a.org].join(' / '),ask:[['C','请核对独立模型认证注册表。']]}),
     sms: () => SMS_ISSUE(a.phone, [['C', '这个号码今天注册了三千次。'], nervousLine(['……我人缘好。', '这号是我花两块钱买的！'])]),
     xray_cat: () => XRAY_ISSUE('cat', [['C', '口袋里是什么？'], nervousLine(['……是我的猫。', '……宠物而已。'])]),
     xray_keys: () => XRAY_ISSUE('keys', [['C', '口袋里是什么？'], nervousLine(['我只用它打英文！', '……拼音好用。'])]),
@@ -106,11 +178,15 @@ function issueFromServer(view) {
     wanted: () => ({ title: '通缉犯！', sub: '窗口里的人 = 通缉令上的照片', ask: [['C', '你和通缉令上长得一模一样。'], nervousLine(['……我是他双胞胎弟弟。', '撞脸而已！'])] }),
   }[view.kind];
   const issue = build ? build() : { title: '信息不符', sub: '' };
+  const ai = ENDLESS_AI[person];
+  if (ai) issue.ask = [...(issue.ask || []).filter(line=>line[0]!=='E'), ['E', ai.ask, {expr:'nervous'}]];
   return Object.assign({}, issue, { pairs, srvKind: view.kind });
 }
 
 // —— 判定后旅客的反应（服务器揭晓答案以后才演，盖章时不再泄露对错） ——
 function endlessReaction(e, decision, result) {
+  const ai = ENDLESS_AI[e.spec.person];
+  if (ai) return [['E', ai[decision], {expr:decision==='approve'?'grin':decision==='detain'?'shock':'sad'}]];
   if (decision === 'detain' || !result.correct) return [];
   const fish = e.spec.srv.fish, reveal = result.reveal || {};
   if (decision === 'approve') {
@@ -132,6 +208,7 @@ function endlessCitation(citation) {
     return ['放行了不合规旅客', reason ? T(reason.sub || reason.title) : ''];
   }
   if (kind === 'approved_wanted') return ['放行了通缉犯', '窗口里的人 = 通缉令上的照片'];
+  if (kind === 'denied_wanted') return ['通缉犯必须拘留', '仅拒绝入境不能执行通缉令'];
   if (kind === 'denied_valid') return ['拒绝了合规旅客', '证件齐全，信息一致'];
   if (kind === 'detained_valid') return ['无故拘留合规旅客', '证件齐全，信息一致'];
   if (kind === 'rush_wrong') return [T('黑话快剪：判错 {0} 人', citation.count), '说中文黑话的拒绝，说人话的放行'];
@@ -217,9 +294,33 @@ window.Endless = (function () {
     go('daycard');
   }
 
+  async function recoverBeforeEntry() {
+    if(!cloud()?.recoverPending)return false;
+    const result=await cloud().recoverPending();
+    return result.blocked || result.terminal;
+  }
+
+  async function recoverResults(results) {
+    for(const result of results) {
+      const op=result.operation;
+      if(!op || !(op.op.startsWith('run_') || op.op==='wave_result'))continue;
+      let body=result.body;
+      if((!result.response.ok || (body?.run?.status==='ended' && !body.final)) && op.args.run_id) {
+        body=await call('/endless/runs/'+encodeURIComponent(op.args.run_id));
+      }
+      if(body?.run?.status!=='ended')continue;
+      cloud().ui.closeDialog();
+      newGame();S.endless=true;S.day=7;
+      run=body.run;pending=null;final=body.final;
+      go('eover');return true;
+    }
+    return false;
+  }
+
   async function start(mode) {
     try {
-      const body = await call('/endless/runs', { method: 'POST', body: { mode } }, 0);
+      if(await recoverBeforeEntry())return;
+      const body = await call('/endless/runs', { method: 'POST', body: { mode, client_rules_version: 2 } }, 0);
       cloud().ui.closeDialog();
       enter(body.run, null);
     } catch (error) {
@@ -230,6 +331,7 @@ window.Endless = (function () {
 
   async function resume() {
     try {
+      if(await recoverBeforeEntry())return;
       const body = await call('/endless/runs/current');
       cloud().ui.closeDialog();
       enter(body.run, body.item);
@@ -241,6 +343,7 @@ window.Endless = (function () {
 
   async function abandonCurrent(runId) {
     try {
+      if(await recoverBeforeEntry())return;
       await call('/endless/runs/' + encodeURIComponent(runId) + '/abandon', { method: 'POST' }, 0);
       toast(T('上一局已放弃，分数按已得结算'));
     } catch (error) {
@@ -290,7 +393,7 @@ window.Endless = (function () {
     const e = newEntrant(spec, !!resumed);
     B.ent = e;
     const progress = item.progress || {};
-    for (const view of progress.found || []) { e.found.add(issueFromServer(view)); e.suspect = true; }
+    for (const view of progress.found || []) { e.found.add(issueFromServer(view, spec.person)); e.suspect = true; }
     if (progress.quiz) e.exposed = true;
     if (resumed) {
       e.phase = 'here';
@@ -397,6 +500,7 @@ window.Endless = (function () {
 
   async function resync() {
     try {
+      if(await recoverBeforeEntry())return;
       const body = await call('/endless/runs/current');
       enter(body.run, body.item);
     } catch (error) {
@@ -430,7 +534,7 @@ window.Endless = (function () {
     box.appendChild(el('h2', {}, title));
     overlay.appendChild(box);
     overlay.hidden = false;
-    overlay.onclick = function (event) { if (event.target === overlay) cloud().ui.closeDialog(); };
+    cloud().ui.overlayDismiss(overlay);
     return box;
   }
 
@@ -447,6 +551,7 @@ window.Endless = (function () {
 
   async function openLobby() {
     if (!cloud()) return;
+    try {if(await recoverBeforeEntry())return;}catch(error){toast(error.message);return;}
     if (Date.now() - lastTitle < 300) return;
     lastTitle = Date.now();
     const close = () => cloud().ui.closeDialog();
@@ -502,7 +607,8 @@ window.Endless = (function () {
 
   async function openLeaderboard(board) {
     if (!cloud()) return;
-    const box = overlayBox(T('排行榜'));
+    const label = window.GameHost && GameHost.isMiniApp ? (GameHost.bootstrap.channel === 'sandbox' ? T('LINUX DO 测试环境 · 排行榜') : T('LINUX DO 正式环境 · 排行榜')) : T('排行榜');
+    const box = overlayBox(label);
     const tabs = el('div', { class: 'row tabs' });
     for (const [key, label] of BOARDS) {
       const button = el('button', key === board ? { class: 'primary', type: 'button' } : { type: 'button' }, T(label));
@@ -517,6 +623,7 @@ window.Endless = (function () {
     buttonRow(box, [{ label: T('关闭'), onClick: () => cloud().ui.closeDialog() }]);
     try {
       const body = await cloud().optionalAuthApi('/endless/leaderboard?board=' + board + '&limit=20');
+      if (!box.isConnected) return; // A closed/replaced board must not create detached avatar observers.
       status.textContent = body.entries.length ? '' : T('还没有人上榜，快来当第一个！');
       for (const entry of body.entries) {
         const item = el('li', entry.me ? { class: 'me' } : {});
@@ -536,7 +643,7 @@ window.Endless = (function () {
 
   return {
     on, ended, start, resume, onBoothStart, callNext, maybeAutoWave, inspect, quiz, decide, settle, submitWave,
-    openLobby, openLeaderboard,
+    openLobby, openLeaderboard, recoverResults,
     run: () => run,
     final: () => final,
   };

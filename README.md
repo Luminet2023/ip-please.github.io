@@ -122,3 +122,11 @@ node tools/check_en.js
 - 画面、音乐、音效均由 Claude Code 写程序生成。
 - 代码以 [MIT](LICENSE) 许可开源。
 - 像素字体：[缝合像素字体 Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)，SIL Open Font License 1.1（见 `OFL-fusion-pixel.txt`）。
+
+### LINUX DO 小程序
+
+小程序 `01a1baa6-abbf-7ed6-afac-bfa495a47dd3` 共用完整 14 天剧情、30 个结局/图鉴、云存档及历史快照、无尽模式与每日挑战；仍保留原作与茗（wess09）《零号档案 · File Zero》的素材与署名。简中、繁中、英文、日文使用同一套玩法。
+
+平台身份由已验签 JWT 提供，无需网站登录或绑定码。网站、LINUX DO 正式环境、LINUX DO 沙盒分别保存身份、存档与总榜/周榜/日榜；现有网站成绩不清零。新对局使用规则 v2（入境许可、六位 AI、公告条件与审查统计），进行中的 v1 对局继续原规则。超时或断网后点击「重试待确认操作」，会重放同一个请求，避免重复计分或误覆盖存档。
+
+本地构建：`node miniapp/build.mjs`，产物为 `miniapp/dist/package/app.zip`；[构建与本地验证](miniapp/README.md)、[部署和平台沙盒验收步骤](deploy/README.md#linux-do-小程序上线与验收)。本地浏览器夹具不等于 LINUX DO 沙盒验收；只有真实平台上传、授权和后端验证完成才可宣称上线。

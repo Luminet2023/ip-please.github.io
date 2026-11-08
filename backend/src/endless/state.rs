@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::generator::{self, Slot, WaveSpec, DAILY_TRAVELERS, RUSH_FACES, WANTED_BLOCK};
+use super::generator_v2;
 use super::model::{is_known_field, Decision, IssueView, PublicEntrant, Secret};
 use super::rng::Seed;
 use super::scoring::{self, Evidence};
@@ -94,7 +95,12 @@ pub struct RunState {
     pub mode: Mode,
     pub seed: String,
     pub daily_date: Option<String>,
+    #[serde(default = "legacy_generator_version")]
     pub generator_version: i32,
+    #[serde(default)]
+    pub document_reviews: u32,
+    #[serde(default)]
+    pub model_identity_checks: u32,
     pub slot: u32,
     pub current: Option<Current>,
     pub last: Option<Last>,
@@ -125,6 +131,10 @@ pub enum Claim {
     Say(usize),
 }
 
+fn legacy_generator_version() -> i32 {
+    1
+}
+
 impl RunState {
     pub fn new(mode: Mode, seed: &Seed, daily_date: Option<String>) -> Self {
         Self {
@@ -132,7 +142,9 @@ impl RunState {
             mode,
             seed: hex::encode(seed),
             daily_date,
-            generator_version: generator::GENERATOR_VERSION,
+            generator_version: generator_v2::GENERATOR_VERSION,
+            document_reviews: 0,
+            model_identity_checks: 0,
             slot: 0,
             current: None,
             last: None,
@@ -234,7 +246,11 @@ impl RunState {
             let current = match generator::slot(self.slot) {
                 Slot::Traveler(t) => {
                     let entrant_id = new_id("ent");
-                    let generated = generator::traveler(&seed, t, &entrant_id);
+                    let generated = if self.generator_version == 1 {
+                        generator::traveler(&seed, t, &entrant_id)
+                    } else {
+                        generator_v2::traveler(&seed, t, &entrant_id)
+                    };
                     Current::Traveler(TravelerState {
                         entrant_id,
                         t,
@@ -251,7 +267,11 @@ impl RunState {
                     wave_id: new_id("wave"),
                     w,
                     issued_at_ms: now,
-                    spec: generator::wave(&seed, w),
+                    spec: if self.generator_version == 1 {
+                        generator::wave(&seed, w)
+                    } else {
+                        generator_v2::wave(&seed, w)
+                    },
                 }),
             };
             self.current = Some(current);
@@ -393,6 +413,15 @@ impl RunState {
         let (correct, breakdown) =
             scoring::score(decision, &traveler.secret, evidence, streak_before);
 
+        self.document_reviews += 1;
+        if traveler
+            .public
+            .docs
+            .iter()
+            .any(|d| matches!(d, super::model::Doc::ModelPermit { .. }))
+        {
+            self.model_identity_checks += 1;
+        }
         self.travelers += 1;
         self.processed += 1;
         self.score += breakdown.total;
@@ -417,6 +446,7 @@ impl RunState {
             let kind = match decision {
                 Decision::Approve if traveler.secret.wanted => "approved_wanted",
                 Decision::Approve => "approved_flawed",
+                Decision::Deny if traveler.secret.wanted => "denied_wanted",
                 Decision::Deny => "denied_valid",
                 Decision::Detain => "detained_valid",
             };
@@ -676,11 +706,21 @@ impl RunState {
         let t = self.focus_t();
         let bulletin = if self.ended() {
             None
-        } else {
+        } else if self.generator_version == 1 {
             generator::bulletin_at(&seed, t)
+        } else {
+            generator_v2::bulletin_at(&seed, t)
         };
-        let wanted = generator::wanted_for(&seed, t / WANTED_BLOCK);
+        let wanted = if self.generator_version == 1 {
+            generator::wanted_for(&seed, t / WANTED_BLOCK)
+        } else {
+            generator_v2::wanted_for(&seed, t / WANTED_BLOCK)
+        };
         json!({
+            "generator_version": self.generator_version,
+            "inspection_date": if self.generator_version >= 2 {Some(generator_v2::INSPECTION_DATE)} else {None},
+            "document_reviews": self.document_reviews,
+            "model_identity_checks": self.model_identity_checks,
             "mode": self.mode,
             "daily_date": self.daily_date,
             "status": if self.ended() { "ended" } else { "active" },

@@ -267,3 +267,67 @@ docker exec -it ip-please-sync sh -c 'curl -sv telnet://host.docker.internal:330
 说明反向代理把该前缀当静态资源/SPA 兜底了，而不是 `proxy_pass`。按第 3 节配置，并检查是否误加了
 `root`/`alias`/`try_files`/`return 204`/`rewrite`。服务器上跑 `bash deploy/diagnose.sh` 可定位。
 
+
+## LINUX DO 小程序上线与验收
+
+此节是待执行的运维/平台验收流程，不表示本分支已部署或已上传。App ID 固定为 `01a1baa6-abbf-7ed6-afac-bfa495a47dd3`。完整剧情、原作与 File Zero 致谢、网站存档/排行榜均保留。
+
+### 配置与网络
+
+- `.env` 设置 `MAPP_APP_ID=01a1baa6-abbf-7ed6-afac-bfa495a47dd3`；沿用现有数据库、`SESSION_JWT_SECRET`、`ENDLESS_SEED_SECRET`，不要更换每日种子密钥。
+- Issuer 固定 `https://linux.do`，audience 固定 `https://api.luminet.cn`；允许后端访问 `https://linux.do/mini-app-api/jwks`。仅 ES256/P-256、SPKI SHA256 kid；禁止请求指定公钥地址，公钥缓存 1 小时、未知 kid 刷新冷却 5 秒，不跟随重定向。无自定义生产 JWKS 环境变量。
+- 公网 HTTPS 暴露四个固定入口：`/anthropic/v1/mapp/bootstrap` GET、`profile` POST、`query` GET、`action` POST。代理完整保留查询字符串和 Authorization；不得在 access/error log 打印 Bearer JWT、请求体或用户凭据。无网站 cookie/会话回退。
+- 应用 CORS 已固定允许 `https://linux.do`；代理也必须允许该 Origin（包含错误响应），GET/POST/OPTIONS、Authorization/Content-Type/Accept，并暴露 Retry-After。不要允许 `null` 来源或通配凭据。平台代理发出请求，游戏 iframe 无需直接连接 API。
+- `sandbox|production` 来自已验签 JWT，不能靠客户端参数、header 或全局 `MAPP_CHANNEL` 切换。profile 的 string id 必须匹配 sub，名字只用于展示；不按用户名合并网站账号。平台没有网站 AT/RT 或管理权限。
+
+```sh
+curl -fsS https://api.luminet.cn/anthropic/v1/health
+curl -i -X OPTIONS https://api.luminet.cn/anthropic/v1/mapp/action \
+  -H 'Origin: https://linux.do' -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,content-type'
+curl -i https://api.luminet.cn/anthropic/v1/mapp/bootstrap
+# 未带 Bearer 的最后一个请求应为 401、application/json、private/no-store；不是登录验收。
+```
+
+### UTC+8 午夜规则切换与回滚
+
+先完成本地/CI 验证、数据库备份和现有网站榜单/进行中 v1 对局基线记录，再单独批准生产部署。v2 的规则/生成输出会影响每日序列，必须在选定 **UTC+8 00:00 新一天开始后、当天尚未开放新版本每日挑战前** 完成后端与网站客户端配套切换；先协调暂停新挑战入口，避免同一天中途改序列。新的 `run_start` 必须带 `client_rules_version:2`，旧客户端开始新局收到 409 reload 提示。
+
+只执行新增的 `006_mapp.sql` 幂等 CREATE TABLE 迁移；不得 DROP/TRUNCATE/ALTER 旧表、清榜、重置赛季或改旧对局的 `generator_version`。旧 v1 对局含旅客/波次/公告/通缉都按 v1 恢复；新 v2 才使用新生成逻辑。网站榜继续原历史；小程序正式/沙盒分榜由持久化 run source 决定，后台过期结算也不混榜。
+
+发布后记录运行镜像 digest/源码 SHA、health、公共 CORS、真实网站新登录/旧局恢复/新 v2、平台沙盒流程。回滚需配套网站与后端，并保留新表和存档；不能直接把已有 v2 对局交给不识别 v2 的旧程序。出现问题先停新开局，保留数据库与证据，再选择兼容 v1/v2 的已验证镜像。不得以容器启动或 CI 成功替代这些验收。
+
+### 可复现产物和实际平台上传
+
+在本分支根目录、Node 22 中执行：
+
+```sh
+npm ci --prefix tests/frontend
+node miniapp/build.mjs
+npm test --prefix miniapp
+(cd miniapp/dist/package && sha256sum -c SHA256SUMS)
+unzip -l miniapp/dist/package/app.zip
+```
+
+ZIP 恰好包含 `manifest.json`、`index.html`、`app.js`、`app.css`、`strings.json`、`assets/{font,atlas,bg,win}.png`、`assets/LICENSE.txt`、`assets/OFL-fusion-pixel.txt`。不要上传 preview、Rust 测试服务、JWKS 私钥、浏览器脚本或测试数据库配置。官方 packer 的 SDK 0.3.0 固定提交和逐文件哈希在 `miniapp/vendor/provenance.json`；记录 ZIP SHA256、大小、版本与源码 SHA。
+
+1. 在真实已登录的 LINUX DO 小程序开发者界面打开该 App ID，进入沙盒版本上传，选择上述 **app.zip**。检查平台展示的 ID、版本、权限和四个 endpoint；不要修改 manifest URL 去指向本地夹具。
+2. 确认用户已授权 `user.read/user.lookup/network.request/storage.read/storage.write/theme.read/audio.webAudio/fullscreen/links.open`。保留网络响应状态、平台版本和脱敏截图，不记录 JWT/cookie。
+3. 用真实平台账号启动，确认 bootstrap signed channel 为 sandbox、展示名自动同步、无网站登录/绑定码/管理入口；切换账号后旧镜像不可读，重开恢复新账号。
+4. 简繁英日各检查字体、长文本、六 AI/表情、证件真实点击区域；桌面及手机触控拖证件、检查两字段、盖章/退证、测谎、全屏/音频/链接。
+5. 完整剧情存档、历史快照、云端冲突的两个选择、失败后 Retry、关闭/重开恢复；中断已提交 action 的响应后重试，确认同 req_*、一次计分/一次存档版本。
+6. 新 v2 无尽/每日：实际 inspect/decision、波次计时、结算与总榜/周榜/日榜、SDK 可见头像及失败首字回退；核对正式/沙盒/网站分榜与旧 v1/旧成绩保留。
+7. 对照严格 CSP/Trusted Types 检查无运行时注入或控制台错误。记录每步通过/失败/未验证。只有沙盒流程通过且另获生产发布授权后，才进行正式版本提交/发布；本任务不执行生产发布。
+
+没有可用的已认证平台界面时，上述步骤标为 **待验收**，不要获取用户浏览器 cookie 或把本地 fixture 成功写成平台成功。
+
+### 网站静态资源原子发布与缓存验收
+
+本次网站脚本统一使用 `?v=20261108-2`（包括 `game-host.js`），画面中的 `BUILD_VERSION` 为 `2026.11.08.2`。未来改动共享 JS 时必须一起更新全部脚本标记和 BUILD_VERSION；后端拒绝旧规则不是静态缓存失效的替代品。
+
+1. 在新发布目录准备同一源码 SHA 的 `index.html` 与所有引用的 JS/素材，核对清单 SHA；完成部署授权后，以目录/版本切换方式一次发布。不能先切 HTML、再逐个覆盖旧目录里的 JS。保留上一完整版本供兼容回滚。
+2. HTML 应强制再验证（例如 `Cache-Control: no-cache`）；CDN 必须把 query 参数纳入 JS 缓存键。若缓存层忽略 query，先修正规则或清除所有旧 JS 缓存。发布时清除/再验证 HTML，不能只刷新入口而保留相同 JS URL。
+3. 以已经缓存旧站点的浏览器重新进入，Network 中核对每个本地脚本的 URL 都含同一新标记；检查响应内容/SHA 确实属于该发布目录。无痕冷启动再检查一次，确认没有新旧资源混搭，画面版本与 BUILD_VERSION 一致。
+4. 运行 `node --test miniapp/tests/cache.test.cjs`、`node miniapp/build.mjs`，确认 index 解析器仍保留正确依赖顺序；修改产品源码后重新记录最终 ZIP 大小及 SHA256，使用该文件进行平台验收。
+
+这些是待执行的发布/公共缓存验收步骤；本地测试通过不代表 CDN 已清除、平台已上传或生产已部署。

@@ -16,18 +16,18 @@ function newGame() {
 }
 
 function saveGame() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* 隐私模式等：存不了就算了 */ }
+  try { gameStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* 隐私模式等：存不了就算了 */ }
 }
 
 function loadSave() {
   try {
-    const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    const s = JSON.parse(gameStorage.getItem(SAVE_KEY) || 'null');
     if (!s || !Number.isInteger(s.day) || s.day <= 1 || s.day > LAST_DAY || s.endless || (s.plot && s.plot.final && s.plot.final.ending)) return null;
     return s;
   } catch (e) { return null; }
 }
 
-function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 同上 */ } }
+function clearSave() { try { gameStorage.removeItem(SAVE_KEY); } catch (e) { /* 同上 */ } }
 
 // ———————————————————— 开场 ————————————————————
 
@@ -349,6 +349,7 @@ function drawSummary(t) {
 }
 
 function summaryClick(x, y) {
+  if (window.GameHost && GameHost.transitionPending) return;
   if (st() < 1.2) return;
   for (const [key, , cost] of SUM.rows) {
     const b = SUM.boxes && SUM.boxes[key];
@@ -442,6 +443,7 @@ function drawEover(t) {
   if (t > 1.0) {
     if (fin) {
       bigText(W / 2, 150, T('{0} 分', fin.score), 12, 2, K.CLAUDE_L);
+      txt(W / 2, 246, T('证件复核 {0} · 模型核验 {1}', fin.document_reviews || 0, fin.model_identity_checks || 0), 8, K.WHITE, 'ma');
       txt(W / 2, 192, T('处理 {0} 位旅客 · 判对 {1} · 最高连对 {2}', fin.travelers, fin.correct, fin.best_streak), 10, K.WHITE, 'ma');
       const ranks = fin.ranks || {};
       const rank = ranks.daily || ranks.endless;

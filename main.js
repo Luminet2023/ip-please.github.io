@@ -2,6 +2,12 @@
 // 场景切换、输入分发、主循环。
 
 function go(name) {
+  if (window.GameHost && GameHost.isMiniApp && ['daycard', 'ending', 'end'].includes(name)) {
+    GameHost.transition(() => goScene(name)); return;
+  }
+  goScene(name);
+}
+function goScene(name) {
   scene = name; sceneT0 = now;
   lastKey = -1;
   SFX.ambient(name === 'booth');
@@ -23,6 +29,7 @@ function toGame(ev) {
 }
 
 function onDown(ev) {
+  if (window.GameHost && GameHost.transitionPending) return;
   SFX.init();
   const [x, y] = toGame(ev);
   Object.assign(ptr, { x, y, down: true, mouse: ev.pointerType === 'mouse' });
@@ -158,7 +165,8 @@ function dragEnd(x, y) {
 function sceneClick(x, y) {
   const creditAt = { title: 1.6, end: 2.4, ending: 3.0 }[scene];
   if (creditAt !== undefined && st() > creditAt && inBox(x, y, MOD_CREDIT_LINK)) {
-    window.open(MOD.originalUrl, '_blank', 'noopener,noreferrer');
+    if (window.GameHost) GameHost.openLink(MOD.originalUrl);
+    else window.open(MOD.originalUrl, '_blank', 'noopener,noreferrer');
     return;
   }
   if (scene === 'boot') { langClick(x, y); return; }
@@ -274,7 +282,7 @@ function boot() {
   canvasEl.addEventListener('contextmenu', (e) => e.preventDefault());
   window.addEventListener('keydown', (e) => { if (e.key === 'm' || e.key === 'M') toggleMute(); });
   newGame();
-  loadImages().then(() => { sceneT0 = performance.now() / 1000; requestAnimationFrame(loop); });
+  return loadImages().then(() => { sceneT0 = performance.now() / 1000; requestAnimationFrame(loop); });
 }
 
-window.addEventListener('DOMContentLoaded', boot);
+if (!(window.GameHost && GameHost.isMiniApp)) window.addEventListener('DOMContentLoaded', boot);

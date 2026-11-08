@@ -9,6 +9,7 @@ pub mod error;
 pub mod extract;
 pub mod ids;
 pub mod maintenance;
+pub mod mapp;
 pub mod profile;
 pub mod ratelimit;
 pub mod routes;
@@ -38,11 +39,13 @@ pub struct AppState {
     pub tokens: Arc<TokenSigner>,
     pub limiter: Arc<RateLimiter>,
     pub jti: Arc<JtiCache>,
+    pub mapp: Arc<mapp::auth::Verifier>,
 }
 
 impl AppState {
     pub fn new(config: Arc<Config>, pool: MySqlPool, jwks: Arc<JwksCache>) -> Self {
         Self {
+            mapp: Arc::new(mapp::auth::Verifier::new(mapp::auth::JWKS_URL)),
             tokens: Arc::new(TokenSigner::new(&config)),
             config,
             pool,
@@ -64,6 +67,8 @@ pub fn build_app(state: AppState) -> Router {
     let origins = config
         .allowed_origins
         .iter()
+        .map(String::as_str)
+        .chain(std::iter::once("https://linux.do"))
         .filter_map(|origin| origin.parse::<header::HeaderValue>().ok())
         .collect::<Vec<_>>();
 
