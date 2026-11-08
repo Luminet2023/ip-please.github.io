@@ -282,7 +282,7 @@ fn action(op: &str, args: Value) -> Value {
 }
 #[tokio::test]
 #[ignore = "requires disposable MySQL"]
-async fn atomic_actions_profile_and_channel_isolation() {
+async fn atomic_actions_profile_and_shared_channels() {
     let state = db_mapp().await;
     let sub = format!("{}", now_ms());
     let a = platform(&state, "GET", "bootstrap", &sub, "sandbox", None).await;
@@ -293,7 +293,7 @@ async fn atomic_actions_profile_and_channel_isolation() {
     assert_eq!(a.body["user"]["linuxdo_id"], sub);
     let b = platform(&state, "GET", "bootstrap", &sub, "production", None).await;
     assert_eq!(b.body["channel"], "production");
-    assert_ne!(b.body["user"]["user_id"], uid);
+    assert_eq!(b.body["user"]["user_id"], uid);
     let p = platform(
         &state,
         "POST",
@@ -305,6 +305,8 @@ async fn atomic_actions_profile_and_channel_isolation() {
     .await;
     assert_eq!(p.status, StatusCode::OK, "{}", p.text);
     assert_eq!(p.body["display_name"], "x y");
+    let shared_profile = platform(&state, "GET", "bootstrap", &sub, "production", None).await;
+    assert_eq!(shared_profile.body["user"]["display_name"], "x y");
     let p = platform(
         &state,
         "POST",
@@ -350,6 +352,19 @@ async fn atomic_actions_profile_and_channel_isolation() {
     assert_eq!(a.status, StatusCode::OK, "{}", a.text);
     assert_eq!(a.body, b.body);
     assert_eq!(b.status, a.status);
+    let cross_channel_replay = platform(
+        &state,
+        "POST",
+        "action",
+        &sub,
+        "production",
+        Some(save.clone()),
+    )
+    .await;
+    assert_eq!(cross_channel_replay.status, a.status);
+    assert_eq!(cross_channel_replay.body, a.body);
+    let shared_save = platform(&state, "GET", "query?op=save", &sub, "production", None).await;
+    assert_eq!(shared_save.body["save_id"], a.body["save_id"]);
     let lost = platform(
         &state,
         "POST",
@@ -415,7 +430,7 @@ async fn atomic_actions_profile_and_channel_isolation() {
         None,
     )
     .await;
-    assert_eq!(cross.status, StatusCode::NOT_FOUND);
+    assert_eq!(cross.status, StatusCode::OK);
     let next = action("run_next", json!({"run_id":run}));
     let (a, b) = tokio::join!(
         platform(
@@ -466,7 +481,8 @@ async fn atomic_actions_profile_and_channel_isolation() {
         None,
     )
     .await;
-    assert!(prod.body["me"].is_null());
+    assert_eq!(prod.body["me"]["score"], board.body["me"]["score"]);
+    assert_eq!(prod.body["me"]["linuxdo_id"], sub);
 }
 fn subject() -> String {
     format!("{}{:06}", now_ms(), rand::random::<u32>() % 1_000_000)
@@ -743,12 +759,14 @@ async fn expiry_and_final_ranks_keep_website_history_and_platform_sources_separa
         let id = start.body["run"]["run_id"].as_str().unwrap().to_owned();
         sqlx::query("UPDATE ip_please_endless_runs SET state_json=JSON_SET(state_json,'$.score',?),last_action_at_ms=? WHERE run_id=?").bind(if channel=="sandbox"{1234567}else{777}).bind(now_ms()-16*60*1000).bind(&id).execute(&state.pool).await.unwrap();
         ids_by_channel.push(id);
+        // Both channels use the same active-run slot. Settle before the next run.
+        runs::expire_stale(&state.pool, now_ms()).await.unwrap();
     }
     runs::expire_stale(&state.pool, now_ms()).await.unwrap();
-    for (channel, expected) in [("sandbox", 1234567), ("production", 777)] {
+    for channel in ["sandbox", "production"] {
         let board = platform(&state, "GET", "query?op=leaderboard", &sub, channel, None).await;
         assert_eq!(board.status, StatusCode::OK, "{}", board.text);
-        assert_eq!(board.body["me"]["score"], expected);
+        assert_eq!(board.body["me"]["score"], 1234567);
         assert_eq!(board.body["me"]["linuxdo_id"], sub);
     }
     for id in &ids_by_channel {
@@ -977,20 +995,35 @@ async fn query_resources_daily_and_unprivileged_action_boundaries() {
             .status,
         StatusCode::OK
     );
-    for (user, channel) in [(&other, "sandbox"), (&sub, "production")] {
+    let shared_snapshot = platform(&state, "GET", &query, &sub, "production", None).await;
+    assert_eq!(shared_snapshot.status, StatusCode::OK);
+    assert_eq!(shared_snapshot.body["save_id"], snapshot);
+    let shared_receipt = platform(
+        &state,
+        "POST",
+        "action",
+        &sub,
+        "production",
+        Some(save.clone()),
+    )
+    .await;
+    assert_eq!(shared_receipt.body, saved.body);
+    for (user, channel) in [(&other, "sandbox"), (&other, "production")] {
         assert_eq!(
             platform(&state, "GET", &query, user, channel, None)
                 .await
                 .status,
             StatusCode::GONE
         );
-        assert_eq!(
-            platform(&state, "GET", "query?op=save", user, channel, None)
-                .await
-                .status,
-            StatusCode::NOT_FOUND
-        );
-        // The same opaque request ID is independent across both authenticated users and channels.
+        let other_save = platform(&state, "GET", "query?op=save", user, channel, None).await;
+        if channel == "sandbox" {
+            assert_eq!(other_save.status, StatusCode::NOT_FOUND);
+        } else {
+            // The other user's sandbox write is also theirs in production.
+            assert_eq!(other_save.status, StatusCode::OK);
+            assert_ne!(other_save.body["save_id"], snapshot);
+        }
+        // Different authenticated users still have independent request IDs and resources.
         let independent =
             platform(&state, "POST", "action", user, channel, Some(save.clone())).await;
         assert_eq!(independent.status, StatusCode::OK, "{}", independent.text);
@@ -1046,7 +1079,22 @@ async fn query_resources_daily_and_unprivileged_action_boundaries() {
     .await;
     assert_eq!(start.status, StatusCode::CREATED, "{}", start.text);
     let run = start.body["run"]["run_id"].as_str().unwrap();
-    for (user, channel) in [(&other, "sandbox"), (&sub, "production")] {
+    let production_next = platform(
+        &state,
+        "POST",
+        "action",
+        &sub,
+        "production",
+        Some(action("run_next", json!({"run_id":run}))),
+    )
+    .await;
+    assert_eq!(
+        production_next.status,
+        StatusCode::OK,
+        "{}",
+        production_next.text
+    );
+    for (user, channel) in [(&other, "sandbox"), (&other, "production")] {
         assert_eq!(
             platform(
                 &state,
@@ -1079,6 +1127,9 @@ async fn query_resources_daily_and_unprivileged_action_boundaries() {
     assert_eq!(daily.body["in_progress"], true);
     let current = platform(&state, "GET", "query?op=run_current", &sub, "sandbox", None).await;
     assert_eq!(current.body["run"]["run_id"], run);
+    let shared_daily = platform(&state, "GET", "query?op=daily", &sub, "production", None).await;
+    assert_eq!(shared_daily.body["run_id"], run);
+    assert_eq!(shared_daily.body["played"], true);
     let abandon = action("run_abandon", json!({"run_id":run}));
     let ended = platform(
         &state,
@@ -1123,9 +1174,13 @@ async fn query_resources_daily_and_unprivileged_action_boundaries() {
     .await;
     assert_eq!(
         production.status,
-        StatusCode::CREATED,
+        StatusCode::CONFLICT,
         "{}",
         production.text
+    );
+    assert_eq!(
+        production.body["detail"],
+        "Today's daily challenge has already been played."
     );
     let malformed = platform(
         &state,

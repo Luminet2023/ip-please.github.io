@@ -138,6 +138,7 @@ window.CloudSync = (function () {
     fallback.textContent = Array.from(displayName(user))[0].toUpperCase();
     fallback.style.background = AVATAR_COLORS[(parseInt(user && user.tag, 16) || 0) % AVATAR_COLORS.length];
     if (platform) {
+      if (!user || !user.linuxdo_id) return fallback;
       const slot = node('span', undefined, 'avatar-slot'); slot.append(fallback);
       const load = async () => {
         const url = await GameHost.avatar(user && user.linuxdo_id);
@@ -294,7 +295,7 @@ window.CloudSync = (function () {
   }
 
   async function login() {
-    if (platform) { togglePanel(true); return; }
+    if (platform) { togglePanel(true); toast('请先在 LINUX DO 平台登录，再返回小程序。访客进度会自动同步。', 5200); return; }
     if (!window.crypto || !crypto.subtle) {
       toast('当前环境不支持安全登录（需要 HTTPS）');
       return;
@@ -634,6 +635,7 @@ window.CloudSync = (function () {
 
   async function syncState(state, reason) {
     if (!auth) {
+      if (platform) { try { await GameHost.flush(); } catch (_) { /* The host keeps dirty progress and exposes Retry. */ } return; }
       maybePromptLogin();
       return;
     }
@@ -641,7 +643,7 @@ window.CloudSync = (function () {
     busy = true;
     try {
       const meta = loadMeta();
-      const baseVersion = meta ? meta.version : 0;
+      const baseVersion = reason === 'guest' ? 0 : (meta ? meta.version : 0);
       const snapshot = JSON.parse(JSON.stringify(state));
       const result = await uploadSave(snapshot, baseVersion);
       saveMeta(metaFromServer(result));
@@ -727,6 +729,23 @@ window.CloudSync = (function () {
   }
 
   async function afterLogin() {
+    if(!auth)return;
+    if(platform) {
+      const transfer=GameHost.guestTransfer?.();
+      if(transfer?.choice) {
+        let choosing=false;
+        const choose=async useGuest=>{
+          if(choosing)return;choosing=true;
+          try {await GameHost.chooseGuestTransfer(useGuest);closeDialog();await afterLogin();}
+          catch(error){choosing=false;toast('本机保存失败，进度仍在内存中，请重试。');}
+        };
+        showDialog({title:'发现访客进度',paragraphs:['这个账号已有本机进度。请选择要使用的进度，原访客存档会保留。'],buttons:[
+          {label:'使用访客进度',primary:true,onClick:()=>choose(true)},
+          {label:'保留账号进度',onClick:()=>choose(false)},
+        ]});return;
+      }
+      if(transfer?.payload) {await syncState(transfer.payload,'guest');return;}
+    }
     let server = null;
     try {
       server = await fetchLatest();
@@ -773,7 +792,7 @@ window.CloudSync = (function () {
 
   let recoveryInFlight = null;
   function recoverPending() {
-    if (!platform) return Promise.resolve({blocked:false,terminal:false,hasRun:false});
+    if (!platform || !auth) return Promise.resolve({blocked:false,terminal:false,hasRun:false});
     if (recoveryInFlight) return recoveryInFlight;
     recoveryInFlight=(async()=>{
       const results=await GameHost.retryPending();
@@ -789,6 +808,11 @@ window.CloudSync = (function () {
       }
       const hasRun=results.some(r=>r.operation?.op.startsWith('run_') || r.operation?.op==='wave_result');
       const terminal=hasRun && window.Endless ? await Endless.recoverResults(results) : false;
+      // A pre-existing receipt must settle before presenting or uploading an incoming guest copy.
+      if(GameHost.guestTransfer?.()) {
+        await afterLogin();
+        return {blocked:!!GameHost.guestTransfer?.() || !!GameHost.pending().length,terminal,hasRun};
+      }
       return {blocked:false,terminal,hasRun};
     })().finally(()=>{recoveryInFlight=null;});
     return recoveryInFlight;
@@ -909,7 +933,9 @@ window.CloudSync = (function () {
     panel.replaceChildren(node('h2', platform ? 'LINUX DO · 云同步' : '云同步'));
     const row = (...buttons) => { const r = node('div', undefined, 'row'); r.append(...buttons); panel.append(r); };
     if (!auth) {
-      panel.append(node('p', '登录后可把每日存档备份到云端，换设备也能接着玩。'), credits());
+      panel.append(node('p', platform ? '访客可游玩完整 14 天剧情与 30 个结局，进度仅保存在平台本机。无尽模式和每日挑战需要登录。' : '登录后可把每日存档备份到云端，换设备也能接着玩。'));
+      if(platform)panel.append(node('p','请先在 LINUX DO 平台登录，再返回小程序。访客进度会自动同步。'));
+      panel.append(credits());
       row(actionButton('登录', 'login', true), actionButton('关闭', 'close'));
     } else {
       const who = node('div', undefined, 'who'); who.append(avatar(auth.user), node('span', displayName(auth.user), 'name'));
@@ -917,7 +943,7 @@ window.CloudSync = (function () {
       panel.append(who, node('p', tr('存档：{0}', meta ? tr('第 {0} 天 · {1} 已同步', meta.day, formatTime(meta.synced_at)) : tr('尚未同步过'))));
       row(actionButton('立即同步', 'sync', true), actionButton('从云端恢复', 'restore'), actionButton('历史快照', 'snapshots'));
       if (platform) {
-        panel.append(node('p', GameHost.bootstrap.channel === 'sandbox' ? 'LINUX DO 测试环境 · 独立排行榜' : 'LINUX DO 正式环境 · 独立排行榜'));
+        panel.append(node('p', 'LINUX DO · 共享排行榜'), node('p', tr('已验证渠道：{0}',GameHost.bootstrap.channel)));
         row(actionButton('重试待确认操作', 'retry-pending'));
       }
       panelSections.forEach(section => { try { const content = section.render(publicUser()); if (content) panel.append(content); } catch (_) {} });
@@ -994,7 +1020,7 @@ window.CloudSync = (function () {
 
   function init() {
     const hadLegacy = platform ? false : dropLegacyAuth();
-    auth = platform ? { user: GameHost.user } : readStoredAuth();
+    auth = platform ? (GameHost.user ? { user: GameHost.user } : null) : readStoredAuth();
     if (hadLegacy && !auth) toast('云同步登录已升级，请重新登录一次', 4200);
     // 其他标签页登录 / 刷新 / 登出时同步本页状态
     window.addEventListener('storage', function (event) {
@@ -1019,7 +1045,7 @@ window.CloudSync = (function () {
     }
     render();
     // 处理 OAuth 回调（登录后返回本页时清理 URL 并换取 Token）
-    if (platform) { notifyAuthChange(); if (!GameHost.pending().length) afterLogin(); }
+    if (platform) { notifyAuthChange(); if (auth && !GameHost.pending().length) afterLogin(); }
     else handleRedirectBack();
   }
 

@@ -607,7 +607,7 @@ window.Endless = (function () {
 
   async function openLeaderboard(board) {
     if (!cloud()) return;
-    const label = window.GameHost && GameHost.isMiniApp ? (GameHost.bootstrap.channel === 'sandbox' ? T('LINUX DO 测试环境 · 排行榜') : T('LINUX DO 正式环境 · 排行榜')) : T('排行榜');
+    const label = window.GameHost && GameHost.isMiniApp ? T('LINUX DO · 共享排行榜') : T('排行榜');
     const box = overlayBox(label);
     const tabs = el('div', { class: 'row tabs' });
     for (const [key, label] of BOARDS) {

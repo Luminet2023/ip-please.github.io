@@ -1932,3 +1932,14 @@ Object.assign(EN, {
 });
 
 Object.assign(EN, {'平台账号已变化，请重新打开小程序。': 'The platform account changed. Please reopen this app.'});
+
+Object.assign(EN, {
+  "LINUX DO · 共享排行榜": "LINUX DO · Shared leaderboard",
+  "已验证渠道：{0}": "Verified channel: {0}",
+  "访客可游玩完整 14 天剧情与 30 个结局，进度仅保存在平台本机。无尽模式和每日挑战需要登录。": "Guests can play the full 14-day story and all 30 endings. Progress stays in platform local storage. Endless and daily modes require sign-in.",
+  "请先在 LINUX DO 平台登录，再返回小程序。访客进度会自动同步。": "Sign in on LINUX DO, then return to this miniapp. Guest progress will sync automatically.",
+  "发现访客进度": "Guest progress found",
+  "这个账号已有本机进度。请选择要使用的进度，原访客存档会保留。": "This account already has local progress. Choose which progress to use. The original guest save will be kept.",
+  "使用访客进度": "Use guest progress",
+  "保留账号进度": "Keep account progress"
+});

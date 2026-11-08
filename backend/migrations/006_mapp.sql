@@ -1,4 +1,6 @@
--- Platform identities use a SHA-256 digest of the exact issuer/app/channel/sub tuple as key.
+-- Platform identities use a SHA-256 digest of the exact issuer/app/sub tuple as key.
+-- Verified sandbox and production requests share every business resource and receipt.
+-- channel records the first verified request channel for provenance, not partitioning.
 -- Local user IDs are separate from website accounts, including identical platform subjects.
 CREATE TABLE IF NOT EXISTS ip_please_mapp_users (
     identity_key CHAR(64) NOT NULL,

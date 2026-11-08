@@ -55,12 +55,19 @@
     }
     await cancellable(sdk.ready);
     const profile = await sdk.user.getCurrent({signal:options.signal,timeoutMs:20000});
-    if (!profile || !Number.isSafeInteger(profile.id) || profile.id <= 0) throw Error('Please sign in to LINUX DO.');
+    if (profile && (!Number.isSafeInteger(profile.id) || profile.id <= 0)) throw Error('Invalid platform profile.');
+    const isGuest = !profile;
+    let loginDetected = false;
     async function checkIdentity() {
       const current = await sdk.user.getCurrent({signal:options.signal,timeoutMs:20000});
-      if (!current || current.id !== profile.id) { identityChanged=true; notify(); throw Error('Platform account changed. Reopen this app.'); }
+      if ((current?.id || null) !== (profile?.id || null)) {
+        // Finish the old mirror before locking it or asking the shell to reload.
+        await flush();loginDetected=isGuest && !!current;identityChanged=true;notify();
+        throw Error('Platform account changed. Reopen this app.');
+      }
     }
     async function raw(name, opts = {}) {
+      if (isGuest) throw Error('Please sign in to LINUX DO.');
       await checkIdentity();
       const requestOptions = {...opts,signal:options.signal,timeoutMs:20000};
       try {
@@ -70,19 +77,24 @@
         return result;
       } catch (error) { if(!identityChanged) error.network=true; throw error; }
     }
-    const boot = await raw('bootstrap');
-    if (boot.status !== 200 || !boot.body?.user || boot.body.user.linuxdo_id !== String(profile.id)) throw Error('Platform bootstrap failed. Retry to reconnect.');
-    const bootstrap = boot.body;
-    const synced = await raw('profile',{json:{id:String(profile.id),username:profile.username,name:profile.name || null}});
-    if (synced.status !== 200 || synced.body?.user_id !== bootstrap.user.user_id) throw Error('Platform profile sync failed.');
-    const user = synced.body;
-    // The SDK isolates channels. Explicit channel/user prefixes also make exports unambiguous.
-    // Legacy account blobs are a read-only migration base, never a write target.
-    const scope = 'ip-please:account:' + user.user_id;
-    const prefix = scope + ':v2:' + bootstrap.channel + ':';
+    let bootstrap = {user:null,channel:null,announcements:[],daily:null,active_run:null}, user = null;
+    if (!isGuest) {
+      const boot = await raw('bootstrap');
+      if (boot.status !== 200 || !boot.body?.user || boot.body.user.linuxdo_id !== String(profile.id)) throw Error('Platform bootstrap failed. Retry to reconnect.');
+      bootstrap = boot.body;
+      const synced = await raw('profile',{json:{id:String(profile.id),username:profile.username,name:profile.name || null}});
+      if (synced.status !== 200 || synced.body?.user_id !== bootstrap.user.user_id) throw Error('Platform profile sync failed.');
+      user = synced.body;
+    }
+    // Backend identity spans verified channels. SDK storage may still isolate them.
+    const scope = isGuest ? 'ip-please:anonymous' : 'ip-please:account:' + user.user_id;
+    const prefix = scope + ':v2:shared:';
+    const guestPrefix = 'ip-please:anonymous:v2:shared:';
+    const guestClaim = 'ip-please:anonymous:claimed-v1';
+    const transferKey = 'guest-transfer-v1';
     const endingsKey = 'ip-please-file-zero-endings-v1';
     const pendingKey = 'pending-actions-v1';
-    const metaKey = 'ip-please-sync-meta-v1:' + user.user_id;
+    const metaKey = 'ip-please-sync-meta-v1:' + (user?.user_id || 'anonymous');
     const forbidden = key => /(?:auth|login|token|credential|cookie)/i.test(key);
     let memory = Object.create(null), records = new Map(), pending = [];
     const dirty = new Map();
@@ -92,8 +104,11 @@
       const all = new Map(snapshot.entries);
       const legacy = JSON.parse(all.get(scope) || '{}');
       memory = Object.assign(Object.create(null), legacy);
-      records = new Map([...all].filter(([key])=>key.startsWith(prefix)).map(([key,value])=>[key.slice(prefix.length),JSON.parse(value)]));
-      for (const [key,value] of dirty) records.set(key.slice(prefix.length),JSON.parse(value));
+      // Read the current SDK export's old channel namespace, never write it.
+      const legacyPrefix = !isGuest ? scope + ':v2:' + bootstrap.channel + ':' : null;
+      records = new Map(legacyPrefix ? [...all].filter(([key])=>key.startsWith(legacyPrefix)).map(([key,value])=>[key.slice(legacyPrefix.length),JSON.parse(value)]) : []);
+      for (const [key,value] of all) if(key.startsWith(prefix))records.set(key.slice(prefix.length),JSON.parse(value));
+      for (const [key,value] of dirty) if(key.startsWith(prefix))records.set(key.slice(prefix.length),JSON.parse(value));
       const endings = new Set(JSON.parse(legacy[endingsKey] || '[]'));
       const actions = new Map(JSON.parse(legacy[pendingKey] || '[]').map(p=>[p.request_id,p]));
       for (const [key,value] of records) {
@@ -155,6 +170,52 @@
         key=String(key);delete memory[key];put('key:'+encodeURIComponent(key),null);changed();
       },
     };
+    function guestTransfer() {
+      const value=storage.getItem(transferKey);
+      return value ? JSON.parse(value) : null;
+    }
+    function copyGuest(data) {
+      if(data['ip-please-file-zero-save-v1'] || data['ip-please-file-zero-last-ending-v1']) {
+        for(const key of ['ip-please-file-zero-save-v1','ip-please-file-zero-last-ending-v1'])if(!Object.hasOwn(data,key))storage.removeItem(key);
+      }
+      for(const [key,value] of Object.entries(data)) storage.setItem(key,value);
+    }
+    async function chooseGuestTransfer(useGuest) {
+      const transfer=guestTransfer();
+      if(!transfer || !transfer.choice)return;
+      if(useGuest) {
+        copyGuest(transfer.data);
+        storage.setItem(transferKey,JSON.stringify({...transfer,choice:false}));
+      } else storage.removeItem(transferKey);
+      await flush();
+    }
+    if(!isGuest) {
+      const snapshot=await cancellable(sdk.localStorage.exportData());
+      const all=new Map(snapshot.entries);
+      const claim=JSON.parse(all.get(guestClaim) || 'null');
+      if(!claim || claim.user_id===user.user_id) {
+        const data=Object.create(null);
+        for(const [key,value] of all) if(key.startsWith(guestPrefix+'key:')) {
+          const name=decodeURIComponent(key.slice((guestPrefix+'key:').length)),v=JSON.parse(value);
+          if(v!==null && !forbidden(name) && name!==transferKey && !name.includes('sync-meta'))data[name]=v;
+        }
+        const endings=[...all].filter(([key])=>key.startsWith(guestPrefix+'ending:')).map(([,v])=>JSON.parse(v));
+        if(endings.length)data[endingsKey]=JSON.stringify([...new Set(endings)].sort());
+        const payload=JSON.parse(data['ip-please-file-zero-save-v1'] || data['ip-please-file-zero-last-ending-v1'] || 'null');
+        const story=Object.fromEntries(['ip-please-file-zero-save-v1','ip-please-file-zero-last-ending-v1',endingsKey].filter(key=>Object.hasOwn(data,key)).map(key=>[key,data[key]]));
+        const digest=await root.crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical(story)));
+        const revision=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+        if((payload || endings.length) && (!claim || claim.revision!==revision)) {
+          const existing=storage.getItem('ip-please-file-zero-save-v1') || storage.getItem('ip-please-file-zero-last-ending-v1');
+          const choice=!!payload && !!existing && existing!==JSON.stringify(payload);
+          if(!choice)copyGuest(data);
+          if(payload)storage.setItem(transferKey,JSON.stringify({choice,data,payload}));
+          // Claim and account copy are committed by ONE SDK transaction. Keep the guest original.
+          dirty.set(guestClaim,JSON.stringify({user_id:user.user_id,revision}));
+          await flush();
+        }
+      }
+    }
     const inflight = new Map();
     const operation = record => ({request_id:record.request_id,op:record.op,args:record.args});
     async function acknowledge(record, result) {
@@ -191,6 +252,7 @@
       try { return await work; } finally {inflight.delete(record.request_id);notify();}
     }
     async function request(path, settings) {
+      if(isGuest)throw Error('Please sign in to LINUX DO.');
       const mapped = route(path,settings);
       if (mapped.query) return wrap(await raw('query',{query:mapped.query}));
       const fingerprint = canonical(mapped);
@@ -201,6 +263,10 @@
         const bytes=new Uint8Array(16);root.crypto.getRandomValues(bytes);
         record={request_id:'req_'+Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''),...JSON.parse(JSON.stringify(mapped))};
         pending.push(record);put('request:'+record.request_id,operation(record));
+        if(mapped.op==='save' && guestTransfer()) {
+          // Consume promotion together with the original durable envelope, before transport.
+          delete memory[transferKey];put('key:'+encodeURIComponent(transferKey),null);
+        }
         if(replaces)put('ack:'+replaces,{request_id:replaces});
       }
       return execute(record);
@@ -217,8 +283,8 @@
     const avatars = new Map();
     let fullscreen=false;
     const host = {
-      isMiniApp:true,sdk,user,bootstrap,storage,flush,profile,locale:(await sdk.theme.get()).locale,
-      request,checkIdentity,get identityChanged(){return identityChanged;},pending:()=>pending.map(p=>JSON.parse(JSON.stringify(p))),
+      isMiniApp:true,isGuest,sdk,user,bootstrap,storage,flush,profile,guestTransfer,chooseGuestTransfer,locale:(await sdk.theme.get()).locale,
+      request,checkIdentity,get loginDetected(){return loginDetected;},get identityChanged(){return identityChanged;},pending:()=>pending.map(p=>JSON.parse(JSON.stringify(p))),
       async resolvePending(requestId) {const record=pending.find(p=>p.request_id===requestId);if(record)await acknowledge(record);},
       async retryPending() {const retry=new Map(pending.map(p=>[p.request_id,p]));await flush();for(const p of pending)retry.set(p.request_id,p);const results=[];for(const p of retry.values()){const r=await execute(p);results.push(r);if(!r.response.ok)break;}return results;},
       transition(next) {if(transition)return;transition=next;retryTransition();},retryTransition,
