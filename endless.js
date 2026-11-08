@@ -248,6 +248,7 @@ window.Endless = (function () {
   function applyRun(next) {
     if (!next) return;
     run = next;
+    ConstitutionGuide.sync(run);
     if (!B) return;
     B.total = run.processed; B.correct = run.correct;
     B.streak = run.streak; B.best = run.best_streak; B.strikes = run.strikes;
@@ -286,6 +287,7 @@ window.Endless = (function () {
   // ———————————————————— 开局 / 接着玩 ————————————————————
 
   function enter(nextRun, item) {
+    ConstitutionGuide.reset(nextRun);
     run = nextRun; pending = item || null; final = null;
     SFX.play('click');
     newGame();
@@ -320,7 +322,7 @@ window.Endless = (function () {
   async function start(mode) {
     try {
       if(await recoverBeforeEntry())return;
-      const body = await call('/endless/runs', { method: 'POST', body: { mode, client_rules_version: 2 } }, 0);
+      const body = await call('/endless/runs', { method: 'POST', body: { mode, client_rules_version: 3 } }, 0);
       cloud().ui.closeDialog();
       enter(body.run, null);
     } catch (error) {
@@ -357,16 +359,19 @@ window.Endless = (function () {
     if (!on()) return;
     applyRun(run);
     if (pending) {
-      const item = pending;
-      pending = null;
-      later(0.4, () => present(item, true));
+      ConstitutionGuide.update();
+      if (!ConstitutionGuide.unread()) reviewed();
     }
+  }
+
+  function reviewed() {
+    if (pending && !ConstitutionGuide.unread()) {const item=pending;pending=null;present(item,true);}
   }
 
   // ———————————————————— 叫号 ————————————————————
 
   async function callNext() {
-    if (!on() || calling || ended()) return;
+    if (!on() || calling || ended() || ConstitutionGuide.unread()) {ConstitutionGuide.update(); return;}
     calling = true;
     B.speakerT = now;
     try {
@@ -643,7 +648,7 @@ window.Endless = (function () {
 
   return {
     on, ended, start, resume, onBoothStart, callNext, maybeAutoWave, inspect, quiz, decide, settle, submitWave,
-    openLobby, openLeaderboard, recoverResults,
+    openLobby, openLeaderboard, recoverResults, reviewed,
     run: () => run,
     final: () => final,
   };

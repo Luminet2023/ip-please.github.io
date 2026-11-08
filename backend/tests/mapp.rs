@@ -398,7 +398,7 @@ async fn atomic_actions_profile_and_shared_channels() {
     assert_eq!(badbase.status, StatusCode::CONFLICT);
     let start = action(
         "run_start",
-        json!({"mode":"endless","client_rules_version":2}),
+        json!({"mode":"endless","client_rules_version":3}),
     );
     let (a, b) = tokio::join!(
         platform(
@@ -527,7 +527,7 @@ async fn receipts_rollback_business_effects_and_replay_all_game_actions() {
     .await;
     let start = action(
         "run_start",
-        json!({"mode":"endless","client_rules_version":2}),
+        json!({"mode":"endless","client_rules_version":3}),
     );
     let failed_start = platform(
         &state,
@@ -586,7 +586,7 @@ async fn receipts_rollback_business_effects_and_replay_all_game_actions() {
         let (op, args) = match current {
             ip_please_sync::endless::state::Current::Traveler(t) => {
                 t.issued_at_ms = now_ms() - 3000;
-                if !inspected {
+                if !inspected && t.t >= 15 {
                     if let Some(pair) = t
                         .secret
                         .issues
@@ -751,7 +751,7 @@ async fn expiry_and_final_ranks_keep_website_history_and_platform_sources_separa
             channel,
             Some(action(
                 "run_start",
-                json!({"mode":"endless","client_rules_version":2}),
+                json!({"mode":"endless","client_rules_version":3}),
             )),
         )
         .await;
@@ -1050,8 +1050,8 @@ async fn query_resources_daily_and_unprivileged_action_boundaries() {
     }
     for invalid_args in [
         json!({"mode":"daily","client_rules_version":1}),
-        json!({"mode":"daily","client_rules_version":2,"platform":"web"}),
-        json!({"mode":"daily","client_rules_version":2,"user_id":saved.body["user_id"]}),
+        json!({"mode":"daily","client_rules_version":3,"platform":"web"}),
+        json!({"mode":"daily","client_rules_version":3,"user_id":saved.body["user_id"]}),
     ] {
         assert!(platform(
             &state,
@@ -1073,7 +1073,7 @@ async fn query_resources_daily_and_unprivileged_action_boundaries() {
         "sandbox",
         Some(action(
             "run_start",
-            json!({"mode":"daily","client_rules_version":2}),
+            json!({"mode":"daily","client_rules_version":3}),
         )),
     )
     .await;
@@ -1155,7 +1155,7 @@ async fn query_resources_daily_and_unprivileged_action_boundaries() {
         "sandbox",
         Some(action(
             "run_start",
-            json!({"mode":"daily","client_rules_version":2}),
+            json!({"mode":"daily","client_rules_version":3}),
         )),
     )
     .await;
@@ -1168,7 +1168,7 @@ async fn query_resources_daily_and_unprivileged_action_boundaries() {
         "production",
         Some(action(
             "run_start",
-            json!({"mode":"daily","client_rules_version":2}),
+            json!({"mode":"daily","client_rules_version":3}),
         )),
     )
     .await;
@@ -1206,7 +1206,7 @@ async fn too_early_and_rate_limit_retry_same_request_without_poisoned_receipt() 
         "sandbox",
         Some(action(
             "run_start",
-            json!({"mode":"endless","client_rules_version":2}),
+            json!({"mode":"endless","client_rules_version":3}),
         )),
     )
     .await;
@@ -1436,7 +1436,7 @@ async fn independent_users_can_create_first_receipts_saves_and_runs_concurrently
                 "sandbox",
                 Some(action(
                     "run_start",
-                    json!({"mode":"endless","client_rules_version":2}),
+                    json!({"mode":"endless","client_rules_version":3}),
                 )),
             )
             .await;

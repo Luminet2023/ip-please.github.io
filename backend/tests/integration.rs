@@ -630,7 +630,7 @@ async fn start_run(state: &AppState, token: &str, mode: &str) -> Value {
         "POST",
         "/anthropic/v1/endless/runs",
         Some(token),
-        Some(json!({ "mode": mode, "client_rules_version": 2 })),
+        Some(json!({ "mode": mode, "client_rules_version": 3 })),
     )
     .await;
     assert_eq!(reply.status, StatusCode::CREATED, "{}", reply.text);
@@ -717,7 +717,7 @@ async fn endless_run_to_three_strikes_and_leaderboard() {
         "POST",
         "/anthropic/v1/endless/runs",
         None,
-        Some(json!({"mode": "endless", "client_rules_version": 2})),
+        Some(json!({"mode": "endless", "client_rules_version": 3})),
     )
     .await;
     assert_detail(&unauth, StatusCode::UNAUTHORIZED, "Unauthorized");
@@ -734,7 +734,7 @@ async fn endless_run_to_three_strikes_and_leaderboard() {
         "POST",
         "/anthropic/v1/endless/runs",
         Some(&token),
-        Some(json!({"mode": "endless", "client_rules_version": 2})),
+        Some(json!({"mode": "endless", "client_rules_version": 3})),
     )
     .await;
     assert_detail(
@@ -944,7 +944,9 @@ async fn inspect_and_quiz_through_the_api() {
             .unwrap()
             .iter()
             .flat_map(|i| i["pairs"].as_array().unwrap().clone())
-            .find(|p| p.as_array().unwrap().len() == 2);
+            .find(|p| {
+                p.as_array().unwrap().len() == 2 && item["entrant"]["seq"].as_u64().unwrap() > 15
+            });
         let Some(pair) = pair else {
             let ok = answer["secret"]["ok"][0].clone();
             call(
@@ -1117,7 +1119,7 @@ async fn daily_challenge_is_shared_and_once_per_day() {
         "POST",
         "/anthropic/v1/endless/runs",
         Some(&a.access_token),
-        Some(json!({"mode": "daily", "client_rules_version": 2})),
+        Some(json!({"mode": "daily", "client_rules_version": 3})),
     )
     .await;
     assert_detail(
@@ -1145,7 +1147,8 @@ async fn endless_start_requires_current_client_rules() {
     for payload in [
         json!({"mode":"endless"}),
         json!({"mode":"endless","client_rules_version":1}),
-        json!({"mode":"endless","client_rules_version":3}),
+        json!({"mode":"endless","client_rules_version":2}),
+        json!({"mode":"endless","client_rules_version":4}),
     ] {
         let response = call(
             &state,
@@ -1166,9 +1169,77 @@ async fn endless_start_requires_current_client_rules() {
         "POST",
         "/anthropic/v1/endless/runs",
         Some(&player.access_token),
-        Some(json!({"mode":"endless","client_rules_version":2})),
+        Some(json!({"mode":"endless","client_rules_version":3})),
     )
     .await;
     assert_eq!(response.status, StatusCode::CREATED);
-    assert_eq!(response.body["run"]["generator_version"], 2);
+    assert_eq!(response.body["run"]["generator_version"], 3);
+}
+
+#[tokio::test]
+#[ignore]
+async fn progressive_api_unlocks_after_settlement_and_resumes_frozen_v2_wave() {
+    let (issuer, idp) = start_mock_idp(CLIENT_ID).await;
+    let (state, pool) = db_state(&issuer).await;
+    let player = login(&state, &idp, &unique("progressive"), &unique("sid"), &[]).await;
+    let started = start_run(&state, &player.access_token, "endless").await;
+    let run_id = started["run"]["run_id"].as_str().unwrap();
+    assert_eq!(
+        started["run"]["progression"]["active_rules"],
+        json!(["region", "photo"])
+    );
+    for t in 0..5 {
+        let settled = play_slot(&state, &pool, &player.access_token, run_id, t != 4).await;
+        assert_eq!(settled["run"]["travelers"], t + 1);
+        assert_eq!(
+            settled["run"]["progression"]["stage"],
+            if t == 4 { 1 } else { 0 }
+        );
+        if t == 4 {
+            assert_eq!(settled["run"]["strikes"], 1);
+            assert_eq!(settled["run"]["progression"]["new_rules"], json!(["tz"]));
+        }
+    }
+    // Position an explicit v3 stage fixture and send every newly visible book field through HTTP.
+    sqlx::query("UPDATE ip_please_endless_runs SET state_json=JSON_SET(state_json,'$.slot',37,'$.travelers',35) WHERE run_id=?")
+        .bind(run_id).execute(&pool).await.unwrap();
+    let next = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{run_id}/next"),
+        Some(&player.access_token),
+        None,
+    )
+    .await;
+    assert_eq!(next.body["run"]["progression"]["stage"], 7);
+    for field in ["rule.photo", "rule.wanted", "rule.bulletin"] {
+        let compared=call(&state,"POST",&format!("/anthropic/v1/endless/runs/{run_id}/inspect"),Some(&player.access_token),Some(json!({"entrant_id":next.body["item"]["entrant"]["entrant_id"],"fields":[field,"pp.name"]}))).await;
+        assert_eq!(compared.status, StatusCode::OK, "{}", compared.text);
+        assert_eq!(compared.body["match"], false);
+    }
+    // This is an explicitly persisted legacy fixture: new clients must resume v2.
+    sqlx::query("UPDATE ip_please_endless_runs SET generator_version=2,state_json=JSON_SET(state_json,'$.generator_version',2,'$.slot',8,'$.current',null) WHERE run_id=?")
+        .bind(run_id).execute(&pool).await.unwrap();
+    let legacy = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{run_id}/next"),
+        Some(&player.access_token),
+        None,
+    )
+    .await;
+    assert_eq!(legacy.status, StatusCode::OK);
+    assert_eq!(legacy.body["run"]["generator_version"], 2);
+    assert!(legacy.body["run"]["progression"].is_null());
+    assert_eq!(legacy.body["item"]["item_type"], "wave");
+    assert_eq!(legacy.body["item"]["wave"]["type"], "rush");
+    let resumed = call(
+        &state,
+        "GET",
+        "/anthropic/v1/endless/runs/current",
+        Some(&player.access_token),
+        None,
+    )
+    .await;
+    assert_eq!(resumed.body["item"], legacy.body["item"]);
 }

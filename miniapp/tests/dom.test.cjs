@@ -12,7 +12,9 @@ test('cloud login, credits, dialogs and admin announcements render under forbidd
  Object.defineProperty(w.Element.prototype,'innerHTML',{set(){throw Error('Forbidden HTML sink');}});
  for(const f of ['config.js','cloud.js','announce.js'])vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname,'../..',f),'utf8'),dom.getInternalVMContext());
  await new Promise(r=>setTimeout(r,20));
- w.CloudSync.openPanel();assert.match(w.document.querySelector('#cloud-panel').textContent,/File Zero/);assert.equal(w.document.querySelectorAll('.credit a').length,2);
+ w.CloudSync.openPanel();assert.match(w.document.querySelector('#cloud-panel').textContent,/File Zero/);assert.equal(w.document.querySelectorAll('.credit a').length,3);
+ assert.match(w.document.querySelector('.credit').textContent,/本项目完全开源/);
+ assert.equal(w.document.querySelector('.credit a:last-child').href,'https://github.com/Luminet2023/ip-please.github.io');
  w.CloudSync.ui.showDialog({title:'<img src=x>',paragraphs:['<script>alert(1)</script>'],buttons:[{label:'OK',onClick(){}}]});
  assert.equal(w.document.querySelector('.dialog h2').textContent,'<img src=x>');assert.equal(w.document.querySelectorAll('.dialog img,.dialog script').length,0);
  w.CloudSync.ui.closeDialog();assert.equal(w.document.querySelector('#cloud-overlay').childNodes.length,0);

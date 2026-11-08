@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::generator::{self, Slot, WaveSpec, DAILY_TRAVELERS, RUSH_FACES, WANTED_BLOCK};
-use super::generator_v2;
 use super::model::{is_known_field, Decision, IssueView, PublicEntrant, Secret};
 use super::rng::Seed;
 use super::scoring::{self, Evidence};
+use super::{generator_v2, generator_v3};
 
 pub const STATE_VERSION: u32 = 1;
 pub const MAX_STRIKES: u32 = 3;
@@ -142,7 +142,7 @@ impl RunState {
             mode,
             seed: hex::encode(seed),
             daily_date,
-            generator_version: generator_v2::GENERATOR_VERSION,
+            generator_version: generator_v3::GENERATOR_VERSION,
             document_reviews: 0,
             model_identity_checks: 0,
             slot: 0,
@@ -187,7 +187,11 @@ impl RunState {
 
     /// 已经发出的旅客数（下一位旅客的序号）。
     fn travelers_issued(&self) -> u32 {
-        self.slot - self.slot / generator::WAVE_EVERY
+        if self.generator_version >= 3 {
+            generator_v3::travelers_issued(self.slot)
+        } else {
+            self.slot - self.slot / generator::WAVE_EVERY
+        }
     }
 
     /// 当前 / 下一位旅客的序号（突发规则与通缉令按它显示）。
@@ -198,6 +202,14 @@ impl RunState {
         }
     }
 
+    fn slot_spec(&self) -> Slot {
+        if self.generator_version >= 3 {
+            generator_v3::slot(self.slot)
+        } else {
+            generator::slot(self.slot)
+        }
+    }
+
     pub fn next_kind(&self) -> Option<&'static str> {
         if self.ended() {
             return None;
@@ -205,7 +217,7 @@ impl RunState {
         match &self.current {
             Some(Current::Traveler(_)) => Some("traveler"),
             Some(Current::Wave(_)) => Some("wave"),
-            None => match generator::slot(self.slot) {
+            None => match self.slot_spec() {
                 Slot::Traveler(_) => Some("traveler"),
                 Slot::Wave(_) => Some("wave"),
             },
@@ -243,11 +255,13 @@ impl RunState {
         }
         if self.current.is_none() {
             let seed = self.seed();
-            let current = match generator::slot(self.slot) {
+            let current = match self.slot_spec() {
                 Slot::Traveler(t) => {
                     let entrant_id = new_id("ent");
                     let generated = if self.generator_version == 1 {
                         generator::traveler(&seed, t, &entrant_id)
+                    } else if self.generator_version >= 3 {
+                        generator_v3::traveler(&seed, t, &entrant_id)
                     } else {
                         generator_v2::traveler(&seed, t, &entrant_id)
                     };
@@ -269,6 +283,8 @@ impl RunState {
                     issued_at_ms: now,
                     spec: if self.generator_version == 1 {
                         generator::wave(&seed, w)
+                    } else if self.generator_version >= 3 {
+                        generator_v3::wave(&seed, w)
                     } else {
                         generator_v2::wave(&seed, w)
                     },
@@ -292,6 +308,29 @@ impl RunState {
     pub fn inspect(&mut self, entrant_id: &str, claim: Claim) -> Result<Value, StepError> {
         if self.ended() {
             return Err(StepError::Conflict);
+        }
+        if self.generator_version >= 3 {
+            let t = self.focus_t();
+            let allowed = match &claim {
+                Claim::Say(_) => t >= 15,
+                Claim::Fields(fields) => fields.iter().all(|f| {
+                    if let Some(key) = f.strip_prefix("rule.") {
+                        return generator_v3::GROUPS[..=(t / 5).min(7) as usize]
+                            .iter()
+                            .any(|g| g.contains(&key));
+                    }
+                    !(f.starts_with("xr.") && t < 15
+                        || f.starts_with("ac.") && t < 10
+                        || f.starts_with("ep.") && t < 30
+                        || f.starts_with("md.") && t < 25
+                        || f.starts_with("log.") && t < 35
+                        || f.starts_with("wt.") && t < 35
+                        || f.starts_with("bul.") && t < 35)
+                }),
+            };
+            if !allowed {
+                return Err(StepError::Invalid);
+            }
         }
         let traveler = self.traveler_mut(entrant_id)?;
         let claims_left = |t: &TravelerState| MAX_WRONG_CLAIMS.saturating_sub(t.wrong_claims);
@@ -365,6 +404,9 @@ impl RunState {
     pub fn quiz(&mut self, entrant_id: &str) -> Result<Value, StepError> {
         if self.ended() {
             return Err(StepError::Conflict);
+        }
+        if self.generator_version >= 3 && self.focus_t() < 15 {
+            return Err(StepError::Invalid);
         }
         let traveler = self.traveler_mut(entrant_id)?;
         if traveler.found.is_empty() {
@@ -708,16 +750,21 @@ impl RunState {
             None
         } else if self.generator_version == 1 {
             generator::bulletin_at(&seed, t)
+        } else if self.generator_version >= 3 {
+            generator_v3::bulletin_at(&seed, t)
         } else {
             generator_v2::bulletin_at(&seed, t)
         };
         let wanted = if self.generator_version == 1 {
             generator::wanted_for(&seed, t / WANTED_BLOCK)
+        } else if self.generator_version >= 3 {
+            generator_v3::wanted_for(&seed, t)
         } else {
             generator_v2::wanted_for(&seed, t / WANTED_BLOCK)
         };
         json!({
             "generator_version": self.generator_version,
+            "progression": if self.generator_version >= 3 {generator_v3::progression(t)} else {Value::Null},
             "inspection_date": if self.generator_version >= 2 {Some(generator_v2::INSPECTION_DATE)} else {None},
             "document_reviews": self.document_reviews,
             "model_identity_checks": self.model_identity_checks,
@@ -741,7 +788,7 @@ impl RunState {
                 "args": b.args,
                 "remaining": b.remaining_at(t),
             })),
-            "wanted": if self.ended() { Value::Null } else { json!({
+            "wanted": if self.ended() || (self.generator_version >= 3 && t < 35) { Value::Null } else { json!({
                 "block": wanted.block,
                 "photo": wanted.person,
                 "name": format!("{}, {}", wanted.surname, wanted.given),
@@ -803,6 +850,7 @@ mod tests {
     #[test]
     fn next_is_idempotent_until_resolved() {
         let mut state = RunState::new(Mode::Endless, &SEED, None);
+        state.generator_version = 2; // Exercise frozen legacy timing/inspection contracts.
         let mut new_id = ids();
         let a = state.next(0, &mut new_id).unwrap();
         let b = state.next(5, &mut new_id).unwrap();
@@ -813,6 +861,7 @@ mod tests {
     #[test]
     fn decisions_are_timed_and_idempotent() {
         let mut state = RunState::new(Mode::Endless, &SEED, None);
+        state.generator_version = 2; // Exercise frozen legacy timing/inspection contracts.
         let mut new_id = ids();
         state.next(0, &mut new_id).unwrap();
         let (id, ok) = answer(&state);
@@ -836,6 +885,7 @@ mod tests {
     #[test]
     fn three_strikes_end_the_run_with_points_kept() {
         let mut state = RunState::new(Mode::Endless, &SEED, None);
+        state.generator_version = 2; // Exercise frozen legacy timing/inspection contracts.
         let mut now = 0;
         for _ in 0..3 {
             advance(&mut state, &mut now, answer);
@@ -855,6 +905,7 @@ mod tests {
     #[test]
     fn daily_shift_ends_after_forty_travelers() {
         let mut state = RunState::new(Mode::Daily, &SEED, Some("2026-10-24".into()));
+        state.generator_version = 2; // Exercise frozen legacy timing/inspection contracts.
         let mut now = 0;
         while !state.ended() {
             advance(&mut state, &mut now, answer);
@@ -938,6 +989,7 @@ mod tests {
     #[test]
     fn inspect_matches_locks_and_unlocks_quiz() {
         let mut state = RunState::new(Mode::Endless, &SEED, None);
+        state.generator_version = 2; // Exercise frozen legacy timing/inspection contracts.
         let (id, pair) = flawed_with_pairs(&mut state);
         assert_eq!(
             state.quiz(&id),
@@ -980,6 +1032,7 @@ mod tests {
     #[test]
     fn rush_timing_and_scoring() {
         let mut state = RunState::new(Mode::Endless, &SEED, None);
+        state.generator_version = 2; // Exercise frozen legacy timing/inspection contracts.
         let mut now = 0;
         for _ in 0..8 {
             advance(&mut state, &mut now, answer);
@@ -1013,6 +1066,7 @@ mod tests {
     #[test]
     fn clone_hits_must_fit_the_runner_window() {
         let mut state = RunState::new(Mode::Endless, &SEED, None);
+        state.generator_version = 2; // Exercise frozen legacy timing/inspection contracts.
         let mut now = 0;
         for _ in 0..17 {
             advance(&mut state, &mut now, answer);
@@ -1052,7 +1106,8 @@ mod tests {
 
     #[test]
     fn summary_shows_bulletin_and_wanted() {
-        let state = RunState::new(Mode::Endless, &SEED, None);
+        let mut state = RunState::new(Mode::Endless, &SEED, None);
+        state.generator_version = 2;
         let summary = state.view_summary();
         assert_eq!(summary["status"], "active");
         assert_eq!(summary["next_kind"], "traveler");
