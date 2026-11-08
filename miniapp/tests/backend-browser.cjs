@@ -1,10 +1,11 @@
 // Real built IIFE -> opaque SDK fixture -> signed HTTP -> real Rust/MySQL.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
-const {chromium}=require(process.env.PLAYWRIGHT_CORE||'/home/luminet/.nvm/versions/node/v22.22.2/lib/node_modules/camoufox/node_modules/playwright-core');
+const launchChromium=()=>require(process.env.PLAYWRIGHT_CORE||'/home/luminet/.nvm/versions/node/v22.22.2/lib/node_modules/camoufox/node_modules/playwright-core').chromium.launch({headless:true});
 const out=process.env.BROWSER_ARTIFACTS||'/tmp/ip-please-task4-browser';fs.mkdirSync(out,{recursive:true});
-(async()=>{
- const {startBackend}=await import('./backend-bridge.mjs');const fixture=await startBackend();const browser=await chromium.launch({headless:true});
+async function run({startBackend,launchBrowser=launchChromium}={}){
+ startBackend ||= (await import('./backend-bridge.mjs')).startBackend;let fixture,browser;
  try{
+  fixture=await startBackend();browser=await launchBrowser();
   const page=await browser.newPage({viewport:{width:1280,height:720},locale:'en-US',timezoneId:'America/New_York'}),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
   await page.goto(fixture.url);let frame=page.frames().find(f=>f.url().endsWith('/frame'));
   const ready=async()=>{frame=page.frames().find(f=>f.url().endsWith('/frame'));await frame.locator('#host-shell').waitFor({state:'hidden',timeout:30000});};
@@ -63,5 +64,10 @@ const out=process.env.BROWSER_ARTIFACTS||'/tmp/ip-please-task4-browser';fs.mkdir
   await frame.getByRole('button',{name:'Leaderboard',exact:true}).click();await frame.getByRole('button',{name:'Today',exact:true}).click();await page.waitForTimeout(500);await shot('backend-daily-settled');
   const dailyBoard=fixture.calls.filter(c=>c.request?.op==='leaderboard'&&c.request.board==='daily').at(-1);assert.equal(dailyBoard.response.body.me.linuxdo_id,fixture.subject);
   assert.deepEqual(errors,[]);fs.writeFileSync(path.join(out,'backend-calls.json'),JSON.stringify(fixture.calls,null,2));console.log('Real Rust/MySQL built-IIFE start/inspect/decision/lost response/reopen/replay/settle/boards/avatar fallback/day2/save conflict/storage failure/offline/timeout retries/daily settlement passed');
- }finally{fs.writeFileSync(path.join(out,'backend-calls.json'),JSON.stringify(fixture.calls,null,2));await browser.close();await fixture.close();}
-})().catch(e=>{console.error(e);process.exitCode=1;});
+ }finally{
+  try {if(fixture)fs.writeFileSync(path.join(out,'backend-calls.json'),JSON.stringify(fixture.calls,null,2));}
+  finally {try {if(browser)await browser.close();}finally {if(fixture)await fixture.close();}}
+ }
+}
+module.exports={run};
+if(require.main===module)run().catch(e=>{console.error(e);process.exitCode=1;});

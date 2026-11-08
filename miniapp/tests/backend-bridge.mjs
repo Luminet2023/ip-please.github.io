@@ -6,12 +6,12 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {serve} from '../preview/server.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
-export async function startBackend(){
+export async function startBackend({spawnProcess=spawn,serveFixture=serve,startupTimeoutMs=180000}={}){
  const jwks=JSON.parse(await readFile(path.join(root,'backend/tests/fixtures/test_mapp_jwks.json'),'utf8'));
  const key=createPrivateKey(await readFile(path.join(root,'backend/tests/fixtures/test_mapp_private.pem')));
  const subject=String(randomInt(100000000,999999999));
  let backend;const calls=[];
- const server=await serve(0,async(req,res,url)=>{
+ const server=await serveFixture(0,async(req,res,url)=>{
   if(url.pathname==='/jwks'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(jwks));return true;}
   if(url.pathname!=='/bridge')return false;
   let input='';for await(const chunk of req)input+=chunk;
@@ -30,8 +30,38 @@ export async function startBackend(){
   res.setHeader('Content-Type','application/json');res.end(JSON.stringify(value));return true;
  });
  const url='http://127.0.0.1:'+server.address().port;
- const child=spawn('cargo',['run','--locked','--manifest-path','backend/Cargo.toml','--example','miniapp_fixture'],{cwd:root,env:{...process.env,FIXTURE_JWKS_URL:url+'/jwks'},stdio:['ignore','pipe','pipe']});
- let diagnostic='';child.stderr.on('data',b=>{diagnostic+=b;});
- backend=await new Promise((resolve,reject)=>{let data='';const timer=setTimeout(()=>reject(Error('Backend startup timeout: '+diagnostic)),180000);child.stdout.on('data',b=>{data+=b;const match=data.match(/FIXTURE_BACKEND=(http:\/\/[^\s]+)/);if(match){clearTimeout(timer);resolve(match[1]);}});child.on('exit',code=>{clearTimeout(timer);reject(Error('Backend exited '+code+': '+diagnostic));});});
- return {url:url+'/?backend=1&subject='+subject,calls,subject,backend, audit:async()=> (await fetch(backend+'/anthropic/v1/fixture/audit?subject='+subject)).json(),close:async()=>{child.kill('SIGTERM');await new Promise(r=>server.close(r));}};
+ let child,closing;
+ const close=()=>closing ||= (async()=>{
+  try {
+   if(child?.pid && child.exitCode===null && child.signalCode===null) {
+    await new Promise(resolve=>{
+     const force=setTimeout(()=>child.kill('SIGKILL'),1000);
+     child.once('exit',()=>{clearTimeout(force);resolve();});
+     child.kill('SIGTERM');
+    });
+   }
+  } finally {
+   server.closeAllConnections();
+   await new Promise(resolve=>server.close(resolve));
+  }
+ })();
+ try {
+  child=spawnProcess('cargo',['run','--locked','--manifest-path','backend/Cargo.toml','--example','miniapp_fixture'],{cwd:root,env:{...process.env,FIXTURE_JWKS_URL:url+'/jwks'},stdio:['ignore','pipe','pipe']});
+  let diagnostic='';child.stderr.on('data',b=>{diagnostic+=b;});
+  backend=await new Promise((resolve,reject)=>{
+   let data='';
+   const finish=(error,value)=>{
+    clearTimeout(timer);child.stdout.off('data',onData);child.off('exit',onExit);child.off('error',onError);
+    if(error)reject(error);else resolve(value);
+   };
+   const onData=b=>{data+=b;const match=data.match(/FIXTURE_BACKEND=(http:\/\/[^\s]+)/);if(match)finish(null,match[1]);};
+   const onExit=code=>finish(Error('Backend exited '+code+': '+diagnostic));
+   const onError=error=>finish(error);
+   const timer=setTimeout(()=>finish(Error('Backend startup timeout: '+diagnostic)),startupTimeoutMs);
+   child.stdout.on('data',onData);child.once('exit',onExit);child.once('error',onError);
+  });
+  return {url:url+'/?backend=1&subject='+subject,calls,subject,backend,audit:async()=> (await fetch(backend+'/anthropic/v1/fixture/audit?subject='+subject)).json(),close};
+ } catch(error) {
+  await close();throw error;
+ }
 }
