@@ -3,9 +3,12 @@ use ip_please_sync::endless::{
     state::{Mode, RunState},
 };
 #[test]
-fn new_runs_use_v3_while_v1_and_v2_resume_unchanged() {
+fn new_runs_use_v4_while_v1_and_v2_resume_unchanged() {
     let state = RunState::new(Mode::Daily, &[9; 32], Some("2026-11-08".into()));
-    assert_eq!(state.generator_version, 3, "new games must negotiate v3");
+    assert_eq!(
+        state.generator_version, 4,
+        "new games use backend policy v4 with client contract v3"
+    );
     let mut old = serde_json::to_value(&state).unwrap();
     old["generator_version"] = 1.into();
     let mut old: RunState = serde_json::from_value(old).unwrap();

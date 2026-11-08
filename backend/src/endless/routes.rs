@@ -43,7 +43,7 @@ pub struct StartRequest {
 
 impl StartRequest {
     pub fn validate_rules(&self) -> Result<(), AppError> {
-        if self.client_rules_version != super::generator_v3::GENERATOR_VERSION as u32 {
+        if self.client_rules_version != super::generator_v4::CLIENT_RULES_VERSION {
             return Err(AppError::Detail(DetailCode::EndlessRulesOutdated));
         }
         Ok(())

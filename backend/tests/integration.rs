@@ -1173,7 +1173,7 @@ async fn endless_start_requires_current_client_rules() {
     )
     .await;
     assert_eq!(response.status, StatusCode::CREATED);
-    assert_eq!(response.body["run"]["generator_version"], 3);
+    assert_eq!(response.body["run"]["generator_version"], 4);
 }
 
 #[tokio::test]
@@ -1186,8 +1186,13 @@ async fn progressive_api_unlocks_after_settlement_and_resumes_frozen_v2_wave() {
     let run_id = started["run"]["run_id"].as_str().unwrap();
     assert_eq!(
         started["run"]["progression"]["active_rules"],
-        json!(["region", "photo"])
+        json!(["region", "photo", "quiz"])
     );
+    assert_eq!(
+        started["run"]["progression"]["capabilities"]["detain"],
+        true
+    );
+    assert_eq!(started["run"]["progression"]["capabilities"]["quiz"], true);
     for t in 0..5 {
         let settled = play_slot(&state, &pool, &player.access_token, run_id, t != 4).await;
         assert_eq!(settled["run"]["travelers"], t + 1);
@@ -1211,7 +1216,7 @@ async fn progressive_api_unlocks_after_settlement_and_resumes_frozen_v2_wave() {
         None,
     )
     .await;
-    assert_eq!(next.body["run"]["progression"]["stage"], 7);
+    assert_eq!(next.body["run"]["progression"]["stage"], 6);
     for field in ["rule.photo", "rule.wanted", "rule.bulletin"] {
         let compared=call(&state,"POST",&format!("/anthropic/v1/endless/runs/{run_id}/inspect"),Some(&player.access_token),Some(json!({"entrant_id":next.body["item"]["entrant"]["entrant_id"],"fields":[field,"pp.name"]}))).await;
         assert_eq!(compared.status, StatusCode::OK, "{}", compared.text);
@@ -1242,4 +1247,69 @@ async fn progressive_api_unlocks_after_settlement_and_resumes_frozen_v2_wave() {
     )
     .await;
     assert_eq!(resumed.body["item"], legacy.body["item"]);
+}
+
+#[tokio::test]
+#[ignore]
+async fn basic_tools_are_accepted_from_first_traveler_through_the_real_api() {
+    use ip_please_sync::endless::generator_v4;
+    let (issuer, idp) = start_mock_idp(CLIENT_ID).await;
+    let (state, pool) = db_state(&issuer).await;
+    let player = login(&state, &idp, &unique("basic-tools"), &unique("sid"), &[]).await;
+    let started = start_run(&state, &player.access_token, "endless").await;
+    let id = started["run"]["run_id"].as_str().unwrap();
+    assert_eq!(started["run"]["generator_version"], 4);
+    // Select a deterministic first-traveler evidence fixture; all HTTP validation remains real.
+    let (seed, pair) = (0..64u8)
+        .find_map(|s| {
+            let g = generator_v4::traveler(&[s; 32], 0, "fixture");
+            g.secret
+                .issues
+                .iter()
+                .find_map(|issue| issue.pairs.first().cloned())
+                .map(|p| (s, p))
+        })
+        .unwrap();
+    sqlx::query("UPDATE ip_please_endless_runs SET state_json=JSON_SET(state_json,'$.seed',?) WHERE run_id=?")
+        .bind(hex::encode([seed; 32])).bind(id).execute(&pool).await.unwrap();
+    let next = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{id}/next"),
+        Some(&player.access_token),
+        None,
+    )
+    .await;
+    let entrant = next.body["item"]["entrant"]["entrant_id"].clone();
+    let inspect = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{id}/inspect"),
+        Some(&player.access_token),
+        Some(json!({"entrant_id":entrant,"fields":pair})),
+    )
+    .await;
+    assert_eq!(inspect.status, StatusCode::OK, "{}", inspect.text);
+    assert_eq!(inspect.body["match"], true);
+    let quiz = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{id}/quiz"),
+        Some(&player.access_token),
+        Some(json!({"entrant_id":entrant})),
+    )
+    .await;
+    assert_eq!(quiz.status, StatusCode::OK, "{}", quiz.text);
+    age_current_item(&pool, id).await;
+    let detained = call(
+        &state,
+        "POST",
+        &format!("/anthropic/v1/endless/runs/{id}/decision"),
+        Some(&player.access_token),
+        Some(json!({"entrant_id":entrant,"decision":"detain"})),
+    )
+    .await;
+    assert_eq!(detained.status, StatusCode::OK, "{}", detained.text);
+    assert_eq!(detained.body["correct"], true);
+    assert_eq!(detained.body["run"]["travelers"], 1);
 }

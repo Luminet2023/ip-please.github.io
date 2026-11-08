@@ -9,7 +9,7 @@ use super::generator::{self, Slot, WaveSpec, DAILY_TRAVELERS, RUSH_FACES, WANTED
 use super::model::{is_known_field, Decision, IssueView, PublicEntrant, Secret};
 use super::rng::Seed;
 use super::scoring::{self, Evidence};
-use super::{generator_v2, generator_v3};
+use super::{generator_v2, generator_v3, generator_v4};
 
 pub const STATE_VERSION: u32 = 1;
 pub const MAX_STRIKES: u32 = 3;
@@ -142,7 +142,7 @@ impl RunState {
             mode,
             seed: hex::encode(seed),
             daily_date,
-            generator_version: generator_v3::GENERATOR_VERSION,
+            generator_version: generator_v4::GENERATOR_VERSION,
             document_reviews: 0,
             model_identity_checks: 0,
             slot: 0,
@@ -187,7 +187,9 @@ impl RunState {
 
     /// 已经发出的旅客数（下一位旅客的序号）。
     fn travelers_issued(&self) -> u32 {
-        if self.generator_version >= 3 {
+        if self.generator_version >= 4 {
+            generator_v4::travelers_issued(self.slot)
+        } else if self.generator_version == 3 {
             generator_v3::travelers_issued(self.slot)
         } else {
             self.slot - self.slot / generator::WAVE_EVERY
@@ -203,7 +205,9 @@ impl RunState {
     }
 
     fn slot_spec(&self) -> Slot {
-        if self.generator_version >= 3 {
+        if self.generator_version >= 4 {
+            generator_v4::slot(self.slot)
+        } else if self.generator_version == 3 {
             generator_v3::slot(self.slot)
         } else {
             generator::slot(self.slot)
@@ -260,7 +264,9 @@ impl RunState {
                     let entrant_id = new_id("ent");
                     let generated = if self.generator_version == 1 {
                         generator::traveler(&seed, t, &entrant_id)
-                    } else if self.generator_version >= 3 {
+                    } else if self.generator_version >= 4 {
+                        generator_v4::traveler(&seed, t, &entrant_id)
+                    } else if self.generator_version == 3 {
                         generator_v3::traveler(&seed, t, &entrant_id)
                     } else {
                         generator_v2::traveler(&seed, t, &entrant_id)
@@ -283,7 +289,9 @@ impl RunState {
                     issued_at_ms: now,
                     spec: if self.generator_version == 1 {
                         generator::wave(&seed, w)
-                    } else if self.generator_version >= 3 {
+                    } else if self.generator_version >= 4 {
+                        generator_v4::wave(&seed, w)
+                    } else if self.generator_version == 3 {
                         generator_v3::wave(&seed, w)
                     } else {
                         generator_v2::wave(&seed, w)
@@ -311,18 +319,22 @@ impl RunState {
         }
         if self.generator_version >= 3 {
             let t = self.focus_t();
+            let basic_tools = self.generator_version >= 4;
             let allowed = match &claim {
-                Claim::Say(_) => t >= 15,
+                Claim::Say(_) => basic_tools || t >= 15,
                 Claim::Fields(fields) => fields.iter().all(|f| {
                     if let Some(key) = f.strip_prefix("rule.") {
+                        if basic_tools {
+                            return generator_v4::rule_unlocked(key, t);
+                        }
                         return generator_v3::GROUPS[..=(t / 5).min(7) as usize]
                             .iter()
                             .any(|g| g.contains(&key));
                     }
-                    !(f.starts_with("xr.") && t < 15
+                    !(f.starts_with("xr.") && t < if basic_tools { 9 } else { 15 }
                         || f.starts_with("ac.") && t < 10
                         || f.starts_with("ep.") && t < 30
-                        || f.starts_with("md.") && t < 25
+                        || f.starts_with("md.") && (basic_tools || t < 25)
                         || f.starts_with("log.") && t < 35
                         || f.starts_with("wt.") && t < 35
                         || f.starts_with("bul.") && t < 35)
@@ -405,7 +417,7 @@ impl RunState {
         if self.ended() {
             return Err(StepError::Conflict);
         }
-        if self.generator_version >= 3 && self.focus_t() < 15 {
+        if self.generator_version == 3 && self.focus_t() < 15 {
             return Err(StepError::Invalid);
         }
         let traveler = self.traveler_mut(entrant_id)?;
@@ -750,21 +762,25 @@ impl RunState {
             None
         } else if self.generator_version == 1 {
             generator::bulletin_at(&seed, t)
-        } else if self.generator_version >= 3 {
+        } else if self.generator_version >= 4 {
+            generator_v4::bulletin_at(&seed, t)
+        } else if self.generator_version == 3 {
             generator_v3::bulletin_at(&seed, t)
         } else {
             generator_v2::bulletin_at(&seed, t)
         };
         let wanted = if self.generator_version == 1 {
             generator::wanted_for(&seed, t / WANTED_BLOCK)
-        } else if self.generator_version >= 3 {
+        } else if self.generator_version >= 4 {
+            generator_v4::wanted_for(&seed, t)
+        } else if self.generator_version == 3 {
             generator_v3::wanted_for(&seed, t)
         } else {
             generator_v2::wanted_for(&seed, t / WANTED_BLOCK)
         };
         json!({
             "generator_version": self.generator_version,
-            "progression": if self.generator_version >= 3 {generator_v3::progression(t)} else {Value::Null},
+            "progression": if self.generator_version >= 4 {generator_v4::progression(t)} else if self.generator_version == 3 {generator_v3::progression(t)} else {Value::Null},
             "inspection_date": if self.generator_version >= 2 {Some(generator_v2::INSPECTION_DATE)} else {None},
             "document_reviews": self.document_reviews,
             "model_identity_checks": self.model_identity_checks,

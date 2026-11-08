@@ -1,4 +1,4 @@
-//! Frozen V2 policy plus opt-in V3 progression. V1/V2 retain their RNG sequences.
+//! Frozen V2/V3 policies plus opt-in V4 basic tools and ordinary AI visitors.
 use super::{
     generator::{self as v1, Bulletin, Generated, RegularSpec, Wanted, WaveSpec, WANTED_BLOCK},
     model::{Decision, Doc, Line},
@@ -135,7 +135,13 @@ fn ai_at(seed: &Seed, t: u32, progressive: bool) -> Option<(usize, bool)> {
     stream(seed, "v2_ai_cast", u64::from(ordinal / 6)).shuffle(&mut cast);
     Some((cast[(ordinal % 6) as usize], ordinal >= 6))
 }
-fn choose_flaws(seed: &Seed, t: u32, ai: Option<usize>, progressive: bool) -> Vec<&'static str> {
+fn choose_flaws(
+    seed: &Seed,
+    t: u32,
+    ai: Option<usize>,
+    progressive: bool,
+    basic_tools: bool,
+) -> Vec<&'static str> {
     let mut r = stream(seed, "v2_flaws", u64::from(t));
     let clean = if progressive {
         650u64.saturating_sub(8 * u64::from(t)).max(250)
@@ -146,10 +152,22 @@ fn choose_flaws(seed: &Seed, t: u32, ai: Option<usize>, progressive: bool) -> Ve
         return vec![];
     }
     let mut pool = ai
+        .filter(|_| !basic_tools)
         .map(|i| THEMES[i].to_vec())
         .unwrap_or_else(|| FLAWS.to_vec());
     if progressive {
-        pool.retain(|f| super::generator_v3::flaw_unlocked(f, t));
+        pool.retain(|f| {
+            if basic_tools {
+                super::generator_v4::flaw_unlocked(f, t)
+            } else {
+                super::generator_v3::flaw_unlocked(f, t)
+            }
+        });
+    }
+    // AI introductions remain character-specific, so they cannot carry a random
+    // ordinary traveler's hidden-slang clue that would be overwritten below.
+    if basic_tools && ai.is_some() {
+        pool.retain(|f| *f != "hidden");
     }
     r.shuffle(&mut pool);
     let count = if progressive {
@@ -191,13 +209,24 @@ pub(super) fn traveler_policy(
     entrant_id: &str,
     progressive: bool,
 ) -> Generated {
+    traveler_policy_version(seed, t, entrant_id, if progressive { 3 } else { 2 })
+}
+
+pub(super) fn traveler_policy_version(
+    seed: &Seed,
+    t: u32,
+    entrant_id: &str,
+    version: i32,
+) -> Generated {
+    let progressive = version >= 3;
+    let basic_tools = version >= 4;
     let mut r = stream(seed, "v2_traveler", u64::from(t));
     let wanted = if progressive {
         super::generator_v3::wanted_for(seed, t)
     } else {
         wanted_for(seed, t / WANTED_BLOCK)
     };
-    let ai = if !progressive || t >= 25 {
+    let ai = if basic_tools || !progressive || t >= 25 {
         ai_at(seed, t, progressive)
     } else {
         None
@@ -207,7 +236,7 @@ pub(super) fn traveler_policy(
         g = v1::fugitive(&mut r, &wanted, t, entrant_id);
         g.secret.ok = vec![Decision::Detain];
     } else if let Some((index, repeat)) = ai {
-        let flaws = choose_flaws(seed, t, Some(index), progressive);
+        let flaws = choose_flaws(seed, t, Some(index), progressive, basic_tools);
         g = v1::regular(
             &mut r,
             RegularSpec {
@@ -222,17 +251,19 @@ pub(super) fn traveler_policy(
             },
         );
         let (claim, model_id, org) = REGISTRY[index];
-        g.public.docs.push(Doc::ModelPermit {
-            key: "md".into(),
-            claim: claim.into(),
-            model_id: if flaws.contains(&"model_identity") {
-                REGISTRY[(index + 1) % 6].1
-            } else {
-                model_id
-            }
-            .into(),
-            org: org.into(),
-        });
+        if !basic_tools {
+            g.public.docs.push(Doc::ModelPermit {
+                key: "md".into(),
+                claim: claim.into(),
+                model_id: if flaws.contains(&"model_identity") {
+                    REGISTRY[(index + 1) % 6].1
+                } else {
+                    model_id
+                }
+                .into(),
+                org: org.into(),
+            });
+        }
         g.public.intro = vec![Line::with(
             "E",
             if repeat {
@@ -246,9 +277,9 @@ pub(super) fn traveler_policy(
         g.secret.liar = !flaws.is_empty() && stream(seed, "v2_ai_quiz", u64::from(t)).chance(500);
         add_documents(&mut g, seed, t, &flaws, !progressive || t >= 30);
     } else if (!progressive || t >= 10) && r.chance(90) {
-        let pool: &[&str] = if !progressive || t >= 25 {
+        let pool: &[&str] = if !progressive || (t >= 25 && !basic_tools) {
             &["deep", "rice", "cad", "openai", "whale"]
-        } else if t >= 15 {
+        } else if t >= if basic_tools { 9 } else { 15 } {
             &["deep", "rice", "cad", "whale"]
         } else {
             &["deep", "cad", "whale"]
@@ -256,7 +287,7 @@ pub(super) fn traveler_policy(
         let kind = *r.pick(pool);
         g = v1::fish(&mut r, kind, t, entrant_id);
     } else {
-        let flaws = choose_flaws(seed, t, None, progressive);
+        let flaws = choose_flaws(seed, t, None, progressive, basic_tools);
         let person = v1::portrait_for(seed, t, &wanted);
         g = v1::regular(
             &mut r,
@@ -291,8 +322,10 @@ pub(super) fn traveler_policy(
         if t < 35 {
             g.public.logins.clear();
         }
-        if t < 15 {
+        if t < if basic_tools { 9 } else { 15 } {
             g.public.xray.clear();
+        }
+        if !basic_tools && t < 15 {
             g.secret.liar = false;
         }
     }
