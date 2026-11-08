@@ -383,7 +383,7 @@ CI 要求（main 分支必须保持绿）：
 
 ## LINUX DO 小程序边界
 
-外部 `app_id` 与 `linuxdo_id` 是平台的不透明标识符，不是本项目资源 ID。身份来自已验签的 issuer/app/channel/sub，独立于网站账户；禁止用户名合并。
+外部 `app_id` 与 `linuxdo_id` 是平台的不透明标识符，不是本项目资源 ID。身份来自已验签的 `(issuer, app_id, sub)`，独立于网站账户；禁止用户名合并。后端同时接受已验签的 `sandbox` 和 `production`；`channel` 只标识请求环境，不参与账号、存档、对局、榜单或回执的分区，两种环境共用全部小程序业务数据。
 
 - 小程序固定入口（全部仅接受已验签平台 Bearer JWT）：`GET /anthropic/v1/mapp/bootstrap`、
   `POST /anthropic/v1/mapp/profile`、`GET /anthropic/v1/mapp/query`、`POST /anthropic/v1/mapp/action`。
@@ -403,7 +403,7 @@ CI 要求（main 分支必须保持绿）：
   不同 payload 返回 `mapp_request_conflict`。429（包括 TooEarly）与 500/503 不保存回执，可等待后用同一
   request_id 重试。丢失成功响应必须重试原 request_id，不能生成新 ID。
 - 小程序事务使用单次事务的 READ COMMITTED，加稳定账号行锁，避免不同用户首次写入的 gap-lock 死锁，
-  不修改网站或数据库全局隔离级别。run source 在同事务创建，普通结算、最终名次和后台过期均按来源分榜。
+  不修改网站或数据库全局隔离级别。run source 在同事务创建，普通结算、最终名次和后台过期区分网站与 LINUX DO 榜；sandbox/production 共用同一 LINUX DO 榜和每日次数。
   新增 `006_mapp.sql` 仅 CREATE TABLE，不更改或重置旧网站排行榜。完整 DTO 合同见 Task 2 report。
 
 ### 版本与包验收补充
@@ -426,3 +426,9 @@ CI 要求（main 分支必须保持绿）：
   最终源修改后重建 ZIP 并校验 SHA256。真实已认证 LINUX DO 沙盒不可用时，记为待验收；本地 fixture 不算 live。
 - `MAPP_APP_ID` 为唯一小程序配置项；固定公网 origin/audience、issuer、JWKS 与 CORS 见上一节及部署说明。
   发布与实际平台验证的命令/权限/午夜切换、旧榜保留和兼容回滚在 `deploy/README.md`。
+
+### 游客与登录迁移
+
+- 未登录的 SDK 游客可玩完整 14 天剧情并收集结局，仅使用 SDK 本地存档；不调用受保护的小程序 API，不启用云同步。无尽和每日挑战需要登录。
+- 登录后自动迁移游客进度并尝试同步；遇到已有云存档时必须显示明确的云端/本机选择，不允许静默覆盖。游客进度在持久化转移成功前不能删除；回执恢复继续沿用原 request_id。
+- 平台 SDK 自身按运行渠道管理浏览器存储，这不是服务器数据分区；跨渠道进度通过共同的云存档同步。

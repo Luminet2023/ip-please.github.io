@@ -16,15 +16,11 @@ pub struct Account {
 }
 impl Principal {
     pub fn scope_key(&self) -> String {
-        sha256_hex(
-            json!([self.iss, self.app_id, self.channel])
-                .to_string()
-                .as_bytes(),
-        )
+        sha256_hex(json!([self.iss, self.app_id]).to_string().as_bytes())
     }
     pub fn identity_key(&self) -> String {
         sha256_hex(
-            json!([self.iss, self.app_id, self.channel, self.sub])
+            json!([self.iss, self.app_id, self.sub])
                 .to_string()
                 .as_bytes(),
         )
