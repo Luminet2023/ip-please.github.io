@@ -111,6 +111,41 @@ pub async fn my_entry(
         .fetch_one(conn).await.map_err(AppError::db)?;
     Ok(Some((better + 1, score)))
 }
+/// 红包凭证用：本人在某个榜上的个人最高分那一行（只读已结算成绩）。
+pub struct BestEntry {
+    pub run_id: String,
+    pub score: i64,
+    pub travelers: i32,
+    pub best_streak: i32,
+    pub achieved_at_ms: i64,
+    pub rank: i64,
+}
+pub async fn best_entry(
+    pool: &MySqlPool,
+    a: &Account,
+    board: &str,
+    period: &str,
+) -> Result<Option<BestEntry>, AppError> {
+    let mut conn = pool.acquire().await.map_err(AppError::db)?;
+    let row = sqlx::query("SELECT run_id,score,travelers,best_streak,achieved_at_ms FROM ip_please_mapp_leaderboard WHERE scope_key=? AND board=? AND period=? AND user_id=?")
+        .bind(&a.scope_key)
+        .bind(board)
+        .bind(period)
+        .bind(&a.user_id)
+        .fetch_optional(&mut *conn).await.map_err(AppError::db)?;
+    let Some(row) = row else { return Ok(None) };
+    let rank = my_entry(&mut conn, &a.scope_key, board, period, &a.user_id)
+        .await?
+        .map_or(0, |(rank, _)| rank);
+    Ok(Some(BestEntry {
+        run_id: row.try_get("run_id").map_err(AppError::db)?,
+        score: row.try_get("score").map_err(AppError::db)?,
+        travelers: row.try_get("travelers").map_err(AppError::db)?,
+        best_streak: row.try_get("best_streak").map_err(AppError::db)?,
+        achieved_at_ms: row.try_get("achieved_at_ms").map_err(AppError::db)?,
+        rank,
+    }))
+}
 pub async fn leaderboard(
     pool: &MySqlPool,
     a: &Account,

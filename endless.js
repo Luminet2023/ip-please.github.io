@@ -641,9 +641,59 @@ window.Endless = (function () {
       if (body.me && !body.entries.some((entry) => entry.me)) {
         status.textContent = T('我的排名：第 {0} 名 · {1} 分', body.me.rank, body.me.score);
       }
+      if (body.me && window.GameHost && GameHost.isMiniApp) voucherSection(box, board);
     } catch (error) {
       status.textContent = T('读取失败：') + (error.message || T('网络错误'));
     }
+  }
+
+  // 红包凭证：把本人在这个榜上的最高分签成短期凭证，贴进 LINUX DO 红包站的代码判定红包。
+  // 只有小程序身份有 linuxdo_id，网站版不显示。签名与分数都以服务器为准，这里只负责展示和复制。
+  const NONCE_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
+  function voucherSection(box, board) {
+    const section = el('div', { class: 'voucher' });
+    section.appendChild(el('p', {}, T('凭证里会带上你的 LINUX DO 用户 ID 和这个榜上的最高分，用来向别处证明成绩。')));
+    const nonce = el('input', { type: 'text', maxlength: '64', autocomplete: 'off', spellcheck: 'false', placeholder: T('指定编号（可选）') });
+    section.appendChild(nonce);
+    const note = el('p', {});
+    const output = el('textarea', { readonly: 'readonly', rows: '3', spellcheck: 'false' });
+    output.hidden = true;
+    let token = '';
+    const copy = el('button', { type: 'button' }, T('复制'));
+    copy.hidden = true;
+    copy.addEventListener('click', async () => {
+      output.select();
+      try { await navigator.clipboard.writeText(token); note.textContent = T('已复制'); } catch (_) { /* Clipboard may be blocked in the SDK iframe; the text stays selected for manual copy. */ }
+    });
+    const make = el('button', { type: 'button', class: 'primary' }, T('生成成绩凭证'));
+    make.addEventListener('click', async () => {
+      const value = nonce.value.trim();
+      if (value && !NONCE_RE.test(value)) { note.textContent = T('编号只能用字母、数字和 - _ .，最多 64 个字符。'); return; }
+      make.disabled = true;
+      note.textContent = T('读取中…');
+      try {
+        const body = await cloud().optionalAuthApi('/hb/attest?board=' + board + (value ? '&nonce=' + encodeURIComponent(value) : ''));
+        if (!section.isConnected) return;
+        token = body.token;
+        output.value = token;
+        output.hidden = false;
+        copy.hidden = false;
+        const minutes = Math.max(1, Math.round((body.expires_at * 1000 - Date.now()) / 60000));
+        note.textContent = T('凭证 {0} 分钟内有效，复制后使用。', minutes);
+      } catch (error) {
+        note.textContent = T('生成失败：') + (error.message || T('网络错误'));
+      } finally {
+        make.disabled = false;
+      }
+    });
+    const row = el('div', { class: 'row' });
+    row.appendChild(make);
+    row.appendChild(copy);
+    section.appendChild(row);
+    section.appendChild(note);
+    section.appendChild(output);
+    box.insertBefore(section, box.lastElementChild);
   }
 
   return {

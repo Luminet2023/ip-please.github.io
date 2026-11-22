@@ -36,6 +36,10 @@ pub struct Config {
     pub allowed_origins: Vec<String>,
     pub max_payload_bytes: usize,
     pub rate_limit_seconds: u64,
+    /// 红包凭证签名私钥（PKCS#8 DER，P-256）；`None` 时红包凭证功能关闭。
+    pub hb_attest_key: Option<Vec<u8>>,
+    /// 红包凭证有效期（秒）。
+    pub hb_attest_ttl_seconds: i64,
 }
 
 const MIN_SECRET_BYTES: usize = 32;
@@ -102,6 +106,18 @@ impl Config {
             bail!("OIDC_REDIRECT_URIS must list at least one redirect URI");
         }
 
+        let token_issuer = var_or("TOKEN_ISSUER", "https://api.luminet.cn/anthropic");
+        let hb_attest_ttl_seconds = parsed_or("HB_ATTEST_TTL_SECONDS", 900i64).clamp(60, 3600);
+        let hb_attest_key = match optional_var("HB_ATTEST_KEY") {
+            Some(pem) => {
+                let der = crate::hb::pem_to_der(&pem)?;
+                // 启动时就校验，配错直接起不来，而不是等到第一次签发才报错。
+                crate::hb::Attester::from_pkcs8_der(&der, &token_issuer, hb_attest_ttl_seconds)?;
+                Some(der)
+            }
+            None => None,
+        };
+
         Ok(Self {
             mapp_app_id: var_or("MAPP_APP_ID", "01a1baa6-abbf-7ed6-afac-bfa495a47dd3"),
             bind_addr: var_or("BIND_ADDR", "0.0.0.0:8080"),
@@ -124,7 +140,7 @@ impl Config {
             session_jwt_secret,
             session_jwt_secret_previous: secret("SESSION_JWT_SECRET_PREVIOUS")?,
             endless_seed_secret,
-            token_issuer: var_or("TOKEN_ISSUER", "https://api.luminet.cn/anthropic"),
+            token_issuer,
             access_token_ttl_seconds: parsed_or("ACCESS_TOKEN_TTL_SECONDS", 600i64).clamp(60, 3600),
             session_idle_days: parsed_or("SESSION_IDLE_DAYS", 14i64).clamp(1, 90),
             session_max_days: parsed_or("SESSION_MAX_DAYS", 30i64).clamp(1, 365),
@@ -135,6 +151,8 @@ impl Config {
             )),
             max_payload_bytes: parsed_or("SYNC_MAX_PAYLOAD_BYTES", 256 * 1024usize),
             rate_limit_seconds: parsed_or("SYNC_RATE_LIMIT_SECONDS", 3u64),
+            hb_attest_key,
+            hb_attest_ttl_seconds,
         })
     }
 
@@ -169,6 +187,8 @@ impl Config {
             allowed_origins: vec!["https://game.test".to_string()],
             max_payload_bytes: 256 * 1024,
             rate_limit_seconds: 0,
+            hb_attest_key: None,
+            hb_attest_ttl_seconds: 900,
         }
     }
 

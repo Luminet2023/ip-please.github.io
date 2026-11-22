@@ -7,6 +7,7 @@ pub mod db;
 pub mod endless;
 pub mod error;
 pub mod extract;
+pub mod hb;
 pub mod ids;
 pub mod maintenance;
 pub mod mapp;
@@ -40,11 +41,24 @@ pub struct AppState {
     pub limiter: Arc<RateLimiter>,
     pub jti: Arc<JtiCache>,
     pub mapp: Arc<mapp::auth::Verifier>,
+    /// 红包凭证签名器；没配 `HB_ATTEST_KEY` 时为 `None`（功能关闭）。
+    pub hb: Option<Arc<hb::Attester>>,
 }
 
 impl AppState {
     pub fn new(config: Arc<Config>, pool: MySqlPool, jwks: Arc<JwksCache>) -> Self {
+        let hb = config.hb_attest_key.as_deref().map(|der| {
+            Arc::new(
+                hb::Attester::from_pkcs8_der(
+                    der,
+                    &config.token_issuer,
+                    config.hb_attest_ttl_seconds,
+                )
+                .expect("HB_ATTEST_KEY is validated in Config::from_env"),
+            )
+        });
         Self {
+            hb,
             mapp: Arc::new(mapp::auth::Verifier::new(mapp::auth::JWKS_URL)),
             tokens: Arc::new(TokenSigner::new(&config)),
             config,

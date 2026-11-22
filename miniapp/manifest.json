@@ -47,7 +47,8 @@
         "run_id",
         "board",
         "period",
-        "limit"
+        "limit",
+        "nonce"
       ]
     },
     "action": {

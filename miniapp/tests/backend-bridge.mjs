@@ -19,7 +19,7 @@ export async function startBackend({spawnProcess=spawn,serveFixture=serve,startu
   if(!['bootstrap','profile','query','action'].includes(name))throw Error('fixed endpoints only');
   const method=['bootstrap','query'].includes(name)?'GET':'POST',base='/anthropic/v1/mapp/'+name;
   const now=Math.floor(Date.now()/1000);
-  const claims={iss:'https://linux.do',aud:'https://api.luminet.cn',app_id:'01a1baa6-abbf-7ed6-afac-bfa495a47dd3',channel,sub:String(account),version:'1.0.0',scopes:['network.request'],iat:now,nbf:now,exp:now+300,jti:'fixture_request_0123456789',htm:method,htu:'https://api.luminet.cn'+base,query_keys:['op','save_id','run_id','board','period','limit'],trust_level:1};
+  const claims={iss:'https://linux.do',aud:'https://api.luminet.cn',app_id:'01a1baa6-abbf-7ed6-afac-bfa495a47dd3',channel,sub:String(account),version:'1.0.0',scopes:['network.request'],iat:now,nbf:now,exp:now+300,jti:'fixture_request_0123456789',htm:method,htu:'https://api.luminet.cn'+base,query_keys:['op','save_id','run_id','board','period','limit','nonce'],trust_level:1};
   const body=options.json?structuredClone(options.json):undefined;
   const data=Buffer.from(JSON.stringify({alg:'ES256',typ:'mini-app-access+jwt',kid:jwks.keys[0].kid})).toString('base64url')+'.'+Buffer.from(JSON.stringify(claims)).toString('base64url');
   const token=data+'.'+sign('sha256',Buffer.from(data),{key,dsaEncoding:'ieee-p1363'}).toString('base64url');

@@ -70,7 +70,15 @@ async function run({startBackend,launchBrowser=launchChromium}={}){
   const resumedDaily=fixture.calls.filter(c=>c.request?.op==='run_current'&&c.response.body.run?.mode==='daily').at(-1);assert.equal(resumedDaily.response.body.item.entrant.entrant_id,dailyNext.response.body.item.entrant.entrant_id);
   await frame.getByRole('button',{name:'Leaderboard',exact:true}).click();await frame.getByRole('button',{name:'Today',exact:true}).click();await page.waitForTimeout(500);await shot('backend-daily-settled');
   const dailyBoard=fixture.calls.filter(c=>c.request?.op==='leaderboard'&&c.request.board==='daily').at(-1);assert.equal(dailyBoard.response.body.me.linuxdo_id,fixture.subject);
-  assert.deepEqual(errors,[]);fs.writeFileSync(path.join(out,'backend-calls.json'),JSON.stringify(fixture.calls,null,2));console.log('Real Rust/MySQL built-IIFE start/inspect/decision/lost response/reopen/replay/settle/boards/avatar fallback/day2/save conflict/storage failure/offline/timeout retries/daily settlement passed');
+  // Red-packet voucher: the platform board offers it, the server signs the settled daily score, and a judge can verify it offline.
+  const voucher=frame.locator('.voucher');await voucher.locator('input').fill('hb-e2e.1');await voucher.getByRole('button',{name:'Create score voucher',exact:true}).click();
+  const attest=await waitCall('hb_attest');assert.equal(attest.response.status,200,JSON.stringify(attest.response.body));assert.deepEqual(attest.request,{op:'hb_attest',board:'daily',nonce:'hb-e2e.1'});
+  await voucher.locator('textarea').waitFor({state:'visible'});const token=await voucher.locator('textarea').inputValue();assert.equal(token,attest.response.body.token);await shot('backend-hb-voucher');
+  const {createPublicKey,verify}=require('node:crypto');const [h,p,sig]=token.split('.');const header=JSON.parse(Buffer.from(h,'base64url')),claims=JSON.parse(Buffer.from(p,'base64url'));
+  const keys=(await (await fetch(fixture.backend+'/anthropic/v1/hb/jwks')).json()).keys;const jwk=keys.find(k=>k.kid===header.kid);assert.ok(jwk);assert.equal(header.alg,'ES256');assert.equal(header.typ,'ip-please-hb+jwt');
+  assert.ok(verify('sha256',Buffer.from(h+'.'+p),{key:createPublicKey({key:jwk,format:'jwk'}),dsaEncoding:'ieee-p1363'},Buffer.from(sig,'base64url')));
+  assert.equal(claims.sub,fixture.subject);assert.equal(claims.aud,'ip-please-hb');assert.equal(claims.board,'daily');assert.equal(claims.nonce,'hb-e2e.1');assert.equal(claims.score,dailyBoard.response.body.me.score);assert.ok(claims.exp>claims.iat);
+  assert.deepEqual(errors,[]);fs.writeFileSync(path.join(out,'backend-calls.json'),JSON.stringify(fixture.calls,null,2));console.log('Real Rust/MySQL built-IIFE start/inspect/decision/lost response/reopen/replay/settle/boards/avatar fallback/day2/save conflict/storage failure/offline/timeout retries/daily settlement/red-packet voucher passed');
  }finally{
   try {if(fixture)fs.writeFileSync(path.join(out,'backend-calls.json'),JSON.stringify(fixture.calls,null,2));}
   finally {try {if(browser)await browser.close();}finally {if(fixture)await fixture.close();}}

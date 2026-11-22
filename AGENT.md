@@ -318,7 +318,7 @@ endless.js                 无尽模式前端：服务器数据 → 证件对象
 backend/                   Rust 后端（lib + bin）
   src/lib.rs               AppState、build_app、client_ip
   src/main.rs              启动
-  src/{config,error,ids,db,util,extract,ratelimit,maintenance,profile,routes}.rs
+  src/{config,error,ids,db,util,extract,ratelimit,maintenance,profile,routes,hb}.rs
   src/auth/{mod,jwks,oidc,tokens,session,routes}.rs
   src/endless/{rng,tables,model,generator,scoring,state,store,routes}.rs
   migrations/00N_*.sql     每次启动按顺序执行（只建新表，不 ALTER）
@@ -359,6 +359,8 @@ CI 要求（main 分支必须保持绿）：
 | `ENDLESS_SEED_SECRET` | 是 | 每日挑战种子密钥，至少 32 字节；上线后不要更换 |
 | `OIDC_ISSUER` | 否 | 默认 `https://auth.luminet.cn/realms/prod` |
 | `OIDC_CLIENT_ID` | 否 | 默认 `app_vXmK3nB7cmKcW6q7` |
+| `HB_ATTEST_KEY` | 否 | 红包凭证签名私钥，PKCS#8 PEM（P-256），可把换行写成 `\n`；不配则红包凭证关闭（接口 404）。见「红包凭证」 |
+| `HB_ATTEST_TTL_SECONDS` | 否 | 红包凭证有效期，默认 900，范围 60–3600 |
 | `OIDC_CLIENT_SECRET` | 否 | 机密客户端 secret；留空时按公共客户端换码（切换期兼容） |
 | `OIDC_REDIRECT_URIS` | 否 | 逗号分隔，默认 `https://www.fuckanthropic.dev/` |
 | `OIDC_SCOPE` | 否 | 默认 `openid profile` |
@@ -375,6 +377,28 @@ CI 要求（main 分支必须保持绿）：
 | `SYNC_MAX_PAYLOAD_BYTES` | 否 | 默认 262144 |
 | `SYNC_RATE_LIMIT_SECONDS` | 否 | 默认 3，单用户上传最小间隔 |
 | `BIND_ADDR` | 否 | 默认 `0.0.0.0:8080` |
+
+## 红包凭证（LINUX DO 红包站代码判定红包）
+
+把小程序玩家在某个榜上**已结算**的个人最高分签成短期 JWT，给 LINUX DO 红包站的 judge 离线验签。
+实现：`backend/src/hb.rs`、`mapp/mod.rs` 的 `hb_attest`、前端 `endless.js` 的 `voucherSection`。
+
+- 只对小程序身份签发：`sub` 是已验签平台 JWT 的 `linuxdo_id`。网站账号没有 `linuxdo_id`，不提供；
+  只读 `ip_please_mapp_leaderboard`，不读网站榜，也不签进行中的对局。时序违规不上榜的对局自然也签不出来。
+- 签发：`GET /anthropic/v1/mapp/query?op=hb_attest&board=endless|weekly|daily[&period=][&nonce=]`
+  （前端走 `game-host.js` 的 `/hb/attest`）。`board` 必填；`period` 默认当前周期；`nonce` 可选，
+  `^[A-Za-z0-9._-]{1,64}$`，一般填红包编号，原样写进凭证，让 judge 拒绝挪用到别的红包。
+  → `{token, expires_at, claims}`。榜上没有本人成绩 404；功能关闭 404；限流 `hb_attest` 每分钟 10 次。
+- 公钥：`GET /anthropic/v1/hb/jwks`（无需登录）→ `{keys:[{kty:"EC",crv:"P-256",x,y,kid,alg:"ES256",use:"sig"}]}`，
+  `kid` 为 RFC 7638 JWK 指纹。换密钥会让旧凭证全部失效（凭证本来就只有 15 分钟）。
+- Token：header `{alg:"ES256", typ:"ip-please-hb+jwt", kid}`；claims
+  `{iss: TOKEN_ISSUER, aud:"ip-please-hb", sub: linuxdo_id, iat, exp, jti, game:"ip-please", board, period,
+  score, travelers, best_streak, rank, run_id, achieved_at, nonce?}`。`rank` 是签发时刻的名次快照，之后可能变化。
+- judge 至少要校验：签名（只接受 ES256 + 已知 `kid`）、`typ`、`iss`、`aud`、`exp`、`game`、`board/period`、
+  `nonce`（若红包要求绑定）；`sub` 与领取人的 LINUX DO ID 一致（judge 能拿到时）。示例见 `tools/hb_judge_example.js`。
+- 凭证会公开玩家的 LINUX DO 数字 ID 与分数：由玩家自己点按钮生成、自己贴出去，界面上有说明。
+- 本地验收：`backend/examples/miniapp_fixture.rs` 用 `tests/fixtures/test_hb_private.pem`，
+  `miniapp/tests/backend-browser.cjs` 走真实 Rust/MySQL 生成并验签一次。
 
 ## 未采用模板项
 
@@ -393,8 +417,8 @@ CI 要求（main 分支必须保持绿）：
 - `bootstrap` 返回 `{channel, user, announcements:[], daily, active_run}`，`channel` 只取已验签 Principal 的 `sandbox|production`；`profile` 只接受
   `{id: string, username: string, name?: string|null}`，`id` 必须等于已验签 `sub`，直接返回 user 对象。
   User 包含 `user_id, linuxdo_id: string, display_name, avatar_url: null, tag`，无管理员、会话、AT/RT。
-- `query` 的 `op` 白名单：`save / snapshots / snapshot / run_current / run / daily / leaderboard / announcements`；
-  其他允许的查询字段为 `save_id / run_id / board / period / limit`。JWT 对固定 query 原始前缀和
+- `query` 的 `op` 白名单：`save / snapshots / snapshot / run_current / run / daily / leaderboard / announcements / hb_attest`；
+  其他允许的查询字段为 `save_id / run_id / board / period / limit / nonce`（`manifest.json` 的 `endpoints.query.query` 同步登记）。JWT 对固定 query 原始前缀和
   SDK 规范化动态后缀分别校验，不能任意排序或重新编码固定部分。
 - `action`：`{request_id: req_*, op, args}`。op 白名单为 `save / run_start / run_next / run_inspect /
   run_quiz / run_decision / wave_result / run_abandon`；`run_id`、`wave_id`、`picks/hits` 都在 args 顶层。

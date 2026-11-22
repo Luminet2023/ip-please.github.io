@@ -2,3 +2,4 @@
 与任何线上环境无关，不得用于生产。
 
 test_mapp_*: public, disposable P-256 fixture keys/JWKS for ES256 and key rotation tests. Never use in production. kid = SHA256(SPKI DER).
+test_hb_private.pem: public, disposable P-256 key for hb attestation (red-packet voucher) unit tests. Never use in production.

@@ -188,3 +188,27 @@ async fn rate_limit_carries_retry_after() {
     );
     assert!(reply.headers.get("retry-after").is_some());
 }
+
+#[tokio::test]
+async fn hb_jwks_is_404_when_disabled_and_public_key_only_when_enabled() {
+    let mut state = offline_state();
+    let reply = call(&state, "GET", "/anthropic/v1/hb/jwks", None, None).await;
+    assert_detail(
+        &reply,
+        StatusCode::NOT_FOUND,
+        "The requested resource was not found.",
+    );
+
+    let der = ip_please_sync::hb::pem_to_der(include_str!("fixtures/test_hb_private.pem")).unwrap();
+    state.hb = Some(std::sync::Arc::new(
+        ip_please_sync::hb::Attester::from_pkcs8_der(&der, "https://api.test/anthropic", 900)
+            .unwrap(),
+    ));
+    let reply = call(&state, "GET", "/anthropic/v1/hb/jwks", None, None).await;
+    assert_eq!(reply.status, StatusCode::OK, "{}", reply.text);
+    let key = &reply.body["keys"][0];
+    assert_eq!(key["kty"], "EC");
+    assert_eq!(key["crv"], "P-256");
+    assert_eq!(key["alg"], "ES256");
+    assert!(key.get("d").is_none());
+}

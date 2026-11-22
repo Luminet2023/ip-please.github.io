@@ -280,6 +280,10 @@ docker exec -it ip-please-sync sh -c 'curl -sv telnet://host.docker.internal:330
 - 应用 CORS 已固定允许 `https://linux.do`；代理也必须允许该 Origin（包含错误响应），GET/POST/OPTIONS、Authorization/Content-Type/Accept，并暴露 Retry-After。不要允许 `null` 来源或通配凭据。平台代理发出请求，游戏 iframe 无需直接连接 API。
 - `sandbox|production` 来自已验签 JWT，不能靠客户端参数、header 或全局 `MAPP_CHANNEL` 切换。profile 的 string id 必须匹配 sub，名字只用于展示；不按用户名合并网站账号。平台没有网站 AT/RT 或管理权限。
 
+- 红包凭证（可选）：`.env` 配 `HB_ATTEST_KEY` 后开启，见 `.env.example` 和 AGENT.md「红包凭证」。
+  公网还需要放行 `GET /anthropic/v1/hb/jwks`（无需登录，给红包 judge 取公钥）。小程序 manifest 的 query 新增了
+  `nonce`，需要重新打包上传平台。
+
 ```sh
 curl -fsS https://api.luminet.cn/anthropic/v1/health
 curl -i -X OPTIONS https://api.luminet.cn/anthropic/v1/mapp/action \

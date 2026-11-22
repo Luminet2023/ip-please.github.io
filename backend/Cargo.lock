@@ -786,6 +786,7 @@ dependencies = [
  "rand 0.8.8",
  "rand_chacha",
  "reqwest",
+ "ring",
  "serde",
  "serde_json",
  "serde_urlencoded",
