@@ -34,6 +34,7 @@ pub fn router(state: AppState) -> Router {
         .route("/anthropic/v1/mapp/profile", post(crate::mapp::profile))
         .route("/anthropic/v1/mapp/action", post(crate::mapp::action))
         .route("/anthropic/v1/health", get(health))
+        .route("/anthropic/v1/hb/jwks", get(crate::hb::jwks))
         .route("/anthropic/v1/auth/login", post(auth::routes::login))
         .route("/anthropic/v1/auth/callback", post(auth::routes::callback))
         .route("/anthropic/v1/auth/refresh", post(auth::routes::refresh))

@@ -41,6 +41,8 @@ pub const AUTH_BACKCHANNEL: Rule = Rule::per_minute("auth_backchannel", 60);
 pub const PUBLIC_READ: Rule = Rule::per_minute("public_read", 120);
 pub const ADMIN_WRITE: Rule = Rule::per_minute("admin_write", 30);
 pub const ENDLESS_ACTION: Rule = Rule::per_seconds("endless_action", 8, 1);
+/// 红包凭证签发（每次都要签名，比普通读取更严）。
+pub const HB_ATTEST: Rule = Rule::per_minute("hb_attest", 10);
 pub const ENDLESS_START: Rule = Rule::per_seconds("endless_start", 1, 10);
 
 const PRUNE_THRESHOLD: usize = 4096;

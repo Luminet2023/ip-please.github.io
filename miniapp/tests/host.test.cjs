@@ -37,6 +37,7 @@ test('fixed routes flatten game args, coalesce duplicates and retain 429 same ID
  assert.deepEqual(seen[0].o.json.args,{run_id:'run_abcdefghijklmnop',wave_id:'wave_abcdefghijklmnop',hits:[{i:0,t_ms:123}]});
  status=200;await new Promise(r=>setTimeout(r,15));await h.request(path,opts);assert.equal(seen[1].o.json.request_id,seen[0].o.json.request_id);assert.equal(h.pending().length,0);
  await h.request('/endless/leaderboard?board=weekly&limit=20');assert.deepEqual(seen[2].o.query,{op:'leaderboard',board:'weekly',limit:'20'});
+ await h.request('/hb/attest?board=daily&nonce=hb-42');assert.deepEqual(seen[3].o.query,{op:'hb_attest',board:'daily',nonce:'hb-42'});
 });
 test('changed account fails closed before transport; unsafe lookup IDs rejected',async()=>{
  assert.equal(typeof api.createMiniAppHost,'function');const p=platform();const h=await api.createMiniAppHost(p.sdk);const before=p.calls.length;p.account(43);

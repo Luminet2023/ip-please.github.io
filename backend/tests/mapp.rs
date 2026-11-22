@@ -59,7 +59,7 @@ async fn verifier() -> (Verifier, Arc<AtomicUsize>) {
 }
 fn claims(method: &str, path: &str, sub: &str, channel: &str) -> Value {
     let now = now_secs();
-    json!({"iss":"https://linux.do","aud":AUDIENCE,"app_id":"test-miniapp","channel":channel,"sub":sub,"version":"1.0.0","scopes":["network.request"],"iat":now,"nbf":now,"exp":now+300,"jti":"fixture_request_0123456789","htm":method,"htu":format!("{AUDIENCE}{PREFIX}/{path}"),"query_keys":["op","run_id","save_id","board","period","limit"]})
+    json!({"iss":"https://linux.do","aud":AUDIENCE,"app_id":"test-miniapp","channel":channel,"sub":sub,"version":"1.0.0","scopes":["network.request"],"iat":now,"nbf":now,"exp":now+300,"jti":"fixture_request_0123456789","htm":method,"htu":format!("{AUDIENCE}{PREFIX}/{path}"),"query_keys":["op","run_id","save_id","board","period","limit","nonce"]})
 }
 fn sign_mapp(c: &Value) -> String {
     let jwks: Value = serde_json::from_str(include_str!("fixtures/test_mapp_jwks.json")).unwrap();
@@ -1449,4 +1449,145 @@ async fn independent_users_can_create_first_receipts_saves_and_runs_concurrently
         assert_eq!(b.body, a.body);
         assert_eq!(c.status, StatusCode::CREATED, "{}", c.text);
     }
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MySQL"]
+async fn hb_attest_signs_only_settled_platform_scores() {
+    use ip_please_sync::{
+        endless::{
+            state::{Mode, RunState},
+            store as runs,
+        },
+        hb,
+        mapp::store,
+    };
+    use jsonwebtoken::{decode, DecodingKey, Validation};
+    let mut state = db_mapp().await;
+    let sub = subject();
+    // 功能关闭：404。
+    let off = platform(
+        &state,
+        "GET",
+        "query?op=hb_attest&board=endless",
+        &sub,
+        "production",
+        None,
+    )
+    .await;
+    assert_eq!(off.status, StatusCode::NOT_FOUND, "{}", off.text);
+
+    let der = hb::pem_to_der(include_str!("fixtures/test_hb_private.pem")).unwrap();
+    state.hb = Some(Arc::new(
+        hb::Attester::from_pkcs8_der(&der, &state.config.token_issuer, 900).unwrap(),
+    ));
+    // 还没有成绩：404；没写 board：400；nonce 格式不对：400。
+    let none = platform(
+        &state,
+        "GET",
+        "query?op=hb_attest&board=endless",
+        &sub,
+        "production",
+        None,
+    )
+    .await;
+    assert_eq!(none.status, StatusCode::NOT_FOUND, "{}", none.text);
+    let no_board = platform(
+        &state,
+        "GET",
+        "query?op=hb_attest",
+        &sub,
+        "production",
+        None,
+    )
+    .await;
+    assert_eq!(
+        no_board.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        no_board.text
+    );
+    let bad_nonce = platform(
+        &state,
+        "GET",
+        "query?op=hb_attest&board=endless&nonce=a*b",
+        &sub,
+        "production",
+        None,
+    )
+    .await;
+    assert_eq!(
+        bad_nonce.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        bad_nonce.text
+    );
+
+    // 造一局已结算的成绩（和 platform_best_scores… 同样的写法）。
+    let boot = platform(&state, "GET", "bootstrap", &sub, "production", None).await;
+    assert_eq!(boot.status, StatusCode::OK, "{}", boot.text);
+    let mut c = claims("GET", "query", &sub, "production");
+    c["app_id"] = json!("test-miniapp");
+    let p: ip_please_sync::mapp::auth::Principal = serde_json::from_value(c).unwrap();
+    let a = store::account(&state.pool, &p).await.unwrap();
+    let now = now_ms();
+    let mut game = RunState::new(Mode::Endless, &[9; 32], None);
+    game.score = 1234;
+    let mut tx = state.pool.begin().await.unwrap();
+    let run_id = runs::create(&mut *tx, &a.user_id, &game, now - 5000)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO ip_please_mapp_run_sources(run_id,identity_key,scope_key) VALUES (?,?,?)",
+    )
+    .bind(&run_id)
+    .bind(&a.identity_key)
+    .bind(&a.scope_key)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    runs::mutate_tx(&mut tx, &run_id, &a.user_id, now, "abandon", |s| {
+        s.end("abandon");
+        Ok(((), json!({})))
+    })
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    let ok = platform(
+        &state,
+        "GET",
+        "query?op=hb_attest&board=endless&nonce=hb-42",
+        &sub,
+        "production",
+        None,
+    )
+    .await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.text);
+    assert_eq!(ok.headers["cache-control"], "private, no-store");
+    let keys = call(&state, "GET", "/anthropic/v1/hb/jwks", None, None).await;
+    let k = &keys.body["keys"][0];
+    let key = DecodingKey::from_ec_components(k["x"].as_str().unwrap(), k["y"].as_str().unwrap())
+        .unwrap();
+    let mut v = Validation::new(jsonwebtoken::Algorithm::ES256);
+    v.set_audience(&[hb::AUDIENCE]);
+    v.set_issuer(&[state.config.token_issuer.as_str()]);
+    let claims = decode::<Value>(ok.body["token"].as_str().unwrap(), &key, &v)
+        .unwrap()
+        .claims;
+    assert_eq!(claims["sub"], sub);
+    assert_eq!(claims["board"], "endless");
+    assert_eq!(claims["period"], "all");
+    assert_eq!(claims["score"], 1234);
+    assert_eq!(claims["run_id"], run_id);
+    assert!(claims["rank"].as_i64().unwrap() >= 1);
+    assert_eq!(claims["nonce"], "hb-42");
+    assert_eq!(ok.body["claims"], claims);
+    // 同一账号的网站排行榜不受影响：凭证只读小程序榜。
+    let web: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ip_please_leaderboard WHERE run_id=?")
+        .bind(&run_id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap();
+    assert_eq!(web, 0);
 }

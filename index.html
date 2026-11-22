@@ -109,6 +109,12 @@
   .dialog ol.board .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .dialog ol.board .avatar { width: 22px; height: 22px; font-size: 11px; }
   .dialog ol.board .score { min-width: 64px; text-align: right; }
+  .dialog .voucher { margin-top: 10px; padding-top: 8px; border-top: 1px solid #3a3431; }
+  .dialog .voucher input, .dialog .voucher textarea {
+    font: inherit; color: #e4dfd4; background: #161313; border: 1px solid #5a514b;
+    border-radius: 4px; padding: 4px 8px; width: 100%; box-sizing: border-box;
+  }
+  .dialog .voucher textarea { resize: vertical; font-size: 11px; word-break: break-all; }
   .announce {
     position: fixed; top: 8px; left: 8px; z-index: 4; width: min(340px, 72vw);
     background: rgba(30, 26, 25, 0.96); border: 1px solid #5a514b; border-left: 3px solid #e89c74;

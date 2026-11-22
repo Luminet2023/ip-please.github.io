@@ -24,6 +24,10 @@ async fn main() -> anyhow::Result<()> {
     ip_please_sync::db::migrate(&pool).await?;
     let mut config = Config::for_tests(&database, "https://idp.test");
     config.mapp_app_id = "01a1baa6-abbf-7ed6-afac-bfa495a47dd3".into();
+    // Test-only P-256 key, so the browser test can exercise red-packet vouchers end to end.
+    config.hb_attest_key = Some(ip_please_sync::hb::pem_to_der(include_str!(
+        "../tests/fixtures/test_hb_private.pem"
+    ))?);
     let mut state = AppState::new(
         Arc::new(config),
         pool.clone(),

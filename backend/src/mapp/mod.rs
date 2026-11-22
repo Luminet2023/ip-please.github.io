@@ -119,6 +119,7 @@ pub struct Query {
     board: Option<String>,
     period: Option<String>,
     limit: Option<i64>,
+    nonce: Option<String>,
 }
 pub async fn query(
     State(state): State<AppState>,
@@ -160,6 +161,45 @@ pub async fn query(
             daily(&state, &a).await?
         }
         "announcements" => announcements::active(&state.pool).await?,
+        "hb_attest" => {
+            let attester = state
+                .hb
+                .as_ref()
+                .ok_or(AppError::Detail(DetailCode::NotFound))?;
+            state.limiter.check(ratelimit::HB_ATTEST, &a.user_id)?;
+            // 凭证要写明是哪个榜，不给默认值，免得 judge 把总榜当成日榜。
+            let board = q.board.as_deref().ok_or_else(invalid)?;
+            let period = q.period.unwrap_or_else(|| match board {
+                "weekly" => runs::iso_week(now_ms()),
+                "daily" => runs::daily_date(now_ms()),
+                _ => "all".into(),
+            });
+            if !crate::endless::routes::valid_period(board, &period) {
+                return Err(invalid());
+            }
+            let nonce = q.nonce.as_deref().filter(|n| !n.is_empty());
+            if nonce.is_some_and(|n| !crate::hb::valid_nonce(n)) {
+                return Err(invalid());
+            }
+            let entry = store::best_entry(&state.pool, &a, board, &period)
+                .await?
+                .ok_or(AppError::Detail(DetailCode::NotFound))?;
+            attester.sign(
+                crate::hb::AttestClaims {
+                    linuxdo_id: &a.linuxdo_id,
+                    board,
+                    period: &period,
+                    score: entry.score,
+                    travelers: entry.travelers,
+                    best_streak: entry.best_streak,
+                    rank: entry.rank,
+                    run_id: &entry.run_id,
+                    achieved_at: crate::util::iso_from_ms(entry.achieved_at_ms),
+                    nonce,
+                },
+                crate::util::unix_secs(now_ms()),
+            )?
+        }
         "leaderboard" => {
             let board = q.board.as_deref().unwrap_or("endless");
             let period = q.period.unwrap_or_else(|| match board {

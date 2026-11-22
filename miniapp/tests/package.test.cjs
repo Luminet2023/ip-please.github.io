@@ -6,7 +6,7 @@ test('official package has only declared game bytes, restrictive permissions and
  assert.deepEqual(info.names.sort(),['app.css','app.js','index.html','manifest.json','strings.json',...m.assets].sort());
  assert.equal(m.id,'01a1baa6-abbf-7ed6-afac-bfa495a47dd3');assert.deepEqual(m.permissions.slice().sort(),['user.read','user.lookup','network.request','storage.read','storage.write','theme.read','audio.webAudio','fullscreen','links.open'].sort());
  for(const [name,method] of [['bootstrap','GET'],['profile','POST'],['query','GET'],['action','POST']])assert.deepEqual([m.endpoints[name].url,m.endpoints[name].method,m.endpoints[name].auth],['https://api.luminet.cn/anthropic/v1/mapp/'+name,method,'platform']);
- assert.deepEqual(m.endpoints.query.query,['op','save_id','run_id','board','period','limit']);
+ assert.deepEqual(m.endpoints.query.query,['op','save_id','run_id','board','period','limit','nonce']);
  assert.ok(fs.statSync(archive).size<=32*1024*1024);assert.ok(info.size<=128*1024*1024);
  const hash=createHash('sha256').update(fs.readFileSync(archive)).digest('hex');assert.equal(fs.readFileSync(path.join(root,'miniapp/dist/package/SHA256SUMS'),'utf8'),hash+'  app.zip\n');
  const fragment=fs.readFileSync(path.join(root,'miniapp/dist/web/index.html'),'utf8');const d=new JSDOM(fragment).window.document;

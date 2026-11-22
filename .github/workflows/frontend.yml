@@ -50,6 +50,7 @@ jobs:
         working-directory: .
         run: |
           node tools/endless_client_test.js
+          node tools/hb_judge_example_test.js
           node tools/endless_v2_test.js
           node tools/endless_progressive_test.js
           node tools/plot_regression_test.js

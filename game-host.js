@@ -25,6 +25,7 @@
     if (!post && p === '/announcements') return {query:{op:'announcements'}};
     if (!post && p === '/endless/daily') return {query:{op:'daily'}};
     if (!post && p === '/endless/leaderboard') return {query:{op:'leaderboard',...query}};
+    if (!post && p === '/hb/attest') return {query:{op:'hb_attest',...query}};
     if (post && p === '/endless/runs') return {op:'run_start',args:body};
     if (!post && p === '/endless/runs/current') return {query:{op:'run_current'}};
     const run = p.match(/^\/endless\/runs\/(run_[a-zA-Z0-9]{16,32})(?:\/(next|inspect|quiz|decision|abandon)|\/waves\/(wave_[a-zA-Z0-9]{16,32})\/result)?$/);
